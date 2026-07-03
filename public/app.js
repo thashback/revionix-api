@@ -528,6 +528,337 @@ async function deleteVenta(id) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// PROYECTOS
+// ═══════════════════════════════════════════════════════════════
+async function loadProyectos() {
+  try {
+    const proyectos = await fetch(`${API_BASE}/proyectos`).then(r => r.json());
+    renderProyectos(proyectos);
+  } catch (err) {
+    console.error('Error loading proyectos:', err);
+  }
+}
+
+function renderProyectos(proyectos) {
+  const tbody = document.getElementById('tbl-proyectos-body');
+  if (!tbody) return;
+
+  tbody.innerHTML = '';
+  proyectos.forEach(p => {
+    const row = document.createElement('tr');
+    const pct = p.monto_total > 0 ? ((p.monto_ejecutado / p.monto_total) * 100).toFixed(0) : 0;
+    const estadoColor = { pendiente: '#ff9800', en_proceso: '#2196f3', completado: '#4caf50', cancelado: '#f44336' };
+    row.innerHTML = `
+      <td><strong>${p.numero_oc}</strong></td>
+      <td>${p.cliente}</td>
+      <td>${new Date(p.fecha_oc).toLocaleDateString('es-ES')}</td>
+      <td>S/. ${p.monto_total.toFixed(2)}</td>
+      <td>S/. ${p.monto_ejecutado.toFixed(2)} (${pct}%)</td>
+      <td><span style="background:${estadoColor[p.estado]};color:#fff;padding:4px 8px;border-radius:4px;font-size:12px">${p.estado}</span></td>
+      <td>
+        ${p.ruta_oc ? `<button class="btn-sm" onclick="viewFile('${p.ruta_oc}')">📄 Ver</button>` : '❌'}
+      </td>
+      <td>
+        <button class="btn-sm" onclick="editProyecto(${p.id}, '${p.numero_oc}')">✏️</button>
+        <button class="btn-sm" onclick="deleteProyecto(${p.id})">🗑️</button>
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function openAddProyecto() {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'proyecto-modal';
+  modal.innerHTML = `
+    <div class="modal" style="width:90%; max-width:600px;">
+      <div class="modal-header">
+        <h3>➕ Nuevo Proyecto / OC</h3>
+        <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:24px;cursor:pointer">×</button>
+      </div>
+      <div class="modal-body">
+        <input type="text" id="proy-numero-oc" placeholder="Número OC" required />
+        <input type="date" id="proy-fecha-oc" required />
+        <input type="text" id="proy-cliente" placeholder="Cliente" required />
+        <textarea id="proy-descripcion" placeholder="Descripción" rows="3"></textarea>
+        <input type="number" id="proy-monto-total" placeholder="Monto Total" step="0.01" required />
+        <label style="margin-top:12px;display:block;font-weight:600">📎 Adjuntar OC (PDF):</label>
+        <input type="file" id="proy-file" accept=".pdf" required style="margin-top:6px" />
+      </div>
+      <div class="modal-footer" style="gap:8px;">
+        <button onclick="saveNewProyecto()" style="background:#198c35;color:#fff;padding:8px 16px;border:none;border-radius:6px;cursor:pointer">💾 Guardar</button>
+        <button onclick="document.getElementById('proyecto-modal').remove()" style="background:#ccc;color:#000;padding:8px 16px;border:none;border-radius:6px;cursor:pointer">Cancelar</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+async function saveNewProyecto() {
+  const formData = new FormData();
+  formData.append('numero_oc', document.getElementById('proy-numero-oc').value);
+  formData.append('fecha_oc', document.getElementById('proy-fecha-oc').value);
+  formData.append('cliente', document.getElementById('proy-cliente').value);
+  formData.append('descripcion', document.getElementById('proy-descripcion').value);
+  formData.append('monto_total', document.getElementById('proy-monto-total').value);
+  formData.append('ruta_oc', document.getElementById('proy-file').files[0]);
+
+  try {
+    const response = await fetch(`${API_BASE}/proyectos`, {
+      method: 'POST',
+      body: formData
+    });
+    if (response.ok) {
+      alert('✅ Proyecto creado');
+      document.getElementById('proyecto-modal').remove();
+      loadProyectos();
+    } else {
+      alert('❌ Error al crear');
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+async function deleteProyecto(id) {
+  if (!confirm('¿Eliminar este proyecto?')) return;
+  try {
+    await fetch(`${API_BASE}/proyectos/${id}`, { method: 'DELETE' });
+    loadProyectos();
+  } catch (err) {
+    console.error('Error:', err);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// GASTOS FIJOS
+// ═══════════════════════════════════════════════════════════════
+async function loadGastosFijos() {
+  try {
+    const gastos = await fetch(`${API_BASE}/gastos-fijos`).then(r => r.json());
+    renderGastosFijos(gastos);
+  } catch (err) {
+    console.error('Error loading gastos fijos:', err);
+  }
+}
+
+function renderGastosFijos(gastos) {
+  const tbody = document.getElementById('tbl-gastos-fijos-body');
+  if (!tbody) return;
+
+  tbody.innerHTML = '';
+  gastos.forEach(g => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${g.ano}</td>
+      <td>${g.mes}</td>
+      <td>${g.descripcion}</td>
+      <td><input type="number" id="gf-${g.id}" value="${g.monto || 0}" step="0.01" style="width:100px;padding:4px;border:1px solid #ddd;border-radius:4px" /></td>
+      <td>
+        ${g.ruta_comprobante ? `<button class="btn-sm" onclick="viewFile('${g.ruta_comprobante}')">📄 Ver</button>` : '❌'}
+        <button class="btn-sm" onclick="uploadGF(${g.id})">📤</button>
+      </td>
+      <td>
+        <button class="btn-sm" onclick="saveGastoFijo(${g.id})">💾</button>
+        <button class="btn-sm" onclick="deleteGastoFijo(${g.id})">🗑️</button>
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+async function saveGastoFijo(id) {
+  const monto = document.getElementById(`gf-${id}`).value;
+  try {
+    const response = await fetch(`${API_BASE}/gastos-fijos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mes: new Date().getMonth() + 1, ano: new Date().getFullYear(), descripcion: 'Gasto', monto })
+    });
+    if (response.ok) {
+      alert('✅ Gasto fijo guardado');
+      loadGastosFijos();
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+async function deleteGastoFijo(id) {
+  if (!confirm('¿Eliminar?')) return;
+  try {
+    await fetch(`${API_BASE}/gastos-fijos/${id}`, { method: 'DELETE' });
+    loadGastosFijos();
+  } catch (err) {
+    console.error('Error:', err);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PAGOS PENDIENTES
+// ═══════════════════════════════════════════════════════════════
+async function loadPagosPendientes() {
+  try {
+    const pagos = await fetch(`${API_BASE}/pagos-pendientes`).then(r => r.json());
+    renderPagosPendientes(pagos);
+  } catch (err) {
+    console.error('Error loading pagos:', err);
+  }
+}
+
+function renderPagosPendientes(pagos) {
+  const tbody = document.getElementById('tbl-pagos-body');
+  if (!tbody) return;
+
+  tbody.innerHTML = '';
+  pagos.forEach(p => {
+    const estadoColor = { pendiente: '#ff9800', pagado: '#4caf50', cancelado: '#9e9e9e' };
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>Factura #${p.factura_id}</td>
+      <td>S/. ${p.monto.toFixed(2)}</td>
+      <td>${new Date(p.fecha_vencimiento).toLocaleDateString('es-ES')}</td>
+      <td><span style="background:${estadoColor[p.estado]};color:#fff;padding:4px 8px;border-radius:4px;font-size:12px">${p.estado}</span></td>
+      <td>
+        ${p.estado === 'pagado' && p.ruta_comprobante_pago ? `<button class="btn-sm" onclick="viewFile('${p.ruta_comprobante_pago}')">📄 Comprobante</button>` : '❌'}
+      </td>
+      <td>
+        ${p.estado === 'pendiente' ? `<button class="btn-sm" onclick="uploadPagoComprobante(${p.id})">📤 Marcar Pagado</button>` : ''}
+        <button class="btn-sm" onclick="deletePago(${p.id})">🗑️</button>
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+async function deletePago(id) {
+  if (!confirm('¿Eliminar?')) return;
+  try {
+    await fetch(`${API_BASE}/pagos-pendientes/${id}`, { method: 'DELETE' });
+    loadPagosPendientes();
+  } catch (err) {
+    console.error('Error:', err);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PLANILLA
+// ═══════════════════════════════════════════════════════════════
+async function loadPlanilla() {
+  try {
+    const planilla = await fetch(`${API_BASE}/planilla`).then(r => r.json());
+    renderPlanilla(planilla);
+  } catch (err) {
+    console.error('Error loading planilla:', err);
+  }
+}
+
+function renderPlanilla(planilla) {
+  const tbody = document.getElementById('tbl-planilla-body');
+  if (!tbody) return;
+
+  tbody.innerHTML = '';
+  planilla.forEach(p => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${p.ano}</td>
+      <td>${p.mes}</td>
+      <td>${p.empleado}</td>
+      <td><input type="number" id="pl-sueldo-${p.id}" value="${p.sueldo || 0}" step="0.01" style="width:80px;padding:4px;" /></td>
+      <td><input type="number" id="pl-bono-${p.id}" value="${p.bonificacion || 0}" step="0.01" style="width:80px;padding:4px;" /></td>
+      <td><input type="number" id="pl-desc-${p.id}" value="${p.descuentos || 0}" step="0.01" style="width:80px;padding:4px;" /></td>
+      <td><strong>S/. ${p.neto.toFixed(2)}</strong></td>
+      <td>
+        ${p.ruta_recibo ? `<button class="btn-sm" onclick="viewFile('${p.ruta_recibo}')">📄 Recibo</button>` : '❌'}
+        <button class="btn-sm" onclick="uploadRecibo(${p.id})">📤</button>
+      </td>
+      <td>
+        <button class="btn-sm" onclick="savePlanilla(${p.id})">💾</button>
+        <button class="btn-sm" onclick="deletePlanilla(${p.id})">🗑️</button>
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+async function savePlanilla(id) {
+  const sueldo = document.getElementById(`pl-sueldo-${id}`).value;
+  const bonificacion = document.getElementById(`pl-bono-${id}`).value;
+  const descuentos = document.getElementById(`pl-desc-${id}`).value;
+
+  try {
+    const response = await fetch(`${API_BASE}/planilla`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mes: new Date().getMonth() + 1, ano: new Date().getFullYear(), empleado: 'Empleado', sueldo, bonificacion, descuentos })
+    });
+    if (response.ok) {
+      alert('✅ Planilla guardada');
+      loadPlanilla();
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+async function deletePlanilla(id) {
+  if (!confirm('¿Eliminar?')) return;
+  try {
+    await fetch(`${API_BASE}/planilla/${id}`, { method: 'DELETE' });
+    loadPlanilla();
+  } catch (err) {
+    console.error('Error:', err);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// UTILITY FUNCTIONS
+// ═══════════════════════════════════════════════════════════════
+function viewFile(ruta) {
+  const ext = ruta.split('.').pop().toLowerCase();
+  if (ext === 'pdf') {
+    window.open(ruta, '_blank');
+  } else if (ext === 'xml') {
+    fetch(ruta).then(r => r.text()).then(xml => {
+      alert('XML:\n' + xml.substring(0, 500));
+    });
+  } else {
+    window.open(ruta, '_blank');
+  }
+}
+
+function uploadGF(id) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,.jpg,.png';
+  input.onchange = async (e) => {
+    alert('📤 Upload endpoint: PUT /api/gastos-fijos/' + id);
+  };
+  input.click();
+}
+
+function uploadPagoComprobante(id) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,.jpg,.png';
+  input.onchange = async (e) => {
+    alert('📤 Upload endpoint: PUT /api/pagos-pendientes/' + id);
+  };
+  input.click();
+}
+
+function uploadRecibo(id) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,.jpg,.png';
+  input.onchange = async (e) => {
+    alert('📤 Upload endpoint: PUT /api/planilla/' + id);
+  };
+  input.click();
+}
+
+// ═══════════════════════════════════════════════════════════════
 // INITIALIZE
 // ═══════════════════════════════════════════════════════════════
 window.addEventListener('load', () => {
