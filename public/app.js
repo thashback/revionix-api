@@ -1939,7 +1939,7 @@ function rvActualizarFechaReal() {
 // ── Rol "operaciones": edita compras/ventas/ecommerce/stock, pero SIN acceso a
 // planilla, gastos fijos ni usuarios. (Edita como admin en lo demás.) ──
 window.RV_ROL_REAL = '';
-const RV_PAGINAS_BLOQUEADAS = ['planilla', 'gastos-fijos', 'usuarios'];
+const RV_PAGINAS_BLOQUEADAS = ['planilla', 'gastos-fijos', 'pagos-pendientes', 'usuarios'];
 function rvAplicarRestriccionesRol() {
   if (window.RV_ROL_REAL !== 'operaciones') return;
   RV_PAGINAS_BLOQUEADAS.forEach(pg => {
