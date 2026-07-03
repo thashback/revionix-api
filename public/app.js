@@ -1011,6 +1011,7 @@ function rvImportarPlanilla() {
         rvDecorarMeses();
         rvDecorarCorp();
         rvDecorarEcommerce();
+        rvInyectarBotonAgregar('page-detalle', 'rv-btn-det-add', '➕ Nueva Venta', '');
       } catch (e) { console.error('[RV-EXT] init', e); }
     }, 600);
   });
@@ -1351,6 +1352,8 @@ function rvDecorarPP() {
   envolver('renderInvRepos', () => rvDecorarStock());
   // Pagos pendientes: comprobante por fila
   envolver('renderPPAlq', () => rvDecorarPP());
+  // Detalle por Producto: botón para agregar ventas nuevas (cualquier canal)
+  envolver('filterDetalle', () => rvInyectarBotonAgregar('page-detalle', 'rv-btn-det-add', '➕ Nueva Venta', ''));
 
   console.log('[RV-EXT2] ✓ Extensiones v7 activas');
 })();
