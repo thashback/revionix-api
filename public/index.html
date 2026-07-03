@@ -7,22 +7,34 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script>
-      // ═══ RESTAURACIÓN DE DATOS DESDE MySQL ═══
-      // Descarga los datos guardados (ventas, gastos, stock, usuarios...)
-      // y los coloca en localStorage ANTES de que el sistema inicie.
-      // Si el servidor no responde, se usan los datos locales del navegador.
+      // ═══ RESTAURACIÓN DE DATOS DESDE MySQL (NO DESTRUCTIVA) ═══
+      // El navegador (localStorage) es la fuente de verdad. El servidor es solo
+      // un RESPALDO que se restaura ÚNICAMENTE cuando el navegador está vacío
+      // (tras limpiar caché o en un equipo nuevo). NUNCA sobrescribe datos
+      // locales existentes → así los datos ya no se "revierten" a versiones viejas.
       window.RV_SERVER_KEYS = [];
       try {
-        var _rvXhr = new XMLHttpRequest();
-        _rvXhr.open("GET", "/api/storage", false);
-        _rvXhr.send(null);
-        if (_rvXhr.status === 200) {
-          var _rvData = JSON.parse(_rvXhr.responseText);
-          for (var _rvK in _rvData) {
-            localStorage.setItem(_rvK, _rvData[_rvK]);
-            window.RV_SERVER_KEYS.push(_rvK);
+        var _tieneLocal = false;
+        for (var _i = 0; _i < localStorage.length; _i++) {
+          if (String(localStorage.key(_i)).indexOf("rv_") === 0) { _tieneLocal = true; break; }
+        }
+        if (!_tieneLocal) {
+          // Navegador vacío → restaurar respaldo del servidor
+          var _rvXhr = new XMLHttpRequest();
+          _rvXhr.open("GET", "/api/storage", false);
+          _rvXhr.send(null);
+          if (_rvXhr.status === 200) {
+            var _rvData = JSON.parse(_rvXhr.responseText);
+            for (var _rvK in _rvData) {
+              if (localStorage.getItem(_rvK) === null) {
+                localStorage.setItem(_rvK, _rvData[_rvK]);
+                window.RV_SERVER_KEYS.push(_rvK);
+              }
+            }
+            console.log("[SYNC] ✓ Respaldo restaurado (navegador vacío):", window.RV_SERVER_KEYS.join(", ") || "(servidor vacío)");
           }
-          console.log("[SYNC] ✓ Datos restaurados desde la base de datos:", window.RV_SERVER_KEYS.join(", ") || "(servidor vacío)");
+        } else {
+          console.log("[SYNC] ✓ Usando datos locales del navegador (no se sobrescriben)");
         }
       } catch (e) {
         console.warn("[SYNC] Servidor no disponible, usando datos locales:", e.message);
@@ -20100,7 +20112,7 @@
     </div>
 
   <!-- Indicador de versión: si NO ves este número, tu navegador tiene caché viejo -->
-  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v11 · 03-Jul</div>
-  <script src="app.js?v=11"></script>
+  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v12 · 03-Jul</div>
+  <script src="app.js?v=12"></script>
   </body>
 </html>
