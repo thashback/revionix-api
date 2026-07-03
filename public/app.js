@@ -777,7 +777,21 @@ function rvInyectarBotonAgregar(pageId, btnId, texto, canal) {
 }
 // Estado de pago por cliente corporativo (persistido en BD vía rv_corp_estados)
 function rvDecorarCorp() {
-  rvInyectarBotonAgregar('page-corporativo', 'rv-btn-corp-add', '➕ Nueva Venta Corporativa', 'Corporativo');
+  // Botón de venta por volumen (varios productos por venta)
+  (function () {
+    const page = document.getElementById('page-corporativo');
+    if (page && !document.getElementById('rv-btn-corp-add')) {
+      const btn = document.createElement('button');
+      btn.id = 'rv-btn-corp-add';
+      btn.className = 'btn btn-success';
+      btn.style.cssText = 'margin:10px 0';
+      btn.textContent = '➕ Nueva Venta Corporativa (por volumen)';
+      btn.onclick = () => rvNuevaVentaCorpVolumen();
+      const ancla = page.querySelector('.page-sub') || page.querySelector('.page-title');
+      if (ancla) ancla.insertAdjacentElement('afterend', btn);
+    }
+  })();
+  rvRenderVentasCorpVolumen();
   const tbody = document.getElementById('tbl-corp-body');
   if (!tbody || typeof SEED === 'undefined' || !SEED.clientes) return;
   let estados = {};
@@ -808,6 +822,180 @@ function rvToggleCorpPago(nombre) {
 }
 function rvDecorarEcommerce() {
   rvInyectarBotonAgregar('page-ecommerce', 'rv-btn-ec-add', '➕ Nueva Venta Ecommerce', 'Ecommerce');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// VENTA CORPORATIVA POR VOLUMEN (varios productos por venta)
+// Cada línea se guarda en rv_ventas como transacción canal 'Corporativo'
+// con un 'grupo' compartido + condición (contado/crédito). Se integra a
+// todos los cálculos vía rvRebuildTxns. Al hacer click en la venta se
+// despliega el detalle de sus productos.
+// ═══════════════════════════════════════════════════════════════
+const RV_MARCAS = ['EZVIZ', 'HIKVISION', 'DAHUA', 'HUAWEI', 'MSI', 'ASUS', 'LENOVO', 'HP', 'WD / HDD', 'TP-LINK', 'ZKTeco', 'LAPTOPS', 'Servicios', 'Otros'];
+
+function rvCorpLineHTML() {
+  const marcaOpts = RV_MARCAS.map(m => `<option value="${m}">${m}</option>`).join('');
+  return `<tr class="rv-corp-line">
+    <td><input type="text" class="rvc-modelo" placeholder="Modelo / producto" style="width:100%;padding:5px;border:1px solid #d8dde3;border-radius:4px;font-size:12px"></td>
+    <td><select class="rvc-marca" style="width:100%;padding:5px;border:1px solid #d8dde3;border-radius:4px;font-size:12px">${marcaOpts}</select></td>
+    <td><input type="number" class="rvc-qty" value="1" min="1" step="1" oninput="rvCorpCalc()" style="width:60px;padding:5px;border:1px solid #d8dde3;border-radius:4px;font-size:12px;text-align:center"></td>
+    <td><input type="number" class="rvc-precio" value="0" min="0" step="0.01" oninput="rvCorpCalc()" style="width:90px;padding:5px;border:1px solid #d8dde3;border-radius:4px;font-size:12px"></td>
+    <td><input type="number" class="rvc-costo" value="0" min="0" step="0.01" oninput="rvCorpCalc()" style="width:90px;padding:5px;border:1px solid #d8dde3;border-radius:4px;font-size:12px"></td>
+    <td style="text-align:center"><button onclick="this.closest('tr').remove(); rvCorpCalc()" style="background:#fdecea;color:#c0392b;border:none;border-radius:4px;cursor:pointer;padding:3px 7px;font-size:12px">✕</button></td>
+  </tr>`;
+}
+
+function rvCorpCalc() {
+  let totV = 0, totC = 0;
+  document.querySelectorAll('#rvc-lines .rv-corp-line').forEach(tr => {
+    const q = rvNum(tr.querySelector('.rvc-qty').value);
+    const p = rvNum(tr.querySelector('.rvc-precio').value);
+    const c = rvNum(tr.querySelector('.rvc-costo').value);
+    totV += q * p; totC += q * c;
+  });
+  const el = document.getElementById('rvc-total');
+  if (el) el.innerHTML = `Total venta: <b style="color:#198c35">${rvMoney(totV)}</b> · Costo: ${rvMoney(totC)} · Margen: <b>${rvMoney(totV - totC)}</b>`;
+}
+
+function rvAgregarLineaCorp() {
+  const tb = document.getElementById('rvc-lines');
+  if (tb) { tb.insertAdjacentHTML('beforeend', rvCorpLineHTML()); rvCorpCalc(); }
+}
+
+function rvNuevaVentaCorpVolumen() {
+  rvModal(`
+    <h3 style="margin:0 0 12px 0">➕ Nueva Venta Corporativa (por volumen)</h3>
+    <div style="display:flex;gap:8px">
+      <div style="flex:2"><label style="${RV_LABEL}">Cliente *</label><input type="text" id="rvc-cliente" placeholder="Razón social" style="${RV_INPUT}"></div>
+      <div style="flex:1"><label style="${RV_LABEL}">Fecha *</label><input type="date" id="rvc-fecha" style="${RV_INPUT}"></div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <div style="flex:1"><label style="${RV_LABEL}">Condición *</label><select id="rvc-cond" style="${RV_INPUT}"><option value="Contado">Contado</option><option value="Crédito">Crédito</option></select></div>
+      <div style="flex:1"><label style="${RV_LABEL}">N° Operación / Comprobante</label><input type="text" id="rvc-nop" placeholder="Opcional" style="${RV_INPUT}"></div>
+    </div>
+    <label style="${RV_LABEL}">Productos de esta venta</label>
+    <div style="overflow-x:auto;border:1px solid #eee;border-radius:6px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:#0f2540;color:#fff"><th style="padding:6px">Modelo</th><th>Marca</th><th>Cant</th><th>P.Unit</th><th>Costo/u</th><th></th></tr></thead>
+        <tbody id="rvc-lines"></tbody>
+      </table>
+    </div>
+    <button onclick="rvAgregarLineaCorp()" style="margin-top:8px;background:#e3f0fb;border:1px solid #bdd7f3;border-radius:5px;padding:6px 12px;cursor:pointer;font-size:12px">➕ Agregar producto</button>
+    <div id="rvc-total" style="margin-top:10px;padding:8px;background:#f4f6f9;border-radius:5px;font-size:13px;text-align:center">Total venta: <b>S/. 0.00</b></div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button onclick="rvGuardarVentaCorpVolumen()" style="flex:1;padding:10px;background:#198c35;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:600">💾 Guardar venta</button>
+      <button onclick="closeRvModal()" style="flex:1;padding:10px;background:#eceff1;color:#333;border:none;border-radius:5px;cursor:pointer">Cancelar</button>
+    </div>
+  `, 700);
+  document.getElementById('rvc-fecha').value = new Date().toISOString().slice(0, 10);
+  rvAgregarLineaCorp();
+}
+
+function rvGuardarVentaCorpVolumen() {
+  const cliente = document.getElementById('rvc-cliente').value.trim();
+  const fecha = document.getElementById('rvc-fecha').value;
+  const cond = document.getElementById('rvc-cond').value;
+  const nop = document.getElementById('rvc-nop').value.trim();
+  if (!cliente) { alert('❌ Ingresa el cliente'); return; }
+  if (!fecha) { alert('❌ Selecciona la fecha'); return; }
+
+  const lineas = [];
+  document.querySelectorAll('#rvc-lines .rv-corp-line').forEach(tr => {
+    const modelo = tr.querySelector('.rvc-modelo').value.trim();
+    const qty = Math.max(1, Math.round(rvNum(tr.querySelector('.rvc-qty').value)));
+    const precio = rvNum(tr.querySelector('.rvc-precio').value);
+    const costo = rvNum(tr.querySelector('.rvc-costo').value);
+    if (modelo && precio > 0) {
+      lineas.push({ modelo, marca: tr.querySelector('.rvc-marca').value, qty, precio, costo });
+    }
+  });
+  if (lineas.length === 0) { alert('❌ Agrega al menos un producto con precio'); return; }
+
+  const grupo = 'CORP-' + Date.now();
+  const mes = fecha.slice(0, 7);
+  let ev = [];
+  try { ev = JSON.parse(localStorage.getItem('rv_ventas') || '[]'); } catch (e) { ev = []; }
+  lineas.forEach(l => {
+    ev.push({
+      fecha, mes, canal: 'Corporativo', cliente,
+      modelo: l.modelo, marca: l.marca, qty: l.qty,
+      venta: l.qty * l.precio, costo: l.qty * l.costo,
+      condicion: cond, medio_pago: cond, n_operacion: nop, grupo
+    });
+  });
+  localStorage.setItem('rv_ventas', JSON.stringify(ev));
+  closeRvModal();
+  if (typeof rvRebuildTxns === 'function') rvRebuildTxns();
+  rvRenderVentasCorpVolumen();
+  if (typeof showToast === 'function') showToast('✅ Venta corporativa registrada (' + lineas.length + ' productos)');
+}
+
+// Lista de ventas corporativas por volumen, agrupadas, clickeables para ver detalle
+function rvRenderVentasCorpVolumen() {
+  const page = document.getElementById('page-corporativo');
+  if (!page) return;
+  let card = document.getElementById('rv-corp-volumen');
+  if (!card) {
+    card = document.createElement('div');
+    card.id = 'rv-corp-volumen';
+    card.className = 'card';
+    card.style.cssText = 'margin-top:14px';
+    page.appendChild(card);
+  }
+  let ev = [];
+  try { ev = JSON.parse(localStorage.getItem('rv_ventas') || '[]'); } catch (e) { ev = []; }
+  const corp = ev.filter(v => v.canal === 'Corporativo' && v.grupo);
+  const grupos = {};
+  corp.forEach(v => {
+    if (!grupos[v.grupo]) grupos[v.grupo] = { grupo: v.grupo, cliente: v.cliente, fecha: v.fecha, condicion: v.condicion || 'Contado', nop: v.n_operacion || '', items: [], total: 0 };
+    grupos[v.grupo].items.push(v);
+    grupos[v.grupo].total += rvNum(v.venta);
+  });
+  const lista = Object.values(grupos).sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+
+  if (lista.length === 0) {
+    card.innerHTML = `<div class="card-title">🏢 Ventas Corporativas por Volumen</div>
+      <div style="font-size:12px;color:#999;padding:12px;text-align:center">Aún no hay ventas por volumen. Usa "➕ Nueva Venta Corporativa (por volumen)".</div>`;
+    return;
+  }
+  const filas = lista.map(g => {
+    const cond = g.condicion === 'Crédito'
+      ? '<span style="background:#fef3e8;color:#e67e22;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">Crédito</span>'
+      : '<span style="background:#ebf7ee;color:#155724;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">Contado</span>';
+    const detId = 'rvcd-' + g.grupo;
+    const det = g.items.map(it => `<tr style="font-size:11px;background:#fafbfc">
+        <td style="padding:4px 8px">${rvEsc(it.modelo)}</td>
+        <td>${rvEsc(it.marca)}</td>
+        <td style="text-align:center">${it.qty}</td>
+        <td style="text-align:right">${rvMoney(rvNum(it.venta) / (it.qty || 1))}</td>
+        <td style="text-align:right;font-weight:600">${rvMoney(it.venta)}</td>
+      </tr>`).join('');
+    return `<tr style="cursor:pointer" onclick="rvToggleCorpDet('${detId}')" title="Click para ver el detalle de productos">
+        <td style="font-size:12px"><b>${rvEsc(g.cliente)}</b></td>
+        <td style="font-size:11px;color:#666">${rvDate(g.fecha)}</td>
+        <td style="text-align:center">${g.items.length} item(s)</td>
+        <td style="text-align:right;font-weight:700">${rvMoney(g.total)}</td>
+        <td style="text-align:center">${cond}</td>
+        <td style="text-align:center">▼</td>
+      </tr>
+      <tr id="${detId}" style="display:none"><td colspan="6" style="padding:0 8px 8px 8px">
+        <table style="width:100%;border-collapse:collapse;margin-top:4px">
+          <thead><tr style="font-size:10px;color:#888"><th style="text-align:left;padding:4px 8px">Modelo</th><th style="text-align:left">Marca</th><th>Cant</th><th style="text-align:right">P.Unit</th><th style="text-align:right">Subtotal</th></tr></thead>
+          <tbody>${det}</tbody>
+        </table>
+      </td></tr>`;
+  }).join('');
+  card.innerHTML = `<div class="card-title">🏢 Ventas Corporativas por Volumen</div>
+    <div style="font-size:12px;color:#455a64;margin-bottom:8px">Click en una venta para desplegar sus productos. La condición (contado/crédito) se muestra a la derecha.</div>
+    <div style="overflow-x:auto"><table style="width:100%">
+      <thead><tr><th>Cliente</th><th>Fecha</th><th>Productos</th><th style="text-align:right">Total</th><th style="text-align:center">Condición</th><th></th></tr></thead>
+      <tbody>${filas}</tbody>
+    </table></div>`;
+}
+
+function rvToggleCorpDet(id) {
+  const row = document.getElementById(id);
+  if (row) row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
 }
 
 // ══ PAGOS PENDIENTES → HISTORIAL MENSUAL DE GASTOS FIJOS (BD) ══
