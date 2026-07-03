@@ -1382,6 +1382,63 @@ function rvImportarCorp() {
   input.click();
 }
 
+// ══ CARGAR VENTAS: plantilla + importación COMPLETAS ══
+// Reemplaza downloadTemplate/showImportPreview del sistema para incluir todos
+// los campos: comprobante, serie, correlativo, N° operación, canal, qty, medio de pago.
+(function rvOverrideImportVentas() {
+  window.downloadTemplate = function () {
+    if (typeof XLSX === 'undefined') { alert('❌ Librería XLSX no disponible'); return; }
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['Fecha', 'Canal', 'Tipo_Comprobante', 'Serie', 'Correlativo', 'N_Operacion', 'Modelo', 'Marca', 'Qty', 'Venta_S/.', 'Costo_S/.', 'Medio_Pago', 'Cliente'],
+      ['2026-05-01', 'Malvitec', 'BOLETA', 'B001', '12345', '', 'CS-H8C 5MP', 'EZVIZ', 1, 250, 169, 'YAPE/PLIN', ''],
+      ['2026-05-02', 'Compuplaza', 'FACTURA', 'F001', '6789', 'OP-555', 'MSI Thin A15', 'MSI', 1, 3200, 2240, 'TRANSFERENCIA', 'ACME SAC']
+    ]);
+    ws['!cols'] = [{ wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 8 }, { wch: 11 }, { wch: 12 }, { wch: 22 }, { wch: 10 }, { wch: 6 }, { wch: 11 }, { wch: 11 }, { wch: 14 }, { wch: 20 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Ventas');
+    XLSX.writeFile(wb, 'plantilla_ventas_revionix.xlsx');
+  };
+  window.showImportPreview = function (rows) {
+    const g = (r, names) => { for (const n of names) { if (r[n] !== undefined && r[n] !== '') return r[n]; } return undefined; };
+    const list = (rows || []).map(r => {
+      const fecha = String(g(r, ['Fecha', 'fecha', 'FECHA']) || '').slice(0, 10);
+      const modelo = String(g(r, ['Modelo', 'modelo', 'MODELO', 'Producto', 'producto']) || '');
+      const marca = String(g(r, ['Marca', 'marca', 'MARCA']) || 'Otros');
+      const venta = rvNum(g(r, ['Venta_S/.', 'Venta', 'venta', 'Precio', 'Precio_Venta', 'PrecioVenta', 'Total', 'total']));
+      let costo = rvNum(g(r, ['Costo_S/.', 'Costo', 'costo', 'Costo_Unit', 'CostoUnit']));
+      if (costo <= 0) { const c = rvBuscarCostoCompra(modelo, marca); if (c != null) costo = c; }
+      const qty = Math.max(1, Math.round(rvNum(g(r, ['Qty', 'Cantidad', 'qty', 'cantidad', 'CANT']) || 1)));
+      return {
+        fecha, canal: String(g(r, ['Canal', 'canal', 'CANAL']) || ''), modelo, marca,
+        cliente: String(g(r, ['Cliente', 'cliente', 'CLIENTE']) || ''),
+        tipo_doc: String(g(r, ['Tipo_Comprobante', 'Tipo Comprobante', 'TipoComprobante', 'Comprobante', 'tipo_doc', 'Tipo']) || ''),
+        serie: String(g(r, ['Serie', 'serie', 'SERIE']) || ''),
+        correlativo: String(g(r, ['Correlativo', 'Correl', 'correlativo', 'Numero', 'Número', 'N']) || ''),
+        n_operacion: String(g(r, ['N_Operacion', 'N Operacion', 'NOperacion', 'Operacion', 'N_Operación', 'NroOperacion']) || ''),
+        medio_pago: String(g(r, ['Medio_Pago', 'Medio Pago', 'MedioPago', 'medio_pago', 'Medio']) || ''),
+        qty, venta, costo, mes: String(g(r, ['Mes', 'mes']) || fecha).slice(0, 7)
+      };
+    }).filter(r => r.venta > 0);
+    importPending = list;
+    const body = document.getElementById('import-preview-body');
+    const F = (n) => (typeof fmt === 'function' ? fmt(n) : ('S/. ' + rvNum(n).toFixed(2)));
+    if (body) {
+      if (list.length === 0) {
+        body.innerHTML = '<div style="background:#fdecea;color:#7b1d1d;padding:12px;border-radius:8px">No se encontraron ventas válidas. Revisa que la columna <b>Venta_S/.</b> tenga montos y que las cabeceras coincidan con la plantilla (descárgala con "Plantilla").</div>';
+      } else {
+        const totalV = list.reduce((s, r) => s + r.venta, 0);
+        const totalM = list.reduce((s, r) => s + (r.venta - r.costo), 0);
+        const pv = list.slice(0, 8);
+        body.innerHTML = `<div class="alert alert-success" style="margin-bottom:14px">Se encontraron <strong>${list.length} registros</strong> · Total ventas: <strong>${F(totalV)}</strong> · Margen estimado: <strong>${F(totalM)}</strong></div>
+          <div style="overflow-x:auto"><table style="font-size:11px"><thead><tr><th>Fecha</th><th>Canal</th><th>Comprob.</th><th>Serie</th><th>Correl.</th><th>N°Op</th><th>Modelo</th><th>Marca</th><th>Qty</th><th>Venta</th><th>Costo</th><th>Medio</th></tr></thead>
+          <tbody>${pv.map(r => `<tr><td>${r.fecha}</td><td>${r.canal}</td><td>${r.tipo_doc}</td><td>${r.serie}</td><td>${r.correlativo}</td><td>${r.n_operacion}</td><td>${(r.modelo || '').slice(0, 24)}</td><td>${r.marca}</td><td style="text-align:center">${r.qty}</td><td>${F(r.venta)}</td><td>${F(r.costo)}</td><td>${r.medio_pago}</td></tr>`).join('')}</tbody></table></div>
+          ${list.length > 8 ? `<p style="font-size:12px;color:#888;margin-top:8px">... y ${list.length - 8} registros más</p>` : ''}`;
+      }
+    }
+    if (typeof openModal === 'function') openModal('modal-import');
+  };
+})();
+
 // ══ PAGOS PENDIENTES → HISTORIAL MENSUAL DE GASTOS FIJOS (BD) ══
 // Al marcar un pago como "Pagado", se registra en la tabla gastos_fijos
 // del mes actual (idempotente: si ya existe ese mes, actualiza el monto).
