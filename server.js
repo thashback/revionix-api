@@ -370,11 +370,88 @@ async function guardarStorage(req, res) {
       }
     }
     conn.release();
+    // Reflejar los datasets clave en tablas relacionales reales (consultables)
+    for (const [clave, valor] of entries) {
+      if (['rv_ventas', 'rv_gastos', 'rv_compras'].includes(clave)) {
+        espejarDataset(clave, valor).catch(e => console.error('espejarDataset', clave, e.message));
+      }
+    }
     res.json({ guardadas: entries.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 }
+
+// Crea tablas relacionales para los datasets del sistema (una fila por registro)
+async function initRegistrosTables() {
+  try {
+    const conn = await pool.getConnection();
+    await conn.query(`CREATE TABLE IF NOT EXISTS reg_ventas (
+      id INT AUTO_INCREMENT PRIMARY KEY, fecha VARCHAR(20), canal VARCHAR(80), cliente VARCHAR(200),
+      modelo VARCHAR(300), marca VARCHAR(80), qty INT, venta DECIMAL(12,2), costo DECIMAL(12,2),
+      condicion VARCHAR(20), grupo VARCHAR(40)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+    await conn.query(`CREATE TABLE IF NOT EXISTS reg_gastos (
+      id INT AUTO_INCREMENT PRIMARY KEY, fecha VARCHAR(20), categoria VARCHAR(80), canal VARCHAR(80),
+      descripcion VARCHAR(400), monto DECIMAL(12,2), responsable VARCHAR(120), comentarios VARCHAR(500),
+      numero VARCHAR(60)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+    await conn.query(`CREATE TABLE IF NOT EXISTS reg_compras (
+      id INT AUTO_INCREMENT PRIMARY KEY, prov VARCHAR(150), fecha VARCHAR(20), descripcion VARCHAR(400),
+      marca VARCHAR(80), cant INT, usd DECIMAL(12,2), sol DECIMAL(12,2), destino VARCHAR(40),
+      numero_comprobante VARCHAR(80)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+    conn.release();
+    console.log('✓ Tablas reg_ventas/reg_gastos/reg_compras listas');
+  } catch (err) {
+    console.error('✗ initRegistrosTables:', err.message);
+  }
+}
+initRegistrosTables();
+
+// Refleja un dataset (JSON string) en su tabla relacional (reemplazo completo)
+async function espejarDataset(clave, valorJSON) {
+  let arr;
+  try { arr = JSON.parse(valorJSON); } catch (e) { return; }
+  if (!Array.isArray(arr)) return;
+  const num = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+  const conn = await pool.getConnection();
+  try {
+    if (clave === 'rv_ventas') {
+      await conn.query('DELETE FROM reg_ventas');
+      for (const r of arr) {
+        await conn.execute('INSERT INTO reg_ventas (fecha,canal,cliente,modelo,marca,qty,venta,costo,condicion,grupo) VALUES (?,?,?,?,?,?,?,?,?,?)',
+          [r.fecha || '', r.canal || '', r.cliente || '', r.modelo || '', r.marca || '', parseInt(r.qty) || 1, num(r.venta), num(r.costo), r.condicion || '', r.grupo || '']);
+      }
+    } else if (clave === 'rv_gastos') {
+      await conn.query('DELETE FROM reg_gastos');
+      for (const r of arr) {
+        await conn.execute('INSERT INTO reg_gastos (fecha,categoria,canal,descripcion,monto,responsable,comentarios,numero) VALUES (?,?,?,?,?,?,?,?)',
+          [r.fecha || '', r.cat || '', r.canal || '', r.desc || '', num(r.monto), r.resp || '', r.comentarios || '', r.numero || '']);
+      }
+    } else if (clave === 'rv_compras') {
+      await conn.query('DELETE FROM reg_compras');
+      for (const r of arr) {
+        await conn.execute('INSERT INTO reg_compras (prov,fecha,descripcion,marca,cant,usd,sol,destino,numero_comprobante) VALUES (?,?,?,?,?,?,?,?,?)',
+          [r.prov || '', r.fecha || '', r.desc || '', r.marca || '', parseInt(r.cant) || 0, num(r.usd), num(r.sol), r.destino || '', r.numero_comprobante || '']);
+      }
+    }
+  } finally {
+    conn.release();
+  }
+}
+
+// Endpoints de solo lectura para las tablas relacionales
+app.get('/api/reg/:tipo', async (req, res) => {
+  const t = req.params.tipo;
+  const tabla = { ventas: 'reg_ventas', gastos: 'reg_gastos', compras: 'reg_compras' }[t];
+  if (!tabla) return res.status(404).json({ error: 'Tipo inválido' });
+  try {
+    const conn = await pool.getConnection();
+    const [rows] = await conn.query('SELECT * FROM ' + tabla + ' ORDER BY id DESC');
+    conn.release();
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 app.put('/api/storage', guardarStorage);
 app.post('/api/storage', guardarStorage); // para navigator.sendBeacon al cerrar
 
