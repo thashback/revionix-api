@@ -630,6 +630,7 @@ async function deletePlanilla(id) {
       goPageOriginal(id);
       if (id === 'proyectos') loadProyectos();
       if (id === 'planilla') loadPlanilla();
+      if (id === 'usuarios' && typeof rvCargarUsuariosBD === 'function') rvCargarUsuariosBD();
       if (id === 'dashboard' && typeof rvInyectarBotonRecalc === 'function') rvInyectarBotonRecalc();
     };
     console.log('[RV-API] ✓ Navegación integrada (proyectos, planilla)');
@@ -1894,6 +1895,22 @@ function rvSyncUsuariosAPI() {
     }).catch(() => {});
   });
 }
+// Trae los usuarios de la BD a la lista local (USERS) para que la pantalla de
+// Usuarios los muestre a todos (incluido 'operaciones'). No toca contraseñas.
+async function rvCargarUsuariosBD() {
+  try {
+    if (typeof USERS === 'undefined') return;
+    const dbUsers = await fetch(`${RV_API}/auth/users`).then(r => r.json());
+    if (!Array.isArray(dbUsers)) return;
+    dbUsers.forEach(du => {
+      const ex = USERS[du.username] || {};
+      USERS[du.username] = { pass: ex.pass, role: du.role, canal: du.canal, name: du.nombre, email: ex.email || '', activo: du.activo !== 0 };
+    });
+    const pg = document.getElementById('page-usuarios');
+    if (pg && pg.classList.contains('active') && typeof renderUsuarios === 'function') renderUsuarios();
+    console.log('[USERS-BD] ✓', dbUsers.length, 'usuarios sincronizados a la lista');
+  } catch (e) { console.warn('[USERS-BD]', e.message); }
+}
 
 // Botón manual de recálculo en el dashboard (fuerza integrar proyectos + junio)
 function rvInyectarBotonRecalc() {
@@ -2161,7 +2178,7 @@ function rvDecorarPP() {
           }
           inlineDoLogin();
           rvAplicarRestriccionesRol();
-          setTimeout(async () => { try { await rvCargarTodoDesdeBD(); rvRebuildTxns(); rvActualizarFechaReal(); rvAplicarRestriccionesRol(); } catch (e) {} }, 400);
+          setTimeout(async () => { try { await rvCargarTodoDesdeBD(); rvRebuildTxns(); rvActualizarFechaReal(); rvAplicarRestriccionesRol(); rvCargarUsuariosBD(); } catch (e) {} }, 400);
         } else {
           if (errEl) errEl.textContent = (data && data.error) || 'Usuario o contraseña incorrectos';
         }
