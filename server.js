@@ -298,20 +298,22 @@ app.get('/api/proyectos', async (req, res) => {
 
 app.put('/api/proyectos/:id', upload.single('ruta_oc'), async (req, res) => {
   try {
-    const { cliente, descripcion, monto_total, monto_ejecutado, estado } = req.body;
-    const ruta_oc = req.file ? `/uploads/${req.file.filename}` : null;
+    const id = req.params.id;
     const conn = await pool.getConnection();
-    let query = 'UPDATE proyectos SET cliente=?, descripcion=?, monto_total=?, monto_ejecutado=?, estado=?';
-    let params = [cliente, descripcion, monto_total, monto_ejecutado, estado];
-    if (ruta_oc) {
-      query += ', ruta_oc=?';
-      params.push(ruta_oc);
+
+    if (req.file) {
+      const ruta_oc = `/uploads/${req.file.filename}`;
+      await conn.execute('UPDATE proyectos SET ruta_oc=? WHERE id=?', [ruta_oc, id]);
+      conn.release();
+      res.json({ id, mensaje: 'Proyecto actualizado' });
+    } else {
+      const { cliente, descripcion, monto_total, monto_ejecutado, estado } = req.body;
+      let query = 'UPDATE proyectos SET cliente=?, descripcion=?, monto_total=?, monto_ejecutado=?, estado=? WHERE id=?';
+      let params = [cliente, descripcion, monto_total, monto_ejecutado, estado, id];
+      await conn.execute(query, params);
+      conn.release();
+      res.json({ id, mensaje: 'Proyecto actualizado' });
     }
-    query += ' WHERE id=?';
-    params.push(req.params.id);
-    await conn.execute(query, params);
-    conn.release();
-    res.json({ mensaje: 'Proyecto actualizado' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -421,20 +423,26 @@ app.post('/api/pagos-pendientes', async (req, res) => {
 
 app.put('/api/pagos-pendientes/:id', upload.single('ruta_comprobante_pago'), async (req, res) => {
   try {
-    const { estado, metodo_pago } = req.body;
-    const ruta_comprobante_pago = req.file ? `/uploads/${req.file.filename}` : null;
+    const id = req.params.id;
     const conn = await pool.getConnection();
-    let query = 'UPDATE pagos_pendientes SET estado=?, metodo_pago=?';
-    let params = [estado, metodo_pago];
-    if (ruta_comprobante_pago) {
-      query += ', ruta_comprobante_pago=?, fecha_pago=NOW()';
-      params.push(ruta_comprobante_pago);
+
+    if (req.file) {
+      const ruta_comprobante_pago = `/uploads/${req.file.filename}`;
+      await conn.execute(
+        'UPDATE pagos_pendientes SET ruta_comprobante_pago=?, estado=?, fecha_pago=NOW() WHERE id=?',
+        [ruta_comprobante_pago, 'pagado', id]
+      );
+      conn.release();
+      res.json({ id, mensaje: 'Pago actualizado' });
+    } else {
+      const { estado, metodo_pago } = req.body;
+      await conn.execute(
+        'UPDATE pagos_pendientes SET estado=?, metodo_pago=? WHERE id=?',
+        [estado, metodo_pago, id]
+      );
+      conn.release();
+      res.json({ id, mensaje: 'Pago actualizado' });
     }
-    query += ' WHERE id=?';
-    params.push(req.params.id);
-    await conn.execute(query, params);
-    conn.release();
-    res.json({ mensaje: 'Pago actualizado' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
