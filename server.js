@@ -9,17 +9,35 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Parse DATABASE_URL or use individual env vars
+let dbConfig;
+if (process.env.DATABASE_URL) {
+  const url = new URL(process.env.DATABASE_URL);
+  dbConfig = {
+    host: url.hostname,
+    user: url.username,
+    password: url.password,
+    database: url.pathname.substring(1),
+    port: url.port || 3306,
+    connectionLimit: 5,
+    enableQueueing: true,
+    waitForConnections: true
+  };
+} else {
+  dbConfig = {
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    port: process.env.DB_PORT || 3306,
+    connectionLimit: 5,
+    enableQueueing: true,
+    waitForConnections: true
+  };
+}
+
 // MySQL Pool
-const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  port: process.env.DB_PORT || 3306,
-  connectionLimit: 5,
-  enableQueueing: true,
-  waitForConnections: true
-});
+const pool = mysql.createPool(dbConfig);
 
 // Uploads
 const uploadsDir = path.join(__dirname, 'public', 'uploads');
