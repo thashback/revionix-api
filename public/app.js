@@ -593,6 +593,7 @@ async function deletePlanilla(id) {
       goPageOriginal(id);
       if (id === 'proyectos') loadProyectos();
       if (id === 'planilla') loadPlanilla();
+      if (id === 'dashboard' && typeof rvInyectarBotonRecalc === 'function') rvInyectarBotonRecalc();
     };
     console.log('[RV-API] ✓ Navegación integrada (proyectos, planilla)');
   } else {
@@ -1012,6 +1013,7 @@ function rvImportarPlanilla() {
         rvDecorarCorp();
         rvDecorarEcommerce();
         rvInyectarBotonAgregar('page-detalle', 'rv-btn-det-add', '➕ Nueva Venta', '');
+        rvInyectarBotonRecalc();
       } catch (e) { console.error('[RV-EXT] init', e); }
     }, 600);
   });
@@ -1082,14 +1084,23 @@ async function rvRebuildTxns() {
       });
     }
 
+    const nProy = TXNS_DATA.filter(t => t.__proy).length;
     if (typeof SEED !== 'undefined') SEED.transacciones = TXNS_DATA;
     rvAsegurarMeses();       // crea filas de meses faltantes (hasta el mes real)
     recomputeSeedTotals();   // puebla esos meses desde las transacciones
     if (typeof renderAll === 'function') renderAll();
+    if (typeof loadProyectos === 'function') loadProyectos();  // refresca tabla de proyectos
     if (typeof initCharts === 'function') setTimeout(initCharts, 120);
-    console.log('[TXNS] ✓ Reconstruido: base + extras + proyectos =', TXNS_DATA.length, 'transacciones');
+    // Feedback visible del resultado (junio + proyectos integrados)
+    var jun = (typeof SEED !== 'undefined' && SEED.meses) ? SEED.meses.find(m => m.p === '2026-06') : null;
+    var msg = '✓ Recalculado · Proyectos integrados: ' + nProy + (jun ? ' · Junio: ' + rvMoney(jun.v) : '');
+    console.log('[TXNS] ' + msg + ' · total txns=' + TXNS_DATA.length);
+    if (window.__rvManualRecalc) { window.__rvManualRecalc = false; if (typeof showToast === 'function') showToast(msg); else alert(msg); }
   } catch (e) {
-    console.error('[TXNS]', e);
+    console.error('[TXNS] ERROR:', e);
+    var banner = document.getElementById('debug-banner');
+    if (banner) { banner.style.display = 'block'; var dm = document.getElementById('debug-message'); if (dm) dm.textContent = '❌ Error al integrar proyectos/junio: ' + e.message; }
+    else alert('❌ Error al recalcular: ' + e.message);
   } finally {
     rvSyncEnCurso = false;
   }
@@ -1119,6 +1130,20 @@ function rvAsegurarMeses() {
     SEED.meses.push({ m: NOM[parseInt(mm, 10) - 1] + '-' + y.slice(2), p, v: 0, c: 0, corp: 0, ec: 0 });
   });
   SEED.meses.sort((a, b) => (a.p < b.p ? -1 : a.p > b.p ? 1 : 0));
+}
+
+// Botón manual de recálculo en el dashboard (fuerza integrar proyectos + junio)
+function rvInyectarBotonRecalc() {
+  const page = document.getElementById('page-dashboard');
+  if (!page || document.getElementById('rv-btn-recalc')) return;
+  const btn = document.createElement('button');
+  btn.id = 'rv-btn-recalc';
+  btn.className = 'btn btn-outline';
+  btn.style.cssText = 'margin:8px 0;font-size:12px';
+  btn.textContent = '🔄 Recalcular (integrar proyectos y junio)';
+  btn.onclick = () => { window.__rvManualRecalc = true; rvRebuildTxns(); };
+  const ancla = page.querySelector('.page-sub') || page.querySelector('.page-title');
+  if (ancla) ancla.insertAdjacentElement('afterend', btn);
 }
 
 // Fecha/hora real en el encabezado
