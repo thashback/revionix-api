@@ -65,6 +65,11 @@
     </div>
 
     <script>
+        // CONSTRUCT API_BASE CORRECTLY
+        const API_BASE = (() => {
+            return `${window.location.protocol}//${window.location.host}/api`;
+        })();
+
         const results = {};
         const consoleLogs = [];
 
@@ -93,17 +98,17 @@
             <div class="test pass">✓ URL:</div>
             <div class="code">${window.location.href}</div>
             <div class="test pass">✓ API Base:</div>
-            <div class="code">${window.API_BASE || 'NOT SET'}</div>
+            <div class="code">${API_BASE}</div>
         `;
 
         // 2. API Tests
         async function testAPIs() {
             const html = [];
             const endpoints = [
-                { name: 'Health', url: '/api/health' },
-                { name: 'Proyectos', url: '/api/proyectos' },
-                { name: 'Gastos', url: '/api/gastos' },
-                { name: 'Compras', url: '/api/compras' }
+                { name: 'Health', url: `${API_BASE}/health` },
+                { name: 'Proyectos', url: `${API_BASE}/proyectos` },
+                { name: 'Gastos', url: `${API_BASE}/gastos` },
+                { name: 'Compras', url: `${API_BASE}/compras` }
             ];
 
             for (const ep of endpoints) {
@@ -205,7 +210,7 @@
                 formData.append('monto_total', 1000);
                 formData.append('ruta_oc', blob, 'test.pdf');
 
-                const res = await fetch('/api/proyectos', {
+                const res = await fetch(`${API_BASE}/proyectos`, {
                     method: 'POST',
                     body: formData
                 });
