@@ -68,7 +68,14 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+// no-cache en html/js: el navegador siempre revalida y recibe la última versión
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html') || filePath.endsWith('.js')) {
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    }
+  }
+}));
 app.use('/uploads', express.static(uploadsDir));
 
 // Health checks
@@ -137,6 +144,13 @@ async function guardarStorage(req, res) {
 }
 app.put('/api/storage', guardarStorage);
 app.post('/api/storage', guardarStorage); // para navigator.sendBeacon al cerrar
+
+// Subida genérica de archivos: devuelve la ruta para asociarla a cualquier
+// registro del sistema (gastos de movilidad, comprobantes, etc.)
+app.post('/api/archivos', upload.single('archivo'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No se recibió archivo' });
+  res.json({ ruta: `/uploads/${req.file.filename}`, nombre: req.file.originalname });
+});
 
 // Compras
 app.post('/api/compras', upload.single('comprobante'), async (req, res) => {

@@ -579,4 +579,422 @@ async function deletePlanilla(id) {
   }
 })();
 
+// ═══════════════════════════════════════════════════════════════
+// EXTENSIONES DEL SISTEMA PRINCIPAL (decoración, sin reemplazar lógica)
+// ═══════════════════════════════════════════════════════════════
+
+// ── Subida genérica: devuelve la ruta del archivo en el servidor ──
+async function rvSubirArchivo(file) {
+  try {
+    const fd = new FormData();
+    fd.append('archivo', file);
+    const r = await fetch(`${RV_API}/archivos`, { method: 'POST', body: fd });
+    const data = await r.json();
+    if (r.ok && data.ruta) return data.ruta;
+    alert('❌ Error al subir archivo: ' + (data.error || r.status));
+    return null;
+  } catch (e) {
+    alert('❌ Error: ' + e.message);
+    return null;
+  }
+}
+
+// ══ GASTOS / MOVILIDAD: PDF por registro (nuevos y existentes) ══
+// Los comprobantes se guardan en rv_gastos_pdfs {clave: ruta} — la capa
+// de sincronización los respalda en MySQL automáticamente.
+function rvPdfsGastos() {
+  try { return JSON.parse(localStorage.getItem('rv_gastos_pdfs') || '{}'); } catch (e) { return {}; }
+}
+function rvGuardarPdfGasto(clave, ruta) {
+  const m = rvPdfsGastos();
+  m[clave] = ruta;
+  localStorage.setItem('rv_gastos_pdfs', JSON.stringify(m));
+}
+// Réplica exacta del orden de filas de renderGastos: [seed, ...locales] invertido
+function rvGastosConClave() {
+  const seed = (typeof GASTOS_DATA !== 'undefined') ? GASTOS_DATA : [];
+  let local = [];
+  try { local = JSON.parse(localStorage.getItem('rv_gastos') || '[]'); } catch (e) {}
+  const todos = [
+    ...seed.map((g, i) => ({ g, clave: g.id ? 'g' + g.id : 's' + i })),
+    ...local.map(g => ({ g, clave: 'g' + g.id }))
+  ];
+  return todos.reverse();
+}
+function rvDecorarGastos() {
+  const tbody = document.getElementById('tbl-gastos-body');
+  if (!tbody) return;
+  const lista = rvGastosConClave();
+  const pdfs = rvPdfsGastos();
+  const filas = tbody.querySelectorAll('tr');
+  filas.forEach((tr, i) => {
+    const item = lista[i];
+    if (!item) return;
+    const celda = tr.lastElementChild;
+    if (!celda || celda.querySelector('.rv-pdf-btn')) return;
+    const ruta = pdfs[item.clave];
+    const cont = document.createElement('span');
+    cont.style.whiteSpace = 'nowrap';
+    cont.innerHTML =
+      (ruta ? `<button class="rv-pdf-btn" onclick="viewFile('${ruta}')" title="Ver comprobante" style="background:#e3f0fb;border:1.5px solid #bdd7f3;border-radius:5px;cursor:pointer;padding:1px 6px;font-size:11px;margin-left:3px">📄</button>` : '') +
+      `<button class="rv-pdf-btn" onclick="rvSubirPdfGasto('${item.clave}')" title="${ruta ? 'Reemplazar' : 'Subir'} comprobante" style="background:none;border:1.5px solid var(--c-border,#d8dde3);border-radius:5px;cursor:pointer;padding:1px 6px;font-size:11px;margin-left:3px">📤</button>`;
+    celda.appendChild(cont);
+  });
+}
+async function rvSubirPdfGasto(clave) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,.xml,.jpg,.png,.jpeg';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const ruta = await rvSubirArchivo(file);
+    if (ruta) {
+      rvGuardarPdfGasto(clave, ruta);
+      if (typeof window.renderGastos === 'function') window.renderGastos();
+      if (typeof showToast === 'function') showToast('✅ Comprobante guardado');
+      else alert('✅ Comprobante guardado');
+    }
+  };
+  input.click();
+}
+// Input de archivo en el formulario de nuevo gasto
+function rvInyectarInputPdfGasto() {
+  if (document.getElementById('rv-g-pdf')) return;
+  const btn = document.querySelector('#page-gastos [onclick*="saveGasto"]');
+  if (!btn) return;
+  const div = document.createElement('div');
+  div.innerHTML = `<label style="font-size:12px;font-weight:600;color:#455a64;display:block;margin-top:6px">📎 Comprobante (opcional)</label>
+    <input type="file" id="rv-g-pdf" accept=".pdf,.xml,.jpg,.png,.jpeg" style="width:100%;padding:6px;margin:4px 0 8px 0;border:1px solid #d8dde3;border-radius:5px;font-size:12px" />`;
+  btn.parentElement.insertBefore(div, btn);
+}
+
+// ══ MES A MES: click en un mes → desglose de todas sus ventas ══
+function rvDecorarMeses() {
+  const tbody = document.getElementById('tbl-meses-body');
+  if (!tbody || typeof SEED === 'undefined') return;
+  const filas = tbody.querySelectorAll('tr');
+  filas.forEach((tr, i) => {
+    const m = SEED.meses[i];
+    if (!m) return;
+    tr.style.cursor = 'pointer';
+    tr.title = '🔍 Click para ver el desglose de ventas de ' + m.m;
+    tr.onclick = () => rvDesgloseMes(m.p, m.m);
+  });
+}
+function rvDesgloseMes(periodo, etiqueta) {
+  let rows = [];
+  try {
+    rows = (typeof getDetalleData === 'function' ? getDetalleData() : []).filter(r => r.mes === periodo);
+  } catch (e) { console.error('[DESGLOSE]', e); }
+  const totV = rows.reduce((s, r) => s + (r.venta || 0), 0);
+  const totC = rows.reduce((s, r) => s + (r.costo || 0), 0);
+  const totM = totV - totC;
+  const cuerpo = rows.length
+    ? rows.map(r => {
+        const mg = (r.venta || 0) - (r.costo || 0);
+        return `<tr>
+          <td style="font-size:11px;white-space:nowrap">${r.fecha || '—'}</td>
+          <td style="font-size:11px">${rvEsc(r.canal || '—')}</td>
+          <td style="font-size:11px">${rvEsc(r.cliente || '—')}</td>
+          <td style="font-size:11px">${rvEsc(r.modelo || '—')}</td>
+          <td style="font-size:11px">${rvEsc(r.marca || '—')}</td>
+          <td style="font-size:11px;font-weight:600;text-align:right">${rvMoney(r.venta)}</td>
+          <td style="font-size:11px;text-align:right">${rvMoney(r.costo)}</td>
+          <td style="font-size:11px;text-align:right;font-weight:600;color:${mg >= 0 ? '#198c35' : '#c0392b'}">${rvMoney(mg)}</td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="8" style="text-align:center;color:#999;padding:16px">Sin ventas registradas este mes</td></tr>';
+  rvModal(`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid #eee;padding-bottom:10px">
+      <h3 style="margin:0;color:#333">📅 Desglose de Ventas — ${rvEsc(etiqueta)}</h3>
+      <button onclick="closeRvModal()" style="background:none;border:none;font-size:24px;cursor:pointer">×</button>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      <div style="flex:1;min-width:120px;background:#e3f0fb;padding:10px;border-radius:6px;text-align:center"><div style="font-size:11px;color:#455a64">VENTAS</div><strong style="color:#1565c0">${rvMoney(totV)}</strong></div>
+      <div style="flex:1;min-width:120px;background:#fdecea;padding:10px;border-radius:6px;text-align:center"><div style="font-size:11px;color:#455a64">COSTO</div><strong style="color:#c0392b">${rvMoney(totC)}</strong></div>
+      <div style="flex:1;min-width:120px;background:#ebf7ee;padding:10px;border-radius:6px;text-align:center"><div style="font-size:11px;color:#455a64">MARGEN</div><strong style="color:#198c35">${rvMoney(totM)}</strong></div>
+      <div style="flex:1;min-width:120px;background:#eceff1;padding:10px;border-radius:6px;text-align:center"><div style="font-size:11px;color:#455a64">TRANSACCIONES</div><strong>${rows.length}</strong></div>
+    </div>
+    <div style="overflow:auto;max-height:52vh">
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:#0f2540;color:#fff;font-size:11px"><th style="padding:6px">Fecha</th><th>Canal</th><th>Cliente</th><th>Modelo</th><th>Marca</th><th style="text-align:right">Venta</th><th style="text-align:right">Costo</th><th style="text-align:right">Margen</th></tr></thead>
+        <tbody>${cuerpo}</tbody>
+      </table>
+    </div>
+  `, 920);
+}
+
+// ══ CORPORATIVO / ECOMMERCE: registrar ventas manualmente ══
+// Las ventas registradas entran a saveVenta() del sistema → recalculan
+// dashboard, mes a mes, canales, marcas y clientes corporativos.
+function rvAbrirVentaCanal(canal) {
+  const sel = document.getElementById('v-canal');
+  if (sel) {
+    const set = new Set((typeof SEED !== 'undefined' && SEED.canales) ? SEED.canales.map(c => c.ch) : []);
+    ['Corporativo', 'Ecommerce', 'MercadoLibre', 'Saga Falabella'].forEach(c => set.add(c));
+    sel.innerHTML = '<option value="">Seleccionar...</option>' +
+      [...set].map(c => `<option value="${rvEsc(c)}"${c === canal ? ' selected' : ''}>${rvEsc(c)}</option>`).join('');
+    sel.value = canal;
+  }
+  const f = document.getElementById('v-fecha');
+  if (f && !f.value) f.value = new Date().toISOString().slice(0, 10);
+  if (typeof openModal === 'function') openModal('modal-venta');
+}
+function rvInyectarBotonAgregar(pageId, btnId, texto, canal) {
+  const page = document.getElementById(pageId);
+  if (!page || document.getElementById(btnId)) return;
+  const btn = document.createElement('button');
+  btn.id = btnId;
+  btn.className = 'btn btn-success';
+  btn.style.cssText = 'margin:10px 0';
+  btn.textContent = texto;
+  btn.onclick = () => rvAbrirVentaCanal(canal);
+  const ancla = page.querySelector('.page-sub') || page.querySelector('.page-title');
+  if (ancla) ancla.insertAdjacentElement('afterend', btn);
+}
+// Estado de pago por cliente corporativo (persistido en BD vía rv_corp_estados)
+function rvDecorarCorp() {
+  rvInyectarBotonAgregar('page-corporativo', 'rv-btn-corp-add', '➕ Nueva Venta Corporativa', 'Corporativo');
+  const tbody = document.getElementById('tbl-corp-body');
+  if (!tbody || typeof SEED === 'undefined' || !SEED.clientes) return;
+  let estados = {};
+  try { estados = JSON.parse(localStorage.getItem('rv_corp_estados') || '{}'); } catch (e) {}
+  const filas = tbody.querySelectorAll('tr');
+  SEED.clientes.forEach((c, i) => {
+    const tr = filas[i];
+    if (!tr) return;
+    const celda = tr.children[6];
+    if (!celda || celda.querySelector('.rv-pago-btn')) return;
+    const estado = estados[c.n] || (c.estado === 'Facturado' || c.estado === 'Completado' ? 'Pagado' : 'Pendiente');
+    const st = estado === 'Pagado' ? 'background:#ebf7ee;color:#155724' : 'background:#fdecea;color:#c0392b';
+    const btn = document.createElement('button');
+    btn.className = 'rv-pago-btn';
+    btn.style.cssText = st + ';border:none;border-radius:6px;padding:3px 8px;font-size:10px;font-weight:700;cursor:pointer;margin-left:4px';
+    btn.textContent = estado === 'Pagado' ? '✅ Pagado' : '🔴 Pendiente';
+    btn.title = 'Click para cambiar el estado de pago';
+    btn.onclick = () => rvToggleCorpPago(c.n);
+    celda.appendChild(btn);
+  });
+}
+function rvToggleCorpPago(nombre) {
+  let estados = {};
+  try { estados = JSON.parse(localStorage.getItem('rv_corp_estados') || '{}'); } catch (e) {}
+  estados[nombre] = (estados[nombre] === 'Pagado') ? 'Pendiente' : 'Pagado';
+  localStorage.setItem('rv_corp_estados', JSON.stringify(estados));
+  if (typeof window.renderCorpTable === 'function') window.renderCorpTable();
+}
+function rvDecorarEcommerce() {
+  rvInyectarBotonAgregar('page-ecommerce', 'rv-btn-ec-add', '➕ Nueva Venta Ecommerce', 'Ecommerce');
+}
+
+// ══ PAGOS PENDIENTES → HISTORIAL MENSUAL DE GASTOS FIJOS (BD) ══
+// Al marcar un pago como "Pagado", se registra en la tabla gastos_fijos
+// del mes actual (idempotente: si ya existe ese mes, actualiza el monto).
+function rvRegistrarPagoFijo(key) {
+  let concepto = key, monto = 0;
+  const tc = (typeof TC_FIJO !== 'undefined') ? TC_FIJO : 3.5;
+  try {
+    if (key.startsWith('alq_') && typeof PAGOS_FIJOS_DATA !== 'undefined') {
+      const r = PAGOS_FIJOS_DATA[parseInt(key.slice(4))];
+      if (r) { concepto = r.concepto; monto = r.moneda === 'USD' ? r.monto * tc : r.monto; }
+    } else if (key.startsWith('plan_') && typeof PLANILLA_CUENTAS !== 'undefined') {
+      const p = PLANILLA_CUENTAS[parseInt(key.slice(5))];
+      if (p) { concepto = 'Planilla: ' + p.nombre; monto = p.rem; }
+    }
+  } catch (e) { console.error('[FIJOS]', e); }
+  const now = new Date();
+  fetch(`${RV_API}/gastos-fijos`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mes: now.getMonth() + 1, ano: now.getFullYear(), descripcion: concepto, monto: monto })
+  }).then(r => {
+    if (r.ok) {
+      rvRenderHistorialFijos();
+      if (typeof showToast === 'function') showToast('✅ Registrado en historial mensual: ' + concepto);
+    }
+  }).catch(e => console.error('[FIJOS]', e));
+}
+// Historial mensual visible en la página Gastos Fijos
+async function rvRenderHistorialFijos() {
+  const page = document.getElementById('page-gastos-fijos');
+  if (!page) return;
+  let card = document.getElementById('rv-fijos-historial');
+  if (!card) {
+    card = document.createElement('div');
+    card.id = 'rv-fijos-historial';
+    card.className = 'card';
+    card.style.cssText = 'margin-top:14px;padding:16px';
+    page.appendChild(card);
+  }
+  try {
+    const datos = await fetch(`${RV_API}/gastos-fijos`).then(r => r.json());
+    if (!Array.isArray(datos)) return;
+    const meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const filas = datos.length
+      ? datos.map(g => `<tr>
+          <td>${g.ano}</td>
+          <td>${meses[g.mes] || g.mes}</td>
+          <td style="font-weight:500">${rvEsc(g.descripcion)}</td>
+          <td style="font-weight:700">${rvMoney(g.monto)}</td>
+          <td style="white-space:nowrap">
+            ${g.ruta_comprobante ? `<button onclick="viewFile('${g.ruta_comprobante}')" style="padding:3px 7px;background:#e3f0fb;border:1px solid #bdd7f3;border-radius:4px;cursor:pointer;font-size:11px">📄</button>` : ''}
+            <button onclick="rvUploadFijo(${g.id})" title="Subir comprobante" style="padding:3px 7px;background:#1565c0;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">📤</button>
+            <button onclick="rvBorrarFijo(${g.id})" title="Eliminar" style="padding:3px 7px;background:#fdecea;color:#c0392b;border:1px solid #f5c6cb;border-radius:4px;cursor:pointer;font-size:11px">🗑️</button>
+          </td>
+        </tr>`).join('')
+      : '<tr><td colspan="5" style="text-align:center;color:#999;padding:14px">Aún sin registros. Marca un pago como "✅ Pagado" en Pagos Pendientes y aparecerá aquí.</td></tr>';
+    card.innerHTML = `
+      <div class="card-title">📚 Historial Mensual Registrado (Base de Datos)</div>
+      <div style="font-size:12px;color:#455a64;margin-bottom:10px">Cada pago marcado como "Pagado" en Pagos Pendientes se registra aquí por mes. También puedes adjuntar el comprobante.</div>
+      <div style="overflow-x:auto">
+      <table style="width:100%">
+        <thead><tr><th>Año</th><th>Mes</th><th>Concepto</th><th>Monto</th><th></th></tr></thead>
+        <tbody>${filas}</tbody>
+      </table>
+      </div>`;
+  } catch (e) { console.error('[FIJOS-HIST]', e); }
+}
+function rvUploadFijo(id) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,.xml,.jpg,.png,.jpeg';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append('ruta_comprobante', file);
+    const r = await fetch(`${RV_API}/gastos-fijos/${id}`, { method: 'PUT', body: fd });
+    if (r.ok) { rvRenderHistorialFijos(); if (typeof showToast === 'function') showToast('✅ Comprobante guardado'); }
+    else alert('❌ Error al subir');
+  };
+  input.click();
+}
+async function rvBorrarFijo(id) {
+  if (!confirm('¿Eliminar este registro mensual?')) return;
+  await fetch(`${RV_API}/gastos-fijos/${id}`, { method: 'DELETE' });
+  rvRenderHistorialFijos();
+}
+
+// ══ PLANILLA: plantilla XLS + importación masiva ══
+function rvDescargarPlantillaPlanilla() {
+  if (typeof XLSX === 'undefined') { alert('❌ Librería XLSX no disponible'); return; }
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['Año', 'Mes', 'Empleado', 'Sueldo', 'Bonificacion', 'Descuentos'],
+    [new Date().getFullYear(), new Date().getMonth() + 1, 'Juan Pérez (ejemplo, borrar)', 2500, 200, 150]
+  ]);
+  ws['!cols'] = [{ wch: 6 }, { wch: 5 }, { wch: 30 }, { wch: 10 }, { wch: 12 }, { wch: 11 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Planilla');
+  XLSX.writeFile(wb, 'plantilla_planilla_revionix.xlsx');
+}
+function rvImportarPlanilla() {
+  if (typeof XLSX === 'undefined') { alert('❌ Librería XLSX no disponible'); return; }
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.xlsx,.xls,.csv';
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: 'binary' });
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+        let ok = 0, fail = 0;
+        for (const r of rows) {
+          const get = (names) => { for (const n of names) { if (r[n] !== undefined && r[n] !== '') return r[n]; } return undefined; };
+          const empleado = get(['Empleado', 'empleado', 'EMPLEADO', 'Nombre', 'nombre']);
+          if (!empleado || String(empleado).toLowerCase().includes('ejemplo')) continue;
+          const fd = new FormData();
+          fd.append('ano', get(['Año', 'Ano', 'ano', 'AÑO', 'ANO']) || new Date().getFullYear());
+          fd.append('mes', get(['Mes', 'mes', 'MES']) || (new Date().getMonth() + 1));
+          fd.append('empleado', String(empleado).trim());
+          fd.append('sueldo', rvNum(get(['Sueldo', 'sueldo', 'SUELDO'])));
+          fd.append('bonificacion', rvNum(get(['Bonificacion', 'Bonificación', 'bonificacion'])));
+          fd.append('descuentos', rvNum(get(['Descuentos', 'descuentos', 'DESCUENTOS'])));
+          try {
+            const res = await fetch(`${RV_API}/planilla`, { method: 'POST', body: fd });
+            res.ok ? ok++ : fail++;
+          } catch (err) { fail++; }
+        }
+        alert(`✅ Importación completada: ${ok} registros guardados${fail ? ' · ' + fail + ' con error' : ''}`);
+        loadPlanilla();
+      } catch (err) {
+        alert('❌ Error al leer el archivo: ' + err.message);
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+  input.click();
+}
+
+// ══ ACTIVACIÓN DE EXTENSIONES (envolver sin reemplazar) ══
+(function rvActivarExtensiones() {
+  function envolver(nombre, despues) {
+    if (typeof window[nombre] === 'function') {
+      const original = window[nombre];
+      window[nombre] = function (...args) {
+        const r = original.apply(this, args);
+        try { despues.apply(this, args); } catch (e) { console.error('[RV-EXT]', nombre, e); }
+        return r;
+      };
+      return true;
+    }
+    return false;
+  }
+
+  const activadas = [];
+  if (envolver('renderGastos', rvDecorarGastos)) activadas.push('gastos-pdf');
+  if (envolver('renderMesesTable', rvDecorarMeses)) activadas.push('meses-desglose');
+  if (envolver('renderCorpTable', rvDecorarCorp)) activadas.push('corporativo');
+  if (envolver('renderEcommerce', rvDecorarEcommerce)) activadas.push('ecommerce');
+  if (envolver('renderGastosFijos', () => rvRenderHistorialFijos())) activadas.push('fijos-historial');
+  if (envolver('togglePPEstado', (key) => {
+    try {
+      if (typeof PP_ESTADOS !== 'undefined' && PP_ESTADOS[key] === 'Pagado') rvRegistrarPagoFijo(key);
+    } catch (e) { console.error('[RV-EXT] pp', e); }
+  })) activadas.push('pagos→fijos');
+
+  // saveGasto: adjuntar comprobante al nuevo registro
+  if (typeof window.saveGasto === 'function') {
+    const saveGastoOriginal = window.saveGasto;
+    window.saveGasto = function () {
+      let antes = 0;
+      try { antes = JSON.parse(localStorage.getItem('rv_gastos') || '[]').length; } catch (e) {}
+      saveGastoOriginal();
+      try {
+        const despues = JSON.parse(localStorage.getItem('rv_gastos') || '[]');
+        const fi = document.getElementById('rv-g-pdf');
+        if (despues.length > antes && fi && fi.files[0]) {
+          const nuevo = despues[despues.length - 1];
+          rvSubirArchivo(fi.files[0]).then(ruta => {
+            if (ruta) {
+              rvGuardarPdfGasto('g' + nuevo.id, ruta);
+              if (typeof window.renderGastos === 'function') window.renderGastos();
+            }
+            fi.value = '';
+          });
+        }
+      } catch (e) { console.error('[RV-EXT] saveGasto', e); }
+    };
+    activadas.push('gasto-nuevo-pdf');
+  }
+
+  // Primera pasada de decoración (el sistema pudo renderizar antes que app.js)
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      try {
+        rvInyectarInputPdfGasto();
+        rvDecorarGastos();
+        rvDecorarMeses();
+        rvDecorarCorp();
+        rvDecorarEcommerce();
+      } catch (e) { console.error('[RV-EXT] init', e); }
+    }, 600);
+  });
+
+  console.log('[RV-EXT] ✓ Extensiones activas:', activadas.join(', '));
+})();
+
 console.log('[RV-API] ✓ Módulos API cargados sin conflictos');

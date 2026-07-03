@@ -3170,9 +3170,13 @@
             <div class="page-title">📊 Planilla de Honorarios (Base de Datos)</div>
             <div class="page-sub">Registro mensual por empleado · Neto calculado automáticamente · Recibo adjuntable</div>
             <div class="card">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
                 <div class="card-title" style="margin:0">Registros de Planilla</div>
-                <button class="btn btn-success" onclick="openAddPlanilla()">➕ Agregar Empleado</button>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button class="btn btn-outline" onclick="rvDescargarPlantillaPlanilla()">📥 Plantilla XLS</button>
+                  <button class="btn btn-outline" onclick="rvImportarPlanilla()">📂 Importar XLS</button>
+                  <button class="btn btn-success" onclick="openAddPlanilla()">➕ Agregar Empleado</button>
+                </div>
               </div>
               <div style="overflow-x:auto">
               <table id="tbl-planilla">
@@ -20066,6 +20070,6 @@
       </div>
     </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=5"></script>
   </body>
 </html>
