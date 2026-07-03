@@ -1055,7 +1055,7 @@ async function rvRenderHistorialFijos() {
         </tr>`).join('')
       : '<tr><td colspan="5" style="text-align:center;color:#999;padding:14px">Aún sin registros. Marca un pago como "✅ Pagado" en Pagos Pendientes y aparecerá aquí.</td></tr>';
     card.innerHTML = `
-      <div class="card-title">📚 Historial Mensual Registrado (Base de Datos)</div>
+      <div class="card-title">Historial Mensual Registrado</div>
       <div style="font-size:12px;color:#455a64;margin-bottom:10px">Cada pago marcado como "Pagado" en Pagos Pendientes se registra aquí por mes. También puedes adjuntar el comprobante.</div>
       <div style="overflow-x:auto">
       <table style="width:100%">
@@ -1139,6 +1139,32 @@ function rvImportarPlanilla() {
   input.click();
 }
 
+// ══ PERSISTENCIA DE COMPRAS MAYORISTAS / INVERSIÓN ══
+// El sistema tenía COMPRAS_DATA solo en memoria (las nuevas compras se perdían
+// al recargar). Aquí se guardan en rv_compras → se respaldan en la BD (app_storage)
+// y se restauran al cargar.
+const RV_BASE_COMPRAS_LEN = (typeof COMPRAS_DATA !== 'undefined') ? COMPRAS_DATA.length : 0;
+let rvComprasRestauradas = false;
+function rvRestaurarCompras() {
+  if (typeof COMPRAS_DATA === 'undefined' || rvComprasRestauradas) return;
+  rvComprasRestauradas = true;
+  let uc = [];
+  try { uc = JSON.parse(localStorage.getItem('rv_compras') || '[]'); } catch (e) { uc = []; }
+  if (Array.isArray(uc) && uc.length && COMPRAS_DATA.length === RV_BASE_COMPRAS_LEN) {
+    uc.forEach(c => COMPRAS_DATA.push(c));
+    try { if (typeof recomputeFromCompras === 'function') recomputeFromCompras(); } catch (e) {}
+    try { if (typeof filterCompras === 'function') filterCompras(); } catch (e) {}
+    try { if (typeof renderInvInicial === 'function') renderInvInicial(); } catch (e) {}
+    try { if (typeof renderInvRepos === 'function') renderInvRepos(); } catch (e) {}
+    console.log('[COMPRAS] ✓ Restauradas', uc.length, 'compras de usuario desde la BD');
+  }
+}
+function rvPersistirCompras() {
+  if (typeof COMPRAS_DATA === 'undefined') return;
+  const uc = COMPRAS_DATA.slice(RV_BASE_COMPRAS_LEN);
+  localStorage.setItem('rv_compras', JSON.stringify(uc)); // Storage.setItem → respalda en BD
+}
+
 // ══ ACTIVACIÓN DE EXTENSIONES (envolver sin reemplazar) ══
 (function rvActivarExtensiones() {
   function envolver(nombre, despues) {
@@ -1165,6 +1191,9 @@ function rvImportarPlanilla() {
       if (typeof PP_ESTADOS !== 'undefined' && PP_ESTADOS[key] === 'Pagado') rvRegistrarPagoFijo(key);
     } catch (e) { console.error('[RV-EXT] pp', e); }
   })) activadas.push('pagos→fijos');
+  // Persistir compras mayoristas / inversión al guardar (saveEdit maneja compras)
+  if (envolver('saveEdit', () => rvPersistirCompras())) activadas.push('compras-persist');
+  if (envolver('deleteTxn', () => rvPersistirCompras())) { /* por si borran filas */ }
 
   // saveGasto: adjuntar comprobante al nuevo registro
   if (typeof window.saveGasto === 'function') {
@@ -1202,6 +1231,7 @@ function rvImportarPlanilla() {
         rvDecorarEcommerce();
         rvInyectarBotonAgregar('page-detalle', 'rv-btn-det-add', '➕ Nueva Venta', '');
         rvInyectarBotonRecalc();
+        rvRestaurarCompras();
       } catch (e) { console.error('[RV-EXT] init', e); }
     }, 600);
   });
