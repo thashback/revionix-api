@@ -164,12 +164,99 @@ function renderCompras(compras) {
       <td>${c.precio_sol ? c.precio_sol.toFixed(2) : '-'}</td>
       <td><strong>S/. ${(c.total_sol || 0).toFixed(2)}</strong></td>
       <td>
-        ${c.ruta_comprobante ? `<button class="btn-sm" onclick="viewComprobante('${c.ruta_comprobante}')">👁️ Ver</button>` : '-'}
+        ${c.ruta_comprobante ? `<button class="btn-sm" onclick="viewComprobante('${c.ruta_comprobante}')">📄 Ver</button>` : '❌'}
+        <button class="btn-sm" onclick="uploadFactura(${c.id}, 'compras')">📤 Upload</button>
         <button class="btn-sm" onclick="deleteCompra(${c.id})">🗑️</button>
       </td>
     `;
     tbody.appendChild(row);
   });
+}
+
+function openAddCompraForm() {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'compra-modal';
+  modal.innerHTML = `
+    <div class="modal" style="width:90%; max-width:600px;">
+      <div class="modal-header">
+        <h3>➕ Nueva Compra</h3>
+        <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:24px;cursor:pointer">×</button>
+      </div>
+      <div class="modal-body">
+        <input type="text" id="comp-factura" placeholder="Número Factura" required />
+        <input type="date" id="comp-fecha" required />
+        <input type="text" id="comp-proveedor" placeholder="Proveedor" />
+        <input type="text" id="comp-descripcion" placeholder="Descripción" />
+        <input type="text" id="comp-marca-input" placeholder="Marca" />
+        <input type="number" id="comp-cantidad-input" placeholder="Cantidad" />
+        <select id="comp-moneda-input"><option value="SOL">SOL</option><option value="USD">USD</option></select>
+        <input type="number" id="comp-precio-usd-input" placeholder="Precio USD" step="0.01" />
+        <input type="number" id="comp-precio-sol-input" placeholder="Precio SOL" step="0.01" />
+        <input type="number" id="comp-total-sol-input" placeholder="Total SOL" step="0.01" required />
+        <label style="margin-top:12px;display:block;font-weight:600">📎 Adjuntar Factura (PDF, JPG, PNG, XML):</label>
+        <input type="file" id="comp-file" accept=".pdf,.jpg,.png,.xml,.jpeg" required style="margin-top:6px" />
+      </div>
+      <div class="modal-footer" style="gap:8px;">
+        <button onclick="saveNewCompra()" style="background:#198c35;color:#fff;padding:8px 16px;border:none;border-radius:6px;cursor:pointer">💾 Guardar</button>
+        <button onclick="document.getElementById('compra-modal').remove()" style="background:#ccc;color:#000;padding:8px 16px;border:none;border-radius:6px;cursor:pointer">Cancelar</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+async function saveNewCompra() {
+  const formData = new FormData();
+  formData.append('numero_factura', document.getElementById('comp-factura').value);
+  formData.append('fecha', document.getElementById('comp-fecha').value);
+  formData.append('proveedor', document.getElementById('comp-proveedor').value);
+  formData.append('descripcion', document.getElementById('comp-descripcion').value);
+  formData.append('marca', document.getElementById('comp-marca-input').value);
+  formData.append('cantidad', document.getElementById('comp-cantidad-input').value);
+  formData.append('moneda', document.getElementById('comp-moneda-input').value);
+  formData.append('precio_usd', document.getElementById('comp-precio-usd-input').value);
+  formData.append('precio_sol', document.getElementById('comp-precio-sol-input').value);
+  formData.append('total_sol', document.getElementById('comp-total-sol-input').value);
+  formData.append('comprobante', document.getElementById('comp-file').files[0]);
+
+  try {
+    const response = await fetch(`${API_BASE}/compras`, {
+      method: 'POST',
+      body: formData
+    });
+    if (response.ok) {
+      alert('✅ Compra guardada con factura');
+      document.getElementById('compra-modal').remove();
+      loadCompras();
+    } else {
+      alert('❌ Error al guardar');
+    }
+  } catch (err) {
+    alert('❌ Error: ' + err.message);
+  }
+}
+
+function uploadFactura(id, tipo) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,.jpg,.png,.xml,.jpeg';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('comprobante', file);
+
+    try {
+      // Aquí normalmente enviarías a un endpoint de update
+      // Por ahora mostramos mensaje
+      alert(`📤 ${file.name} listo para subir\nImplementar endpoint de actualización`);
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  };
+  input.click();
 }
 
 async function deleteCompra(id) {
@@ -184,15 +271,65 @@ async function deleteCompra(id) {
 
 function viewComprobante(ruta) {
   if (!ruta) {
-    alert('No hay comprobante');
+    alert('❌ No hay comprobante disponible');
     return;
   }
   const ext = ruta.split('.').pop().toLowerCase();
-  if (ext === 'xml') {
-    alert('XML Parser: ' + ruta);
+
+  if (ext === 'pdf') {
+    // Open PDF in new tab
+    window.open(ruta, '_blank');
+  } else if (ext === 'xml') {
+    // Show XML content
+    fetch(ruta)
+      .then(r => r.text())
+      .then(xml => {
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+          <div class="modal" style="width:90%; max-width:800px; max-height:80vh; overflow:auto;">
+            <div class="modal-header">
+              <h3>📄 Comprobante XML</h3>
+              <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:24px;cursor:pointer">×</button>
+            </div>
+            <div class="modal-body" style="overflow:auto; max-height:60vh;">
+              <pre style="font-size:12px; white-space:pre-wrap;">${xml.substring(0, 2000)}</pre>
+              <a href="${ruta}" download style="display:inline-block;margin-top:12px;padding:8px 16px;background:#0066cc;color:#fff;border-radius:6px;text-decoration:none">⬇️ Descargar XML</a>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(modal);
+      })
+      .catch(err => alert('Error al cargar XML: ' + err.message));
+  } else if (ext === 'jpg' || ext === 'png' || ext === 'jpeg') {
+    // Show image preview
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal" style="width:90%; max-width:800px;">
+        <div class="modal-header">
+          <h3>📷 Vista Previa</h3>
+          <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:24px;cursor:pointer">×</button>
+        </div>
+        <div class="modal-body" style="text-align:center;">
+          <img src="${ruta}" style="max-width:100%; max-height:60vh; border-radius:8px;" />
+          <br>
+          <a href="${ruta}" download style="display:inline-block;margin-top:12px;padding:8px 16px;background:#0066cc;color:#fff;border-radius:6px;text-decoration:none">⬇️ Descargar Imagen</a>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
   } else {
     window.open(ruta, '_blank');
   }
+}
+
+function downloadFile(ruta, nombre) {
+  if (!ruta) return;
+  const link = document.createElement('a');
+  link.href = ruta;
+  link.download = nombre || ruta.split('/').pop();
+  link.click();
 }
 
 // ═══════════════════════════════════════════════════════════════

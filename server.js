@@ -91,6 +91,24 @@ app.get('/api/compras', async (req, res) => {
   }
 });
 
+app.put('/api/compras/:id', upload.single('comprobante'), async (req, res) => {
+  try {
+    const ruta_comprobante = req.file ? `/uploads/${req.file.filename}` : null;
+
+    if (!ruta_comprobante) {
+      return res.status(400).json({ error: 'No file provided' });
+    }
+
+    const conn = await pool.getConnection();
+    await conn.execute('UPDATE compras SET ruta_comprobante = ? WHERE id = ?',
+      [ruta_comprobante, req.params.id]);
+    conn.release();
+    res.json({ mensaje: 'Comprobante actualizado', ruta: ruta_comprobante });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete('/api/compras/:id', async (req, res) => {
   try {
     const conn = await pool.getConnection();
@@ -126,6 +144,24 @@ app.get('/api/gastos', async (req, res) => {
     const [rows] = await conn.execute('SELECT * FROM gastos ORDER BY fecha DESC LIMIT 100');
     conn.release();
     res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/gastos/:id', upload.single('comprobante'), async (req, res) => {
+  try {
+    const ruta_comprobante = req.file ? `/uploads/${req.file.filename}` : null;
+
+    if (!ruta_comprobante) {
+      return res.status(400).json({ error: 'No file provided' });
+    }
+
+    const conn = await pool.getConnection();
+    await conn.execute('UPDATE gastos SET ruta_comprobante = ? WHERE id = ?',
+      [ruta_comprobante, req.params.id]);
+    conn.release();
+    res.json({ mensaje: 'Comprobante actualizado', ruta: ruta_comprobante });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -212,6 +248,18 @@ app.get('/api/analytics/meses', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Download files
+app.get('/uploads/:filename', (req, res) => {
+  const file = path.join(uploadsDir, req.params.filename);
+  res.download(file);
+});
+
+// Preview endpoint
+app.get('/api/preview/:filename', (req, res) => {
+  const file = path.join(uploadsDir, req.params.filename);
+  res.sendFile(file);
 });
 
 // Error handlers
