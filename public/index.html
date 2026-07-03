@@ -6,6 +6,28 @@
     <title>REVIONIX — Sistema de Gestión</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script>
+      // ═══ RESTAURACIÓN DE DATOS DESDE MySQL ═══
+      // Descarga los datos guardados (ventas, gastos, stock, usuarios...)
+      // y los coloca en localStorage ANTES de que el sistema inicie.
+      // Si el servidor no responde, se usan los datos locales del navegador.
+      window.RV_SERVER_KEYS = [];
+      try {
+        var _rvXhr = new XMLHttpRequest();
+        _rvXhr.open("GET", "/api/storage", false);
+        _rvXhr.send(null);
+        if (_rvXhr.status === 200) {
+          var _rvData = JSON.parse(_rvXhr.responseText);
+          for (var _rvK in _rvData) {
+            localStorage.setItem(_rvK, _rvData[_rvK]);
+            window.RV_SERVER_KEYS.push(_rvK);
+          }
+          console.log("[SYNC] ✓ Datos restaurados desde la base de datos:", window.RV_SERVER_KEYS.join(", ") || "(servidor vacío)");
+        }
+      } catch (e) {
+        console.warn("[SYNC] Servidor no disponible, usando datos locales:", e.message);
+      }
+    </script>
     <style>
       * {
         margin: 0;

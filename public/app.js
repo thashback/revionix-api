@@ -478,6 +478,89 @@ async function deletePlanilla(id) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// SINCRONIZACIÓN AUTOMÁTICA localStorage → MySQL
+// El sistema principal guarda en localStorage (rv_ventas, rv_gastos,
+// rv_stock, rv_users, rv_pp_estados...). Esta capa intercepta cada
+// guardado y lo respalda en la base de datos con debounce de 1s.
+// Al cargar la página, el script del <head> ya restauró los datos.
+// ═══════════════════════════════════════════════════════════════
+(function initSyncBD() {
+  const PREFIJO = 'rv_';
+  let pendientes = {};
+  let timer = null;
+
+  function empujar() {
+    const payload = pendientes;
+    pendientes = {};
+    const claves = Object.keys(payload);
+    if (claves.length === 0) return;
+    fetch(`${RV_API}/storage`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+      .then(r => {
+        if (r.ok) console.log('[SYNC] ✓ Guardado en BD:', claves.join(', '));
+        else console.error('[SYNC] ✗ Error HTTP', r.status);
+      })
+      .catch(err => console.error('[SYNC] ✗', err.message));
+  }
+
+  function programar(clave, valor) {
+    pendientes[clave] = valor;
+    clearTimeout(timer);
+    timer = setTimeout(empujar, 1000);
+  }
+
+  // Interceptar escrituras (vía prototype: asignar directo a localStorage
+  // guardaría la función como item — pitfall clásico de Storage)
+  const setOriginal = Storage.prototype.setItem;
+  Storage.prototype.setItem = function (clave, valor) {
+    setOriginal.call(this, clave, valor);
+    if (this === window.localStorage && String(clave).startsWith(PREFIJO)) {
+      programar(clave, valor);
+    }
+  };
+  const removeOriginal = Storage.prototype.removeItem;
+  Storage.prototype.removeItem = function (clave) {
+    removeOriginal.call(this, clave);
+    if (this === window.localStorage && String(clave).startsWith(PREFIJO)) {
+      programar(clave, null); // null = borrar en el servidor
+    }
+  };
+
+  // Al cerrar la pestaña, enviar lo pendiente sin esperar
+  window.addEventListener('beforeunload', () => {
+    const claves = Object.keys(pendientes);
+    if (claves.length && navigator.sendBeacon) {
+      navigator.sendBeacon(
+        `${RV_API}/storage`,
+        new Blob([JSON.stringify(pendientes)], { type: 'application/json' })
+      );
+      pendientes = {};
+    }
+  });
+
+  // Migración inicial: datos locales que el servidor aún no tiene
+  // (primera vez tras activar la sincronización)
+  const clavesServidor = window.RV_SERVER_KEYS || [];
+  const migrar = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(PREFIJO) && !clavesServidor.includes(k)) {
+      migrar[k] = localStorage.getItem(k);
+    }
+  }
+  if (Object.keys(migrar).length) {
+    console.log('[SYNC] Migrando datos locales a BD:', Object.keys(migrar).join(', '));
+    pendientes = migrar;
+    empujar();
+  }
+
+  console.log('[SYNC] ✓ Respaldo automático en BD activo');
+})();
+
+// ═══════════════════════════════════════════════════════════════
 // INTEGRACIÓN CON LA NAVEGACIÓN DEL SISTEMA PRINCIPAL
 // Envuelve goPage (sin reemplazar su lógica) para cargar los
 // módulos API cuando se visitan sus páginas.

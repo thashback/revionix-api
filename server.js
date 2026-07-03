@@ -57,9 +57,9 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-// Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Middleware (límite alto: rv_ventas/rv_gastos pueden pesar varios MB)
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -79,6 +79,64 @@ app.get('/health', (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', api: 'REVIONIX', version: '1.0.0' });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// ALMACENAMIENTO PERSISTENTE DEL SISTEMA (respaldo de localStorage)
+// Guarda ventas, gastos, stock, usuarios y estados en MySQL para
+// que los datos sobrevivan al navegador y se compartan entre equipos.
+// ═══════════════════════════════════════════════════════════════
+async function initStorageTable() {
+  try {
+    const conn = await pool.getConnection();
+    await conn.query(`CREATE TABLE IF NOT EXISTS app_storage (
+      clave VARCHAR(100) PRIMARY KEY,
+      valor LONGTEXT,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+    conn.release();
+    console.log('✓ Tabla app_storage lista');
+  } catch (err) {
+    console.error('✗ initStorageTable:', err.message);
+  }
+}
+initStorageTable();
+
+app.get('/api/storage', async (req, res) => {
+  try {
+    const conn = await pool.getConnection();
+    const [rows] = await conn.execute('SELECT clave, valor FROM app_storage');
+    conn.release();
+    const out = {};
+    rows.forEach(r => { out[r.clave] = r.valor; });
+    res.json(out);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+async function guardarStorage(req, res) {
+  try {
+    const entries = Object.entries(req.body || {});
+    if (entries.length === 0) return res.json({ guardadas: 0 });
+    const conn = await pool.getConnection();
+    for (const [clave, valor] of entries) {
+      if (valor === null) {
+        await conn.execute('DELETE FROM app_storage WHERE clave = ?', [clave]);
+      } else {
+        await conn.execute(
+          'INSERT INTO app_storage (clave, valor) VALUES (?, ?) ON DUPLICATE KEY UPDATE valor = VALUES(valor)',
+          [clave, String(valor)]
+        );
+      }
+    }
+    conn.release();
+    res.json({ guardadas: entries.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+app.put('/api/storage', guardarStorage);
+app.post('/api/storage', guardarStorage); // para navigator.sendBeacon al cerrar
 
 // Compras
 app.post('/api/compras', upload.single('comprobante'), async (req, res) => {
