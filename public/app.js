@@ -141,10 +141,14 @@ async function uploadFile(id, tipo, endpoint) {
     if (!file) return;
 
     const formData = new FormData();
-    formData.append('ruta_comprobante', file);
-    formData.append('ruta_oc', file);
-    formData.append('ruta_comprobante_pago', file);
-    formData.append('ruta_recibo', file);
+
+    // Send file with correct field name based on endpoint
+    if (endpoint === 'compras') formData.append('comprobante', file);
+    else if (endpoint === 'gastos') formData.append('comprobante', file);
+    else if (endpoint === 'proyectos') formData.append('ruta_oc', file);
+    else if (endpoint === 'pagos-pendientes') formData.append('ruta_comprobante_pago', file);
+    else if (endpoint === 'gastos-fijos') formData.append('ruta_comprobante', file);
+    else if (endpoint === 'planilla') formData.append('ruta_recibo', file);
 
     try {
       const response = await fetch(`${API_BASE}/${endpoint}/${id}`, {
@@ -155,6 +159,7 @@ async function uploadFile(id, tipo, endpoint) {
         alert('✅ Archivo cargado correctamente');
         if (tipo === 'compras') loadCompras();
         else if (tipo === 'gastos') loadGastos();
+        else if (tipo === 'gastos-fijos') loadGastosFijos();
         else if (tipo === 'proyectos') loadProyectos();
         else if (tipo === 'pagos') loadPagosPendientes();
         else if (tipo === 'planilla') loadPlanilla();

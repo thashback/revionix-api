@@ -338,6 +338,31 @@ app.post('/api/gastos-fijos', upload.single('ruta_comprobante'), async (req, res
   }
 });
 
+app.put('/api/gastos-fijos/:id', upload.single('ruta_comprobante'), async (req, res) => {
+  try {
+    const id = req.params.id;
+    const conn = await pool.getConnection();
+
+    if (req.file) {
+      const ruta_comprobante = `/uploads/${req.file.filename}`;
+      await conn.execute(
+        'UPDATE gastos_fijos SET ruta_comprobante=? WHERE id=?',
+        [ruta_comprobante, id]
+      );
+    } else {
+      const { mes, ano, descripcion, monto } = req.body;
+      await conn.execute(
+        'UPDATE gastos_fijos SET mes=?, ano=?, descripcion=?, monto=? WHERE id=?',
+        [mes, ano, descripcion, monto, id]
+      );
+    }
+    conn.release();
+    res.json({ id, mensaje: 'Gasto fijo actualizado' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete('/api/gastos-fijos/:id', async (req, res) => {
   try {
     const conn = await pool.getConnection();
@@ -432,6 +457,34 @@ app.post('/api/planilla', upload.single('ruta_recibo'), async (req, res) => {
     );
     conn.release();
     res.json({ id: result[0].insertId, mensaje: 'Planilla guardada', neto });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/planilla/:id', upload.single('ruta_recibo'), async (req, res) => {
+  try {
+    const id = req.params.id;
+    const conn = await pool.getConnection();
+
+    if (req.file) {
+      const ruta_recibo = `/uploads/${req.file.filename}`;
+      await conn.execute(
+        'UPDATE planilla SET ruta_recibo=? WHERE id=?',
+        [ruta_recibo, id]
+      );
+      conn.release();
+      res.json({ id, mensaje: 'Planilla actualizada' });
+    } else {
+      const { mes, ano, empleado, sueldo, bonificacion, descuentos } = req.body;
+      const neto = (parseFloat(sueldo) + parseFloat(bonificacion) - parseFloat(descuentos)).toFixed(2);
+      await conn.execute(
+        'UPDATE planilla SET mes=?, ano=?, empleado=?, sueldo=?, bonificacion=?, descuentos=?, neto=? WHERE id=?',
+        [mes, ano, empleado, sueldo, bonificacion, descuentos, neto, id]
+      );
+      conn.release();
+      res.json({ id, mensaje: 'Planilla actualizada', neto });
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
