@@ -2188,8 +2188,6 @@ function rvDecorarPP() {
   envolver('saveVenta', () => setTimeout(() => { rvRebuildTxns(); rvFlushVentas(); }, 50));
   envolver('confirmImport', () => setTimeout(() => { rvRebuildTxns(); rvFlushVentas(); }, 50));
 
-  // Recuperación de inversión con gastos fijos no cubiertos
-  envolver('renderKPIs', () => rvActualizarRecuperacion());
   // Stock: decorar tras render
   envolver('renderInvInicial', () => rvDecorarStock());
   envolver('renderInvRepos', () => rvDecorarStock());
