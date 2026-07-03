@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>REVIONIX Debug Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        .pass { color: green; }
+        .fail { color: red; }
+        .section { margin: 20px 0; padding: 10px; border: 1px solid #ccc; }
+        pre { background: #f0f0f0; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>REVIONIX Debug Test</h1>
+    <div id="results"></div>
+
+    <script>
+        const results = document.getElementById('results');
+        const tests = [];
+
+        async function test(name, fn) {
+            try {
+                const result = await fn();
+                tests.push({ name, result, passed: true });
+                console.log(`✓ ${name}`);
+            } catch (err) {
+                tests.push({ name, result: err.message, passed: false });
+                console.log(`✗ ${name}: ${err.message}`);
+            }
+            renderResults();
+        }
+
+        function renderResults() {
+            results.innerHTML = tests.map(t => `
+                <div class="section">
+                    <div class="${t.passed ? 'pass' : 'fail'}">
+                        ${t.passed ? '✓' : '✗'} ${t.name}
+                    </div>
+                    <pre>${t.result}</pre>
+                </div>
+            `).join('');
+        }
+
+        // Test 1: API Health
+        test('1. API Health Check', async () => {
+            const res = await fetch('/api/health');
+            const data = await res.json();
+            return JSON.stringify(data, null, 2);
+        });
+
+        // Test 2: Load app.js
+        test('2. Check app.js loads', async () => {
+            const script = document.querySelector('script[src="app.js"]');
+            if (script) {
+                return 'app.js script tag exists';
+            } else {
+                throw new Error('app.js script tag not found in HTML');
+            }
+        });
+
+        // Test 3: Check if uploadFile exists
+        test('3. uploadFile function available', async () => {
+            if (typeof window.uploadFile === 'function') {
+                return 'uploadFile function found in window';
+            } else {
+                throw new Error('uploadFile not in window - app.js may not have loaded');
+            }
+        });
+
+        // Test 4: Check if viewFile exists
+        test('4. viewFile function available', async () => {
+            if (typeof window.viewFile === 'function') {
+                return 'viewFile function found in window';
+            } else {
+                throw new Error('viewFile not in window');
+            }
+        });
+
+        // Test 5: Check DOM elements
+        test('5. Check all table tbody elements', async () => {
+            const tables = [
+                'tbl-gastos-body',
+                'tbl-proyectos-body',
+                'tbl-gastos-fijos-body',
+                'tbl-pagos-body',
+                'tbl-planilla-body'
+            ];
+            const missing = [];
+            for (const id of tables) {
+                if (!document.getElementById(id)) {
+                    missing.push(id);
+                }
+            }
+            if (missing.length > 0) {
+                throw new Error(`Missing tbody elements: ${missing.join(', ')}`);
+            }
+            return `All ${tables.length} tbody elements found`;
+        });
+
+        // Test 6: Check navigation pages
+        test('6. Check all page divs', async () => {
+            const pages = [
+                'page-dashboard',
+                'page-gastos',
+                'page-proyectos',
+                'page-gastos-fijos',
+                'page-pagos-pendientes',
+                'page-planilla'
+            ];
+            const missing = [];
+            for (const id of pages) {
+                if (!document.getElementById(id)) {
+                    missing.push(id);
+                }
+            }
+            if (missing.length > 0) {
+                throw new Error(`Missing page divs: ${missing.join(', ')}`);
+            }
+            return `All ${pages.length} page divs found`;
+        });
+
+        // Test 7: API Endpoints
+        test('7. Proyectos API', async () => {
+            const res = await fetch('/api/proyectos');
+            const data = await res.json();
+            return `Status: ${res.status}, Records: ${Array.isArray(data) ? data.length : 'not array'}`;
+        });
+
+        test('8. Gastos Fijos API', async () => {
+            const res = await fetch('/api/gastos-fijos');
+            const data = await res.json();
+            return `Status: ${res.status}, Records: ${Array.isArray(data) ? data.length : 'not array'}`;
+        });
+
+        test('9. Pagos Pendientes API', async () => {
+            const res = await fetch('/api/pagos-pendientes');
+            const data = await res.json();
+            return `Status: ${res.status}, Records: ${Array.isArray(data) ? data.length : 'not array'}`;
+        });
+
+        test('10. Planilla API', async () => {
+            const res = await fetch('/api/planilla');
+            const data = await res.json();
+            return `Status: ${res.status}, Records: ${Array.isArray(data) ? data.length : 'not array'}`;
+        });
+    </script>
+</body>
+</html>
