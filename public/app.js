@@ -360,20 +360,52 @@ async function deleteProyecto(id) {
 // ═══════════════════════════════════════════════════════════════
 const RV_MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
+window.RV_PLAN_FILTRO = { ano: '', mes: '' };
+function rvRenderFiltroPlanilla(planilla) {
+  const tabla = document.getElementById('tbl-planilla');
+  if (!tabla) return;
+  let bar = document.getElementById('rv-plan-filtro');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'rv-plan-filtro';
+    bar.style.cssText = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:13px';
+    tabla.parentElement.insertBefore(bar, tabla);
+  }
+  const anos = [...new Set(planilla.map(p => p.ano))].sort((a, b) => b - a);
+  const anoOpts = '<option value="">Todos</option>' + anos.map(a => `<option value="${a}" ${window.RV_PLAN_FILTRO.ano == a ? 'selected' : ''}>${a}</option>`).join('');
+  const mesOpts = '<option value="">Todos</option>' + RV_MESES.map((m, i) => i === 0 ? '' : `<option value="${i}" ${window.RV_PLAN_FILTRO.mes == i ? 'selected' : ''}>${m}</option>`).join('');
+  const filtrados = planilla.filter(p => (!window.RV_PLAN_FILTRO.ano || p.ano == window.RV_PLAN_FILTRO.ano) && (!window.RV_PLAN_FILTRO.mes || p.mes == window.RV_PLAN_FILTRO.mes));
+  const total = filtrados.reduce((s, p) => s + rvNum(p.neto), 0);
+  bar.innerHTML = `<b>Filtrar:</b>
+    <label>Año <select id="rv-plan-fano" style="padding:5px;border:1px solid #d8dde3;border-radius:5px">${anoOpts}</select></label>
+    <label>Mes <select id="rv-plan-fmes" style="padding:5px;border:1px solid #d8dde3;border-radius:5px">${mesOpts}</select></label>
+    <span style="margin-left:auto;background:#ebf7ee;padding:5px 12px;border-radius:6px">Masa salarial (${filtrados.length}): <b style="color:#198c35">${rvMoney(total)}</b></span>`;
+  bar.querySelector('#rv-plan-fano').onchange = e => { window.RV_PLAN_FILTRO.ano = e.target.value; loadPlanilla(); };
+  bar.querySelector('#rv-plan-fmes').onchange = e => { window.RV_PLAN_FILTRO.mes = e.target.value; loadPlanilla(); };
+  return filtrados;
+}
 async function loadPlanilla() {
   try {
     const planilla = await fetch(`${RV_API}/planilla`).then(r => r.json());
     const tbody = document.getElementById('tbl-planilla-body');
     if (!tbody) return;
     if (!Array.isArray(planilla)) return;
+    window.RV_PLANILLA = planilla;
 
     tbody.innerHTML = '';
     if (planilla.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:20px">Sin registros. Usa ➕ Agregar Empleado.</td></tr>';
+      const bar = document.getElementById('rv-plan-filtro'); if (bar) bar.remove();
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:20px">Sin registros. Usa ➕ Agregar Empleado o 📂 Importar XLS (puedes cargar cualquier mes).</td></tr>';
       return;
     }
 
-    planilla.forEach(p => {
+    const filtrados = rvRenderFiltroPlanilla(planilla) || planilla;
+    if (filtrados.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:16px">Sin registros para ese mes/año.</td></tr>';
+      return;
+    }
+
+    filtrados.forEach(p => {
       const row = document.createElement('tr');
       row.innerHTML = `
         <td>${p.ano}</td>
@@ -928,12 +960,37 @@ function rvAplicarOverridesCostos() {
 // "No cubierto" = parte del gasto fijo que lo disponible del mes
 // (ventas − costos − gastos variables) no alcanzó a pagar. Solo meses pasados.
 // ═══════════════════════════════════════════════════════════════
+// Estimado recurrente (fallback cuando aún no hay data mensual registrada)
 function rvTotalFijosMensual() {
   const tc = (typeof TC_FIJO !== 'undefined') ? TC_FIJO : 3.5;
   let alq = 0, plan = 0;
   try { if (typeof ALQUILERES_DATA !== 'undefined') alq = ALQUILERES_DATA.reduce((s, r) => s + (r.moneda === 'USD' ? rvNum(r.monto_mensual) * tc : rvNum(r.monto_mensual)), 0); } catch (e) {}
   try { if (typeof PLANILLA_DATA !== 'undefined') plan = PLANILLA_DATA.reduce((s, r) => s + rvNum(r.remuneracion), 0); } catch (e) {}
   return alq + plan;
+}
+// Totales por mes tomados de la BD (gastos_fijos + planilla registrados)
+window.RV_FIJOS_MES = {};
+window.RV_PLAN_MES = {};
+async function rvCargarFijosPlanillaBD() {
+  try {
+    const [gf, pl] = await Promise.all([
+      fetch(`${RV_API}/gastos-fijos`).then(r => r.json()).catch(() => []),
+      fetch(`${RV_API}/planilla`).then(r => r.json()).catch(() => [])
+    ]);
+    const fmes = {}, pmes = {};
+    if (Array.isArray(gf)) gf.forEach(g => { const p = g.ano + '-' + String(g.mes).padStart(2, '0'); fmes[p] = (fmes[p] || 0) + rvNum(g.monto); });
+    if (Array.isArray(pl)) pl.forEach(x => { const p = x.ano + '-' + String(x.mes).padStart(2, '0'); pmes[p] = (pmes[p] || 0) + rvNum(x.neto); });
+    window.RV_FIJOS_MES = fmes;
+    window.RV_PLAN_MES = pmes;
+    console.log('[FIJOS-BD] ✓ gastos fijos/planilla por mes cargados');
+  } catch (e) { console.warn('[FIJOS-BD]', e.message); }
+}
+// Gasto fijo del mes: real de la BD (gastos fijos + planilla). Si aún no hay
+// NADA registrado en ningún mes, usa el estimado recurrente (transición).
+function rvFijosMes(periodo) {
+  const hayData = Object.keys(window.RV_FIJOS_MES || {}).length || Object.keys(window.RV_PLAN_MES || {}).length;
+  if (!hayData) return rvTotalFijosMensual();
+  return ((window.RV_FIJOS_MES || {})[periodo] || 0) + ((window.RV_PLAN_MES || {})[periodo] || 0);
 }
 function rvGastosVarMes(periodo) {
   const seed = (typeof GASTOS_DATA !== 'undefined') ? GASTOS_DATA : [];
@@ -943,21 +1000,22 @@ function rvGastosVarMes(periodo) {
     .reduce((s, g) => s + rvNum(g.monto), 0);
 }
 function rvGastosFijosNoCubiertos(conDetalle) {
-  const vacio = conDetalle ? { total: 0, meses: [], fijos: 0 } : 0;
+  const vacio = conDetalle ? { total: 0, meses: [] } : 0;
   if (typeof SEED === 'undefined' || !Array.isArray(SEED.meses)) return vacio;
-  const fijos = rvTotalFijosMensual();
   const hoy = new Date();
   const curP = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0');
   let acum = 0; const det = [];
   SEED.meses.forEach(m => {
     if (!(rvNum(m.v) > 0)) return;      // solo meses con actividad
     if (m.p >= curP) return;            // solo meses pasados (cerrados)
+    const fijosMes = rvFijosMes(m.p);   // gasto fijo REAL de ese mes (BD)
+    if (fijosMes <= 0) return;          // sin gasto fijo registrado ese mes → no aplica
     const disponible = rvNum(m.v) - rvNum(m.c) - rvGastosVarMes(m.p);
-    const noCub = Math.max(0, fijos - Math.max(0, disponible)); // parte del fijo no cubierta
-    if (noCub > 0) det.push({ mes: m.m, noCub: noCub });
+    const noCub = Math.max(0, fijosMes - Math.max(0, disponible)); // parte del fijo no cubierta
+    if (noCub > 0) det.push({ mes: m.m, noCub: noCub, fijo: fijosMes });
     acum += noCub;
   });
-  return conDetalle ? { total: acum, meses: det, fijos: fijos } : acum;
+  return conDetalle ? { total: acum, meses: det } : acum;
 }
 // Actualiza el % de avance con el nuevo monto a recuperar y muestra el desglose
 function rvActualizarRecuperacion() {
@@ -1661,11 +1719,12 @@ async function rvCargarComprasDesdeBD() {
   } catch (e) { console.warn('[COMPRAS-BD]', e.message); }
 }
 
-// Carga los tres módulos migrados desde la BD
+// Carga los módulos migrados + gastos fijos/planilla por mes desde la BD
 async function rvCargarTodoDesdeBD() {
   await rvCargarVentasDesdeBD();
   await rvCargarGastosDesdeBD();
   await rvCargarComprasDesdeBD();
+  await rvCargarFijosPlanillaBD();
 }
 
 // Asegura que SEED.meses tenga una fila por cada mes con transacciones y hasta
