@@ -1055,6 +1055,27 @@
     </style>
   </head>
   <body>
+    <!-- DEBUG BANNER -->
+    <div id="debug-banner" style="display:none;position:fixed;top:0;left:0;right:0;background:#ff0000;color:#fff;padding:20px;z-index:99999;font-weight:bold;text-align:center;">
+      <span id="debug-message">⚠️ ERROR: Cargando aplicación...</span>
+      <button onclick="document.getElementById('debug-banner').style.display='none'" style="float:right;background:#fff;color:#ff0000;border:none;padding:5px 10px;cursor:pointer;">X</button>
+    </div>
+
+    <!-- INIT DEBUG SCRIPT -->
+    <script>
+      window.APP_ERRORS = [];
+      window.onerror = function(msg, url, lineNo, columnNo, error) {
+        const errorMsg = msg + ' (' + url + ':' + lineNo + ':' + columnNo + ')';
+        window.APP_ERRORS.push(errorMsg);
+        document.getElementById('debug-banner').style.display = 'block';
+        document.getElementById('debug-message').textContent = '❌ ERROR: ' + msg;
+        console.error('APP ERROR:', errorMsg);
+        return true;
+      };
+      console.log('[INIT] Application starting...');
+      console.log('[INIT] Debug banner ready');
+    </script>
+
     <!-- LOGIN -->
     <div id="login-screen">
       <div class="login-card">
