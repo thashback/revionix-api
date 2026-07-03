@@ -1,87 +1,50 @@
-// REVIONIX - Full Functional App v2 with Complete Upload & Preview System
-const API_BASE = (() => {
-  const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  return isDev ? 'http://localhost:8080/api' : `${window.location.protocol}//${window.location.host}/api`;
-})();
-
-console.log('[APP] API Base:', API_BASE);
-
-let currentUser = localStorage.getItem('currentUser') || '';
-let currentPage = 'dashboard';
-
 // ═══════════════════════════════════════════════════════════════
-// LOGIN
+// REVIONIX - Módulos API (Proyectos / Planilla / Archivos)
+// CAPA ADITIVA: no redefine ninguna función del sistema principal.
+// El login, dashboard, gráficos, importación, ecommerce, compras,
+// gastos, stock, etc. son manejados por el script interno del HTML.
 // ═══════════════════════════════════════════════════════════════
-function doLogin() {
-  const user = document.getElementById('login-user').value;
-  const pass = document.getElementById('login-pass').value;
+const RV_API = `${window.location.protocol}//${window.location.host}/api`;
+console.log('[RV-API] Módulos API inicializando. Base:', RV_API);
 
-  if (user && pass) {
-    localStorage.setItem('currentUser', user);
-    currentUser = user;
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-    document.getElementById('hdr-user').textContent = `👤 ${user}`;
-    updateDateTime();
-    loadDashboard();
-  } else {
-    document.getElementById('login-error').textContent = '❌ Usuario o contraseña inválidos';
-  }
+// ── Helpers ──────────────────────────────────────────────────────
+// MySQL devuelve DECIMAL como string ("5000.00") — siempre parsear.
+function rvNum(v) {
+  const n = parseFloat(v);
+  return isNaN(n) ? 0 : n;
 }
-
-function doLogout() {
-  localStorage.removeItem('currentUser');
-  location.reload();
+function rvMoney(v) {
+  return 'S/. ' + rvNum(v).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
-
-function updateDateTime() {
-  const now = new Date();
-  const formatted = now.toLocaleDateString('es-ES', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit'
-  });
-  document.getElementById('hdr-fecha').textContent = formatted;
+function rvDate(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  return isNaN(d) ? '—' : d.toLocaleDateString('es-ES');
 }
-setInterval(updateDateTime, 60000);
+function rvEsc(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function closeRvModal() {
+  document.querySelectorAll('.rv-modal-overlay').forEach(el => el.remove());
+}
+function rvModal(innerHTML, maxWidth) {
+  closeRvModal();
+  const modal = document.createElement('div');
+  modal.className = 'rv-modal-overlay';
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px';
+  modal.innerHTML = `<div style="background:#fff;border-radius:8px;padding:22px;width:100%;max-width:${maxWidth || 520}px;max-height:88vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.35)">${innerHTML}</div>`;
+  document.body.appendChild(modal);
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  return modal;
+}
+const RV_INPUT = 'width:100%;padding:9px;margin:6px 0;border:1px solid #d8dde3;border-radius:5px;font-size:13px;box-sizing:border-box';
+const RV_LABEL = 'display:block;margin:8px 0 0 0;font-weight:600;font-size:12px;color:#455a64';
 
 // ═══════════════════════════════════════════════════════════════
-// PAGE NAVIGATION
-// ═══════════════════════════════════════════════════════════════
-function goPage(pageName) {
-  document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
-  const page = document.getElementById(`page-${pageName}`);
-  if (page) page.classList.add('active');
-
-  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-  const navItem = document.querySelector(`[data-page="${pageName}"]`);
-  if (navItem) navItem.classList.add('active');
-
-  currentPage = pageName;
-
-  switch (pageName) {
-    case 'dashboard': loadDashboard(); break;
-    case 'compras': loadCompras(); break;
-    case 'gastos': loadGastos(); break;
-    case 'canales': loadCanales(); break;
-    case 'meses': loadMeses(); break;
-    case 'detalle': loadDetalle(); break;
-    case 'marcas': loadMarcas(); break;
-    case 'proyectos': loadProyectos(); break;
-    case 'gastos-fijos': loadGastosFijos(); break;
-    case 'pagos-pendientes': loadPagosPendientes(); break;
-    case 'planilla': loadPlanilla(); break;
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// FILE PREVIEW SYSTEM
+// VISOR UNIVERSAL DE ARCHIVOS (PDF / XML / Imagen)
 // ═══════════════════════════════════════════════════════════════
 function viewFile(ruta, nombre) {
-  if (!ruta) {
-    alert('❌ No hay archivo disponible');
-    return;
-  }
-
+  if (!ruta) { alert('❌ No hay archivo disponible'); return; }
   const ext = ruta.split('.').pop().toLowerCase();
 
   if (ext === 'pdf') {
@@ -90,496 +53,447 @@ function viewFile(ruta, nombre) {
     fetch(ruta)
       .then(r => r.text())
       .then(xmlText => {
-        const modal = document.createElement('div');
-        modal.className = 'modal-overlay';
-        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999';
-        modal.innerHTML = `
-          <div style="background:#fff;border-radius:8px;padding:20px;width:90%;max-width:800px;max-height:80vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;border-bottom:1px solid #eee;padding-bottom:12px">
-              <h3 style="margin:0;color:#333">📄 Visor XML</h3>
-              <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:24px;cursor:pointer">×</button>
-            </div>
-            <pre style="background:#f5f5f5;padding:12px;border-radius:4px;overflow:auto;max-height:60vh;font-size:11px;line-height:1.4">${xmlText.substring(0, 3000)}</pre>
-            <div style="margin-top:16px;text-align:center">
-              <a href="${ruta}" download style="display:inline-block;padding:8px 16px;background:#0066cc;color:#fff;border-radius:4px;text-decoration:none;font-size:14px">⬇️ Descargar XML</a>
-            </div>
+        // Resaltar campos clave de facturas electrónicas
+        let resumen = '';
+        try {
+          const doc = new DOMParser().parseFromString(xmlText, 'text/xml');
+          const pick = (tags) => {
+            for (const t of tags) {
+              const els = doc.getElementsByTagName(t);
+              if (els.length && els[0].textContent.trim()) return els[0].textContent.trim();
+            }
+            return null;
+          };
+          const ruc = pick(['cbc:CustomerAssignedAccountID', 'cbc:CompanyID', 'RUC']);
+          const total = pick(['cbc:PayableAmount', 'cbc:TaxInclusiveAmount', 'Total']);
+          const fecha = pick(['cbc:IssueDate', 'Fecha']);
+          const serie = pick(['cbc:ID', 'Serie']);
+          const items = [];
+          if (ruc) items.push(`<b>RUC:</b> ${rvEsc(ruc)}`);
+          if (serie) items.push(`<b>Serie/N°:</b> ${rvEsc(serie)}`);
+          if (fecha) items.push(`<b>Fecha:</b> ${rvEsc(fecha)}`);
+          if (total) items.push(`<b>Total:</b> S/. ${rvEsc(total)}`);
+          if (items.length) resumen = `<div style="background:#e3f0fb;padding:10px;border-radius:5px;margin-bottom:10px;font-size:13px">${items.join(' &nbsp;·&nbsp; ')}</div>`;
+        } catch (e) { /* XML no estándar: mostrar solo texto */ }
+
+        rvModal(`
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;border-bottom:1px solid #eee;padding-bottom:10px">
+            <h3 style="margin:0;color:#333">📄 Visor XML ${nombre ? '· ' + rvEsc(nombre) : ''}</h3>
+            <button onclick="closeRvModal()" style="background:none;border:none;font-size:24px;cursor:pointer">×</button>
           </div>
-        `;
-        document.body.appendChild(modal);
-        modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+          ${resumen}
+          <pre style="background:#f5f5f5;padding:12px;border-radius:4px;overflow:auto;max-height:55vh;font-size:11px;line-height:1.4">${rvEsc(xmlText.substring(0, 5000))}</pre>
+          <div style="margin-top:14px;text-align:center">
+            <a href="${ruta}" download style="display:inline-block;padding:8px 16px;background:#1565c0;color:#fff;border-radius:4px;text-decoration:none;font-size:13px">⬇️ Descargar XML</a>
+          </div>
+        `, 800);
       })
       .catch(err => alert('Error al cargar XML: ' + err.message));
-  } else if (['jpg', 'png', 'jpeg', 'gif'].includes(ext)) {
-    const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
-    modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999';
-    modal.innerHTML = `
-      <div style="background:#fff;border-radius:8px;padding:20px;width:90%;max-width:800px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;border-bottom:1px solid #eee;padding-bottom:12px">
-          <h3 style="margin:0;color:#333">📷 Vista Previa</h3>
-          <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:24px;cursor:pointer">×</button>
-        </div>
-        <img src="${ruta}" style="max-width:100%;max-height:60vh;border-radius:4px;margin:12px 0" />
-        <div>
-          <a href="${ruta}" download style="display:inline-block;padding:8px 16px;background:#0066cc;color:#fff;border-radius:4px;text-decoration:none;font-size:14px">⬇️ Descargar Imagen</a>
-        </div>
+  } else if (['jpg', 'png', 'jpeg', 'gif', 'webp'].includes(ext)) {
+    rvModal(`
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;border-bottom:1px solid #eee;padding-bottom:10px">
+        <h3 style="margin:0;color:#333">📷 Vista Previa</h3>
+        <button onclick="closeRvModal()" style="background:none;border:none;font-size:24px;cursor:pointer">×</button>
       </div>
-    `;
-    document.body.appendChild(modal);
-    modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+      <div style="text-align:center">
+        <img src="${ruta}" style="max-width:100%;max-height:60vh;border-radius:4px;margin:10px 0" />
+        <div><a href="${ruta}" download style="display:inline-block;padding:8px 16px;background:#1565c0;color:#fff;border-radius:4px;text-decoration:none;font-size:13px">⬇️ Descargar Imagen</a></div>
+      </div>
+    `, 820);
   } else {
     window.open(ruta, '_blank');
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// SUBIDA UNIVERSAL DE ARCHIVOS (campo correcto según módulo)
+// ═══════════════════════════════════════════════════════════════
+const RV_FIELD_BY_ENDPOINT = {
+  'compras': 'comprobante',
+  'gastos': 'comprobante',
+  'proyectos': 'ruta_oc',
+  'pagos-pendientes': 'ruta_comprobante_pago',
+  'gastos-fijos': 'ruta_comprobante',
+  'planilla': 'ruta_recibo'
+};
+
 async function uploadFile(id, tipo, endpoint) {
   const input = document.createElement('input');
   input.type = 'file';
-  input.accept = '.pdf,.jpg,.png,.xml,.jpeg';
+  input.accept = '.pdf,.jpg,.png,.jpeg,.xml';
   input.onchange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    if (file.size > 50 * 1024 * 1024) { alert('❌ Archivo demasiado grande (máx 50MB)'); return; }
 
+    const field = RV_FIELD_BY_ENDPOINT[endpoint] || 'comprobante';
     const formData = new FormData();
-    formData.append('ruta_comprobante', file);
-    formData.append('ruta_oc', file);
-    formData.append('ruta_comprobante_pago', file);
-    formData.append('ruta_recibo', file);
+    formData.append(field, file);
 
     try {
-      const response = await fetch(`${API_BASE}/${endpoint}/${id}`, {
-        method: 'PUT',
-        body: formData
-      });
+      const response = await fetch(`${RV_API}/${endpoint}/${id}`, { method: 'PUT', body: formData });
+      const data = await response.json().catch(() => ({}));
       if (response.ok) {
         alert('✅ Archivo cargado correctamente');
-        if (tipo === 'compras') loadCompras();
-        else if (tipo === 'gastos') loadGastos();
-        else if (tipo === 'proyectos') loadProyectos();
-        else if (tipo === 'pagos') loadPagosPendientes();
-        else if (tipo === 'planilla') loadPlanilla();
+        if (endpoint === 'proyectos') loadProyectos();
+        else if (endpoint === 'planilla') loadPlanilla();
       } else {
-        alert('❌ Error al cargar archivo');
+        alert('❌ Error al subir: ' + (data.error || response.status));
       }
     } catch (err) {
-      alert('Error: ' + err.message);
+      alert('❌ Error: ' + err.message);
     }
   };
   input.click();
 }
 
 // ═══════════════════════════════════════════════════════════════
-// DASHBOARD
+// PROYECTOS / OC
 // ═══════════════════════════════════════════════════════════════
-async function loadDashboard() {
-  try {
-    const [ventas, compras, gastos] = await Promise.all([
-      fetch(`${API_BASE}/ventas`).then(r => r.json()),
-      fetch(`${API_BASE}/compras`).then(r => r.json()),
-      fetch(`${API_BASE}/gastos`).then(r => r.json())
-    ]);
+const RV_ESTADOS = ['pendiente', 'en_proceso', 'completado', 'cancelado'];
+const RV_ESTADO_COLOR = { pendiente: '#e67e22', en_proceso: '#1565c0', completado: '#198c35', cancelado: '#c0392b' };
 
-    const totalVentas = ventas.reduce((s, v) => s + (v.total_venta || 0), 0);
-    const totalCompras = compras.reduce((s, c) => s + (c.total_sol || 0), 0);
-    const totalGastos = gastos.reduce((s, g) => s + (g.monto || 0), 0);
-    const margen = totalVentas - totalCompras - totalGastos;
-
-    if (document.getElementById('kpi-ventas')) {
-      document.getElementById('kpi-ventas').textContent = `S/. ${totalVentas.toLocaleString('es-PE', {minimumFractionDigits: 2})}`;
-    }
-    if (document.getElementById('kpi-costo')) {
-      document.getElementById('kpi-costo').textContent = `S/. ${totalCompras.toLocaleString('es-PE', {minimumFractionDigits: 2})}`;
-    }
-    if (document.getElementById('kpi-margen')) {
-      document.getElementById('kpi-margen').textContent = `S/. ${margen.toLocaleString('es-PE', {minimumFractionDigits: 2})}`;
-    }
-  } catch (err) {
-    console.error('Error loading dashboard:', err);
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// COMPRAS
-// ═══════════════════════════════════════════════════════════════
-async function loadCompras() {
-  try {
-    const compras = await fetch(`${API_BASE}/compras`).then(r => r.json());
-    const tbody = document.getElementById('tbl-compras-body');
-    if (!tbody) return;
-
-    tbody.innerHTML = '';
-    compras.forEach(c => {
-      const row = document.createElement('tr');
-      row.innerHTML = `
-        <td>${c.proveedor || '-'}</td>
-        <td>${new Date(c.fecha).toLocaleDateString('es-ES')}</td>
-        <td>${c.descripcion || '-'}</td>
-        <td>${c.marca || '-'}</td>
-        <td>${c.cantidad || '-'}</td>
-        <td>${c.moneda || 'SOL'}</td>
-        <td>${c.precio_usd ? c.precio_usd.toFixed(2) : '-'}</td>
-        <td>${c.precio_sol ? c.precio_sol.toFixed(2) : '-'}</td>
-        <td><strong>S/. ${(c.total_sol || 0).toFixed(2)}</strong></td>
-        <td>
-          ${c.ruta_comprobante ? `<button onclick="viewFile('${c.ruta_comprobante}')">📄 Ver</button>` : '❌'}
-          <button onclick="uploadFile(${c.id}, 'compras', 'compras')" style="padding:4px 8px;background:#0066cc;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">📤</button>
-          <button onclick="if(confirm('¿Eliminar?')) fetch(\`${API_BASE}/compras/${c.id}\`, {method:'DELETE'}).then(()=>loadCompras())" style="padding:4px 8px;background:#cc0000;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">🗑️</button>
-        </td>
-      `;
-      tbody.appendChild(row);
-    });
-  } catch (err) {
-    console.error('Error:', err);
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// GASTOS
-// ═══════════════════════════════════════════════════════════════
-async function loadGastos() {
-  try {
-    const gastos = await fetch(`${API_BASE}/gastos`).then(r => r.json());
-    const tbody = document.getElementById('tbl-gastos-body');
-    if (!tbody) return;
-
-    tbody.innerHTML = '';
-    gastos.forEach(g => {
-      const row = document.createElement('tr');
-      row.innerHTML = `
-        <td>${new Date(g.fecha).toLocaleDateString('es-ES')}</td>
-        <td>${g.tipo_comprobante || '-'}</td>
-        <td>${g.serie || '-'}</td>
-        <td>${g.numero || '-'}</td>
-        <td>${g.categoria || '-'}</td>
-        <td>${g.canal || '-'}</td>
-        <td>${g.descripcion || '-'}</td>
-        <td>${g.responsable || '-'}</td>
-        <td><strong>S/. ${(g.monto || 0).toFixed(2)}</strong></td>
-        <td>
-          ${g.ruta_comprobante ? `<button onclick="viewFile('${g.ruta_comprobante}')">📄 Ver</button>` : '❌'}
-          <button onclick="uploadFile(${g.id}, 'gastos', 'gastos')" style="padding:4px 8px;background:#0066cc;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">📤</button>
-          <button onclick="if(confirm('¿Eliminar?')) fetch(\`${API_BASE}/gastos/${g.id}\`, {method:'DELETE'}).then(()=>loadGastos())" style="padding:4px 8px;background:#cc0000;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">🗑️</button>
-        </td>
-      `;
-      tbody.appendChild(row);
-    });
-  } catch (err) {
-    console.error('Error:', err);
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// ANALYTICS
-// ═══════════════════════════════════════════════════════════════
-async function loadCanales() {
-  try {
-    const canales = await fetch(`${API_BASE}/analytics/canales`).then(r => r.json());
-    const tbody = document.getElementById('tbl-canales-body');
-    if (!tbody) return;
-
-    tbody.innerHTML = '';
-    canales.forEach(c => {
-      const row = document.createElement('tr');
-      row.innerHTML = `
-        <td><strong>${c.canal}</strong></td>
-        <td>S/. ${c.ventas.toFixed(2)}</td>
-        <td>S/. ${c.costo.toFixed(2)}</td>
-        <td>S/. ${c.margen.toFixed(2)}</td>
-        <td>${c.margen_pct}%</td>
-        <td>${c.items}</td>
-        <td>S/. ${c.ticket_prom.toFixed(2)}</td>
-      `;
-      tbody.appendChild(row);
-    });
-  } catch (err) {
-    console.error('Error:', err);
-  }
-}
-
-async function loadMeses() {
-  try {
-    const meses = await fetch(`${API_BASE}/analytics/meses`).then(r => r.json());
-    const tbody = document.getElementById('tbl-meses-body');
-    if (!tbody) return;
-
-    tbody.innerHTML = '';
-    meses.forEach(m => {
-      const row = document.createElement('tr');
-      row.innerHTML = `
-        <td>${m.mes}</td>
-        <td>S/. ${m.ventas.toFixed(2)}</td>
-        <td>S/. ${m.costo.toFixed(2)}</td>
-        <td>S/. ${m.margen.toFixed(2)}</td>
-        <td>${m.margen_pct}%</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      `;
-      tbody.appendChild(row);
-    });
-  } catch (err) {
-    console.error('Error:', err);
-  }
-}
-
-async function loadDetalle() {
-  try {
-    const ventas = await fetch(`${API_BASE}/ventas`).then(r => r.json());
-    const tbody = document.getElementById('tbl-detalle-body');
-    if (!tbody) return;
-
-    tbody.innerHTML = '';
-    ventas.forEach(v => {
-      const row = document.createElement('tr');
-      const margenPct = v.total_venta > 0 ? ((v.margen / v.total_venta) * 100).toFixed(2) : 0;
-      row.innerHTML = `
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>${v.canal}</td>
-        <td>${new Date(v.fecha).toLocaleDateString('es-ES')}</td>
-        <td>${v.modelo || '-'}</td>
-        <td>${v.marca || '-'}</td>
-        <td>${v.cantidad || 1}</td>
-        <td>S/. ${v.precio_venta.toFixed(2)}</td>
-        <td>S/. ${(v.costo || 0).toFixed(2)}</td>
-        <td>S/. ${(v.margen || 0).toFixed(2)}</td>
-        <td>${margenPct}%</td>
-        <td>${v.medio_pago || '-'}</td>
-        <td><button onclick="if(confirm('¿Eliminar?')) fetch(\`${API_BASE}/ventas/${v.id}\`, {method:'DELETE'}).then(()=>loadDetalle())">🗑️</button></td>
-      `;
-      tbody.appendChild(row);
-    });
-  } catch (err) {
-    console.error('Error:', err);
-  }
-}
-
-async function loadMarcas() {
-  try {
-    const ventas = await fetch(`${API_BASE}/ventas`).then(r => r.json());
-    const tbody = document.getElementById('tbl-marcas-body');
-    if (!tbody) return;
-
-    const marcas = {};
-    ventas.forEach(v => {
-      if (!marcas[v.marca]) marcas[v.marca] = { ventas: 0, items: 0 };
-      marcas[v.marca].ventas += v.total_venta || 0;
-      marcas[v.marca].items++;
-    });
-
-    tbody.innerHTML = '';
-    Object.entries(marcas).forEach(([marca, data]) => {
-      const row = document.createElement('tr');
-      row.innerHTML = `
-        <td><strong>${marca || 'N/A'}</strong></td>
-        <td>S/. 0</td>
-        <td>S/. ${data.ventas.toFixed(2)}</td>
-        <td>S/. ${(data.ventas * 0.6).toFixed(2)}</td>
-        <td>S/. ${(data.ventas * 0.4).toFixed(2)}</td>
-        <td>0%</td>
-        <td>0%</td>
-        <td>${data.items}</td>
-      `;
-      tbody.appendChild(row);
-    });
-  } catch (err) {
-    console.error('Error:', err);
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// PROYECTOS
-// ═══════════════════════════════════════════════════════════════
 async function loadProyectos() {
   try {
-    const proyectos = await fetch(`${API_BASE}/proyectos`).then(r => r.json());
+    const proyectos = await fetch(`${RV_API}/proyectos`).then(r => r.json());
     const tbody = document.getElementById('tbl-proyectos-body');
     if (!tbody) return;
 
+    if (!Array.isArray(proyectos)) {
+      console.error('[PROYECTOS] Respuesta inesperada:', proyectos);
+      return;
+    }
+
+    // KPIs
+    const activos = proyectos.filter(p => p.estado === 'pendiente' || p.estado === 'en_proceso').length;
+    const total = proyectos.reduce((s, p) => s + rvNum(p.monto_total), 0);
+    const ejec = proyectos.reduce((s, p) => s + rvNum(p.monto_ejecutado), 0);
+    const elC = document.getElementById('kpi-proy-count');
+    const elT = document.getElementById('kpi-proy-total');
+    const elE = document.getElementById('kpi-proy-ejec');
+    const elP = document.getElementById('kpi-proy-ejec-pct');
+    if (elC) elC.textContent = activos;
+    if (elT) elT.textContent = rvMoney(total);
+    if (elE) elE.textContent = rvMoney(ejec);
+    if (elP) elP.textContent = total > 0 ? ((ejec / total) * 100).toFixed(1) + '% de avance global' : 'sin órdenes';
+
     tbody.innerHTML = '';
+    if (proyectos.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:20px">Sin proyectos registrados. Usa ➕ Nuevo Proyecto.</td></tr>';
+      return;
+    }
+
     proyectos.forEach(p => {
+      const mTotal = rvNum(p.monto_total);
+      const mEjec = rvNum(p.monto_ejecutado);
+      const pct = mTotal > 0 ? ((mEjec / mTotal) * 100).toFixed(0) : 0;
+      const color = RV_ESTADO_COLOR[p.estado] || '#455a64';
       const row = document.createElement('tr');
-      const pct = p.monto_total > 0 ? ((p.monto_ejecutado / p.monto_total) * 100).toFixed(0) : 0;
       row.innerHTML = `
-        <td><strong>${p.numero_oc}</strong></td>
-        <td>${p.cliente}</td>
-        <td>${new Date(p.fecha_oc).toLocaleDateString('es-ES')}</td>
-        <td>S/. ${p.monto_total.toFixed(2)}</td>
-        <td>S/. ${p.monto_ejecutado.toFixed(2)} (${pct}%)</td>
-        <td>${p.estado}</td>
+        <td><strong>${rvEsc(p.numero_oc)}</strong></td>
+        <td>${rvEsc(p.cliente)}</td>
+        <td>${rvDate(p.fecha_oc)}</td>
+        <td>${rvMoney(mTotal)}</td>
+        <td>${rvMoney(mEjec)} <span style="color:#777;font-size:11px">(${pct}%)</span></td>
+        <td><span style="background:${color}22;color:${color};padding:3px 8px;border-radius:10px;font-size:11px;font-weight:600">${rvEsc(p.estado)}</span></td>
         <td>
-          ${p.ruta_oc ? `<button onclick="viewFile('${p.ruta_oc}')">📄 Ver</button>` : '❌'}
-          <button onclick="uploadFile(${p.id}, 'proyectos', 'proyectos')" style="padding:4px 8px;background:#0066cc;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">📤</button>
+          ${p.ruta_oc ? `<button onclick="viewFile('${p.ruta_oc}','OC ${rvEsc(p.numero_oc)}')" style="padding:4px 8px;background:#eceff1;border:1px solid #d8dde3;border-radius:4px;cursor:pointer;font-size:11px">📄 Ver</button>` : '<span style="color:#bbb">—</span>'}
+          <button onclick="uploadFile(${p.id}, 'proyectos', 'proyectos')" title="Subir/reemplazar OC" style="padding:4px 8px;background:#1565c0;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">📤</button>
         </td>
-        <td>
-          <button onclick="if(confirm('¿Eliminar?')) fetch(\`${API_BASE}/proyectos/${p.id}\`, {method:'DELETE'}).then(()=>loadProyectos())">🗑️</button>
+        <td style="white-space:nowrap">
+          <button onclick="editProyecto(${p.id})" title="Editar" style="padding:4px 8px;background:#eceff1;border:1px solid #d8dde3;border-radius:4px;cursor:pointer;font-size:11px">✏️</button>
+          <button onclick="deleteProyecto(${p.id})" title="Eliminar" style="padding:4px 8px;background:#fdecea;color:#c0392b;border:1px solid #f5c6cb;border-radius:4px;cursor:pointer;font-size:11px">🗑️</button>
         </td>
       `;
       tbody.appendChild(row);
     });
+    window.RV_PROYECTOS = proyectos;
+    console.log('[PROYECTOS] ✓', proyectos.length, 'registros');
   } catch (err) {
-    console.error('Error:', err);
+    console.error('[PROYECTOS] ERROR:', err);
   }
 }
 
 function openAddProyecto() {
-  const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
-  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999';
-  modal.innerHTML = `
-    <div style="background:#fff;border-radius:8px;padding:20px;width:90%;max-width:500px;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
-      <h3 style="margin:0 0 16px 0">➕ Nuevo Proyecto / OC</h3>
-      <input type="text" id="proy-oc" placeholder="Número OC" required style="width:100%;padding:8px;margin:8px 0;border:1px solid #ddd;border-radius:4px" />
-      <input type="date" id="proy-fecha" required style="width:100%;padding:8px;margin:8px 0;border:1px solid #ddd;border-radius:4px" />
-      <input type="text" id="proy-cliente" placeholder="Cliente" required style="width:100%;padding:8px;margin:8px 0;border:1px solid #ddd;border-radius:4px" />
-      <textarea id="proy-desc" placeholder="Descripción" rows="3" style="width:100%;padding:8px;margin:8px 0;border:1px solid #ddd;border-radius:4px"></textarea>
-      <input type="number" id="proy-monto" placeholder="Monto Total" step="0.01" required style="width:100%;padding:8px;margin:8px 0;border:1px solid #ddd;border-radius:4px" />
-      <label style="display:block;margin:12px 0 8px 0;font-weight:600">📎 OC (PDF):</label>
-      <input type="file" id="proy-file" accept=".pdf" required style="width:100%;padding:8px;margin:8px 0;border:1px solid #ddd;border-radius:4px" />
-      <div style="display:flex;gap:8px;margin-top:16px">
-        <button onclick="saveProyecto()" style="flex:1;padding:10px;background:#198c35;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600">💾 Guardar</button>
-        <button onclick="this.closest('.modal-overlay').remove()" style="flex:1;padding:10px;background:#ccc;color:#000;border:none;border-radius:4px;cursor:pointer">Cancelar</button>
-      </div>
+  rvModal(`
+    <h3 style="margin:0 0 12px 0">➕ Nuevo Proyecto / OC</h3>
+    <label style="${RV_LABEL}">Número OC *</label>
+    <input type="text" id="proy-oc" placeholder="Ej: OC-2026-001" style="${RV_INPUT}" />
+    <label style="${RV_LABEL}">Fecha OC *</label>
+    <input type="date" id="proy-fecha" style="${RV_INPUT}" />
+    <label style="${RV_LABEL}">Cliente *</label>
+    <input type="text" id="proy-cliente" placeholder="Razón social del cliente" style="${RV_INPUT}" />
+    <label style="${RV_LABEL}">Descripción</label>
+    <textarea id="proy-desc" rows="2" placeholder="Detalle del proyecto" style="${RV_INPUT}"></textarea>
+    <label style="${RV_LABEL}">Monto Total (S/.) *</label>
+    <input type="number" id="proy-monto" placeholder="0.00" step="0.01" min="0" style="${RV_INPUT}" />
+    <label style="${RV_LABEL}">📎 Archivo OC (PDF, opcional)</label>
+    <input type="file" id="proy-file" accept=".pdf,.xml,.jpg,.png" style="${RV_INPUT}" />
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button onclick="saveProyecto()" style="flex:1;padding:10px;background:#198c35;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:600">💾 Guardar</button>
+      <button onclick="closeRvModal()" style="flex:1;padding:10px;background:#eceff1;color:#333;border:none;border-radius:5px;cursor:pointer">Cancelar</button>
     </div>
-  `;
-  document.body.appendChild(modal);
-  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  `);
+  document.getElementById('proy-fecha').value = new Date().toISOString().slice(0, 10);
 }
 
 async function saveProyecto() {
+  const oc = document.getElementById('proy-oc').value.trim();
+  const fecha = document.getElementById('proy-fecha').value;
+  const cliente = document.getElementById('proy-cliente').value.trim();
+  const monto = document.getElementById('proy-monto').value;
+
+  if (!oc) { alert('❌ Ingresa el número de OC'); return; }
+  if (!fecha) { alert('❌ Selecciona la fecha'); return; }
+  if (!cliente) { alert('❌ Ingresa el cliente'); return; }
+  if (!monto || rvNum(monto) <= 0) { alert('❌ Ingresa un monto válido'); return; }
+
   const formData = new FormData();
-  formData.append('numero_oc', document.getElementById('proy-oc').value);
-  formData.append('fecha_oc', document.getElementById('proy-fecha').value);
-  formData.append('cliente', document.getElementById('proy-cliente').value);
-  formData.append('descripcion', document.getElementById('proy-desc').value);
-  formData.append('monto_total', document.getElementById('proy-monto').value);
-  formData.append('ruta_oc', document.getElementById('proy-file').files[0]);
+  formData.append('numero_oc', oc);
+  formData.append('fecha_oc', fecha);
+  formData.append('cliente', cliente);
+  formData.append('descripcion', document.getElementById('proy-desc').value.trim());
+  formData.append('monto_total', monto);
+  const file = document.getElementById('proy-file').files[0];
+  if (file) formData.append('ruta_oc', file);
 
   try {
-    const response = await fetch(`${API_BASE}/proyectos`, {
-      method: 'POST',
-      body: formData
-    });
+    const response = await fetch(`${RV_API}/proyectos`, { method: 'POST', body: formData });
+    const data = await response.json().catch(() => ({}));
     if (response.ok) {
       alert('✅ Proyecto creado');
-      document.querySelector('.modal-overlay').remove();
+      closeRvModal();
       loadProyectos();
+    } else {
+      const msg = (data.error || '').includes('Duplicate') ? 'Ya existe un proyecto con ese número de OC' : (data.error || 'Error del servidor');
+      alert('❌ ' + msg);
     }
   } catch (err) {
-    alert('Error: ' + err.message);
+    alert('❌ Error: ' + err.message);
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-// GASTOS FIJOS
-// ═══════════════════════════════════════════════════════════════
-async function loadGastosFijos() {
+function editProyecto(id) {
+  const p = (window.RV_PROYECTOS || []).find(x => x.id === id);
+  if (!p) return;
+  const opts = RV_ESTADOS.map(e => `<option value="${e}" ${p.estado === e ? 'selected' : ''}>${e}</option>`).join('');
+  rvModal(`
+    <h3 style="margin:0 0 12px 0">✏️ Editar Proyecto — ${rvEsc(p.numero_oc)}</h3>
+    <label style="${RV_LABEL}">Cliente</label>
+    <input type="text" id="ep-cliente" value="${rvEsc(p.cliente)}" style="${RV_INPUT}" />
+    <label style="${RV_LABEL}">Descripción</label>
+    <textarea id="ep-desc" rows="2" style="${RV_INPUT}">${rvEsc(p.descripcion || '')}</textarea>
+    <label style="${RV_LABEL}">Monto Total (S/.)</label>
+    <input type="number" id="ep-total" value="${rvNum(p.monto_total)}" step="0.01" min="0" style="${RV_INPUT}" />
+    <label style="${RV_LABEL}">Monto Ejecutado (S/.) — avance del proyecto</label>
+    <input type="number" id="ep-ejec" value="${rvNum(p.monto_ejecutado)}" step="0.01" min="0" style="${RV_INPUT}" />
+    <label style="${RV_LABEL}">Estado</label>
+    <select id="ep-estado" style="${RV_INPUT}">${opts}</select>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button onclick="saveEditProyecto(${id})" style="flex:1;padding:10px;background:#198c35;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:600">💾 Actualizar</button>
+      <button onclick="closeRvModal()" style="flex:1;padding:10px;background:#eceff1;color:#333;border:none;border-radius:5px;cursor:pointer">Cancelar</button>
+    </div>
+  `);
+}
+
+async function saveEditProyecto(id) {
+  const total = rvNum(document.getElementById('ep-total').value);
+  const ejec = rvNum(document.getElementById('ep-ejec').value);
+  if (ejec > total) { alert('⚠️ El monto ejecutado no puede superar el monto total'); return; }
+
+  const formData = new FormData();
+  formData.append('cliente', document.getElementById('ep-cliente').value.trim());
+  formData.append('descripcion', document.getElementById('ep-desc').value.trim());
+  formData.append('monto_total', total);
+  formData.append('monto_ejecutado', ejec);
+  formData.append('estado', document.getElementById('ep-estado').value);
+
   try {
-    const gastos = await fetch(`${API_BASE}/gastos-fijos`).then(r => r.json());
-    const tbody = document.getElementById('tbl-gastos-fijos-body');
-    if (!tbody) return;
-
-    tbody.innerHTML = '';
-    gastos.forEach(g => {
-      const row = document.createElement('tr');
-      row.innerHTML = `
-        <td>${g.ano}</td>
-        <td>${g.mes}</td>
-        <td>${g.descripcion}</td>
-        <td>S/. ${g.monto || 0}</td>
-        <td>
-          ${g.ruta_comprobante ? `<button onclick="viewFile('${g.ruta_comprobante}')">📄</button>` : '❌'}
-          <button onclick="uploadFile(${g.id}, 'gastos-fijos', 'gastos-fijos')" style="padding:4px 8px;background:#0066cc;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">📤</button>
-        </td>
-        <td>
-          <button onclick="if(confirm('¿Eliminar?')) fetch(\`${API_BASE}/gastos-fijos/${g.id}\`, {method:'DELETE'}).then(()=>loadGastosFijos())">🗑️</button>
-        </td>
-      `;
-      tbody.appendChild(row);
-    });
+    const response = await fetch(`${RV_API}/proyectos/${id}`, { method: 'PUT', body: formData });
+    if (response.ok) {
+      alert('✅ Proyecto actualizado');
+      closeRvModal();
+      loadProyectos();
+    } else {
+      const data = await response.json().catch(() => ({}));
+      alert('❌ ' + (data.error || 'Error del servidor'));
+    }
   } catch (err) {
-    console.error('Error:', err);
+    alert('❌ Error: ' + err.message);
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-// PAGOS PENDIENTES
-// ═══════════════════════════════════════════════════════════════
-async function loadPagosPendientes() {
+async function deleteProyecto(id) {
+  if (!confirm('¿Eliminar este proyecto?')) return;
   try {
-    const pagos = await fetch(`${API_BASE}/pagos-pendientes`).then(r => r.json());
-    const tbody = document.getElementById('tbl-pagos-body');
-    if (!tbody) return;
-
-    tbody.innerHTML = '';
-    pagos.forEach(p => {
-      const row = document.createElement('tr');
-      row.innerHTML = `
-        <td>Factura #${p.factura_id}</td>
-        <td>S/. ${p.monto.toFixed(2)}</td>
-        <td>${new Date(p.fecha_vencimiento).toLocaleDateString('es-ES')}</td>
-        <td>${p.estado}</td>
-        <td>
-          ${p.ruta_comprobante_pago ? `<button onclick="viewFile('${p.ruta_comprobante_pago}')">📄</button>` : '❌'}
-          ${p.estado === 'pendiente' ? `<button onclick="uploadFile(${p.id}, 'pagos', 'pagos-pendientes')" style="padding:4px 8px;background:#0066cc;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">📤 Pagar</button>` : ''}
-        </td>
-        <td>
-          <button onclick="if(confirm('¿Eliminar?')) fetch(\`${API_BASE}/pagos-pendientes/${p.id}\`, {method:'DELETE'}).then(()=>loadPagosPendientes())">🗑️</button>
-        </td>
-      `;
-      tbody.appendChild(row);
-    });
+    await fetch(`${RV_API}/proyectos/${id}`, { method: 'DELETE' });
+    loadProyectos();
   } catch (err) {
-    console.error('Error:', err);
+    alert('❌ Error: ' + err.message);
   }
 }
 
 // ═══════════════════════════════════════════════════════════════
-// PLANILLA
+// PLANILLA (Base de datos)
+// Fórmula: Neto = Sueldo + Bonificación − Descuentos
 // ═══════════════════════════════════════════════════════════════
+const RV_MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
 async function loadPlanilla() {
   try {
-    const planilla = await fetch(`${API_BASE}/planilla`).then(r => r.json());
+    const planilla = await fetch(`${RV_API}/planilla`).then(r => r.json());
     const tbody = document.getElementById('tbl-planilla-body');
     if (!tbody) return;
+    if (!Array.isArray(planilla)) return;
 
     tbody.innerHTML = '';
+    if (planilla.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:20px">Sin registros. Usa ➕ Agregar Empleado.</td></tr>';
+      return;
+    }
+
     planilla.forEach(p => {
       const row = document.createElement('tr');
       row.innerHTML = `
         <td>${p.ano}</td>
-        <td>${p.mes}</td>
-        <td>${p.empleado}</td>
-        <td>S/. ${p.sueldo || 0}</td>
-        <td>S/. ${p.bonificacion || 0}</td>
-        <td>S/. ${p.descuentos || 0}</td>
-        <td><strong>S/. ${p.neto || 0}</strong></td>
+        <td>${RV_MESES[p.mes] || p.mes}</td>
+        <td><strong>${rvEsc(p.empleado)}</strong></td>
+        <td>${rvMoney(p.sueldo)}</td>
+        <td>${rvMoney(p.bonificacion)}</td>
+        <td style="color:#c0392b">${rvMoney(p.descuentos)}</td>
+        <td><strong style="color:#198c35">${rvMoney(p.neto)}</strong></td>
         <td>
-          ${p.ruta_recibo ? `<button onclick="viewFile('${p.ruta_recibo}')">📄</button>` : '❌'}
-          <button onclick="uploadFile(${p.id}, 'planilla', 'planilla')" style="padding:4px 8px;background:#0066cc;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">📤</button>
+          ${p.ruta_recibo ? `<button onclick="viewFile('${p.ruta_recibo}','Recibo ${rvEsc(p.empleado)}')" style="padding:4px 8px;background:#eceff1;border:1px solid #d8dde3;border-radius:4px;cursor:pointer;font-size:11px">📄</button>` : '<span style="color:#bbb">—</span>'}
+          <button onclick="uploadFile(${p.id}, 'planilla', 'planilla')" title="Subir recibo" style="padding:4px 8px;background:#1565c0;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">📤</button>
         </td>
-        <td>
-          <button onclick="if(confirm('¿Eliminar?')) fetch(\`${API_BASE}/planilla/${p.id}\`, {method:'DELETE'}).then(()=>loadPlanilla())">🗑️</button>
+        <td style="white-space:nowrap">
+          <button onclick="editPlanilla(${p.id})" style="padding:4px 8px;background:#eceff1;border:1px solid #d8dde3;border-radius:4px;cursor:pointer;font-size:11px">✏️</button>
+          <button onclick="deletePlanilla(${p.id})" style="padding:4px 8px;background:#fdecea;color:#c0392b;border:1px solid #f5c6cb;border-radius:4px;cursor:pointer;font-size:11px">🗑️</button>
         </td>
       `;
       tbody.appendChild(row);
     });
+    window.RV_PLANILLA = planilla;
+    console.log('[PLANILLA] ✓', planilla.length, 'registros');
   } catch (err) {
-    console.error('Error:', err);
+    console.error('[PLANILLA] ERROR:', err);
+  }
+}
+
+function rvPlanillaForm(p) {
+  const now = new Date();
+  const mesOpts = RV_MESES.map((m, i) => i === 0 ? '' : `<option value="${i}" ${(p ? p.mes : now.getMonth() + 1) === i ? 'selected' : ''}>${m}</option>`).join('');
+  return `
+    <div style="display:flex;gap:8px">
+      <div style="flex:1"><label style="${RV_LABEL}">Mes *</label><select id="pl-mes" style="${RV_INPUT}">${mesOpts}</select></div>
+      <div style="flex:1"><label style="${RV_LABEL}">Año *</label><input type="number" id="pl-ano" value="${p ? p.ano : now.getFullYear()}" min="2020" max="2100" style="${RV_INPUT}" /></div>
+    </div>
+    <label style="${RV_LABEL}">Empleado *</label>
+    <input type="text" id="pl-emp" value="${p ? rvEsc(p.empleado) : ''}" placeholder="Nombre completo" style="${RV_INPUT}" ${p ? 'readonly' : ''} />
+    <div style="display:flex;gap:8px">
+      <div style="flex:1"><label style="${RV_LABEL}">Sueldo (S/.)</label><input type="number" id="pl-sueldo" value="${p ? rvNum(p.sueldo) : ''}" step="0.01" min="0" oninput="rvCalcNeto()" style="${RV_INPUT}" /></div>
+      <div style="flex:1"><label style="${RV_LABEL}">Bonificación</label><input type="number" id="pl-bonif" value="${p ? rvNum(p.bonificacion) : 0}" step="0.01" min="0" oninput="rvCalcNeto()" style="${RV_INPUT}" /></div>
+      <div style="flex:1"><label style="${RV_LABEL}">Descuentos</label><input type="number" id="pl-desc" value="${p ? rvNum(p.descuentos) : 0}" step="0.01" min="0" oninput="rvCalcNeto()" style="${RV_INPUT}" /></div>
+    </div>
+    <div style="background:#ebf7ee;padding:10px;border-radius:5px;margin-top:10px;text-align:center">
+      <span style="font-size:12px;color:#455a64">NETO A PAGAR (sueldo + bonif − desc):</span>
+      <strong id="pl-neto-preview" style="font-size:18px;color:#198c35;margin-left:8px">S/. 0.00</strong>
+    </div>
+  `;
+}
+
+function rvCalcNeto() {
+  const s = rvNum(document.getElementById('pl-sueldo')?.value);
+  const b = rvNum(document.getElementById('pl-bonif')?.value);
+  const d = rvNum(document.getElementById('pl-desc')?.value);
+  const el = document.getElementById('pl-neto-preview');
+  if (el) el.textContent = rvMoney(s + b - d);
+}
+
+function openAddPlanilla() {
+  rvModal(`
+    <h3 style="margin:0 0 12px 0">➕ Agregar a Planilla</h3>
+    ${rvPlanillaForm(null)}
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button onclick="savePlanilla(null)" style="flex:1;padding:10px;background:#198c35;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:600">💾 Guardar</button>
+      <button onclick="closeRvModal()" style="flex:1;padding:10px;background:#eceff1;color:#333;border:none;border-radius:5px;cursor:pointer">Cancelar</button>
+    </div>
+  `);
+  rvCalcNeto();
+}
+
+function editPlanilla(id) {
+  const p = (window.RV_PLANILLA || []).find(x => x.id === id);
+  if (!p) return;
+  rvModal(`
+    <h3 style="margin:0 0 12px 0">✏️ Editar Planilla — ${rvEsc(p.empleado)}</h3>
+    ${rvPlanillaForm(p)}
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button onclick="savePlanilla(${id})" style="flex:1;padding:10px;background:#198c35;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:600">💾 Actualizar</button>
+      <button onclick="closeRvModal()" style="flex:1;padding:10px;background:#eceff1;color:#333;border:none;border-radius:5px;cursor:pointer">Cancelar</button>
+    </div>
+  `);
+  rvCalcNeto();
+}
+
+async function savePlanilla(id) {
+  const emp = document.getElementById('pl-emp').value.trim();
+  const mes = document.getElementById('pl-mes').value;
+  const ano = document.getElementById('pl-ano').value;
+  if (!emp) { alert('❌ Ingresa el nombre del empleado'); return; }
+  if (!mes) { alert('❌ Selecciona el mes'); return; }
+
+  const formData = new FormData();
+  formData.append('mes', mes);
+  formData.append('ano', ano);
+  formData.append('empleado', emp);
+  formData.append('sueldo', rvNum(document.getElementById('pl-sueldo').value));
+  formData.append('bonificacion', rvNum(document.getElementById('pl-bonif').value));
+  formData.append('descuentos', rvNum(document.getElementById('pl-desc').value));
+
+  try {
+    const url = id ? `${RV_API}/planilla/${id}` : `${RV_API}/planilla`;
+    const response = await fetch(url, { method: id ? 'PUT' : 'POST', body: formData });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok) {
+      alert('✅ Planilla guardada. Neto: ' + (data.neto ? rvMoney(data.neto) : ''));
+      closeRvModal();
+      loadPlanilla();
+    } else {
+      alert('❌ ' + (data.error || 'Error del servidor'));
+    }
+  } catch (err) {
+    alert('❌ Error: ' + err.message);
+  }
+}
+
+async function deletePlanilla(id) {
+  if (!confirm('¿Eliminar este registro de planilla?')) return;
+  try {
+    await fetch(`${RV_API}/planilla/${id}`, { method: 'DELETE' });
+    loadPlanilla();
+  } catch (err) {
+    alert('❌ Error: ' + err.message);
   }
 }
 
 // ═══════════════════════════════════════════════════════════════
-// INITIALIZE
+// INTEGRACIÓN CON LA NAVEGACIÓN DEL SISTEMA PRINCIPAL
+// Envuelve goPage (sin reemplazar su lógica) para cargar los
+// módulos API cuando se visitan sus páginas.
 // ═══════════════════════════════════════════════════════════════
-window.addEventListener('load', () => {
-  if (currentUser) {
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-    document.getElementById('hdr-user').textContent = `👤 ${currentUser}`;
-    updateDateTime();
-    loadDashboard();
+(function integrarNavegacion() {
+  if (typeof window.goPage === 'function') {
+    const goPageOriginal = window.goPage;
+    window.goPage = function (id) {
+      goPageOriginal(id);
+      if (id === 'proyectos') loadProyectos();
+      if (id === 'planilla') loadPlanilla();
+    };
+    console.log('[RV-API] ✓ Navegación integrada (proyectos, planilla)');
+  } else {
+    console.warn('[RV-API] goPage del sistema principal no encontrado');
   }
-});
+})();
+
+console.log('[RV-API] ✓ Módulos API cargados sin conflictos');
