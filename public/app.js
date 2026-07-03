@@ -874,8 +874,8 @@ function rvSimTokens(modelo, desc) {
   });
   return hit / mt.length;
 }
-// Busca el costo (precio de compra unitario) del producto con ≥80% de similitud
-function rvBuscarCostoCompra(modelo, marca) {
+// Devuelve el mejor match de compra (≥80% similitud) con detalle: {costo, prov, desc, sim}
+function rvBuscarCostoDetalle(modelo, marca) {
   if (typeof COMPRAS_DATA === 'undefined' || !modelo) return null;
   const mk = rvNorm(marca);
   const codeM = (typeof extractModelCode === 'function') ? extractModelCode(modelo) : '';
@@ -884,17 +884,42 @@ function rvBuscarCostoCompra(modelo, marca) {
     const unit = rvCostoUnitCompra(c);
     if (unit <= 0) return;
     let sim = rvSimTokens(modelo, c.desc);
-    // Código de modelo idéntico = coincidencia total
     if (codeM) {
       const codeD = (typeof extractModelCode === 'function') ? extractModelCode(c.desc) : '';
       if (codeD && codeD.toUpperCase() === codeM.toUpperCase()) sim = Math.max(sim, 1);
     }
-    // Penaliza si las marcas están presentes y son distintas (evita cruzar marcas)
     const cMarca = rvNorm(c.marca);
     if (mk && cMarca && mk !== cMarca) sim *= 0.5;
-    if (sim > bestSim) { bestSim = sim; best = unit; }
+    if (sim > bestSim) { bestSim = sim; best = { costo: unit, prov: c.prov || '', desc: c.desc || '', marca: c.marca || '', sim: sim }; }
   });
-  return bestSim >= 0.8 ? best : null; // umbral de 80% de similitud
+  return (best && bestSim >= 0.8) ? best : null; // umbral 80%
+}
+function rvBuscarCostoCompra(modelo, marca) {
+  const d = rvBuscarCostoDetalle(modelo, marca);
+  return d ? d.costo : null;
+}
+
+// ── Overrides de costo para datos preexistentes/históricos ──
+// Los costos completados se guardan por firma de venta y se re-aplican en cada
+// reconstrucción (rvRebuildTxns), así persisten (se respaldan en la BD).
+function rvSigVenta(r) {
+  return [rvNorm(r.modelo), rvNorm(r.marca), r.fecha || r.mes || '', rvNum(r.venta)].join('|');
+}
+function rvCostosOverride() {
+  try { return JSON.parse(localStorage.getItem('rv_costos_override') || '{}'); } catch (e) { return {}; }
+}
+function rvAplicarOverridesCostos() {
+  if (typeof TXNS_DATA === 'undefined') return;
+  const ov = rvCostosOverride();
+  if (!Object.keys(ov).length) return;
+  TXNS_DATA.forEach(t => {
+    const sig = rvSigVenta(t);
+    if (ov[sig] != null && !(rvNum(t.costo) > 0)) {
+      t.costo = rvNum(ov[sig]);
+      t.margen = rvNum(t.venta) - t.costo;
+      t.margen_pct = t.venta ? (t.margen / t.venta * 100) : 0;
+    }
+  });
 }
 // Conecta el auto-costo al modal de venta individual (v-modelo/v-marca → v-costo)
 function rvWireAutoCosto() {
@@ -931,6 +956,66 @@ function rvAutoCostoLinea(inputModelo) {
     costoInp.title = 'Costo tomado del precio de compra';
     if (typeof rvCorpCalc === 'function') rvCorpCalc();
   }
+}
+
+// ── Completar costos de ventas PREEXISTENTES desde compras (con vista previa) ──
+function rvCompletarCostos() {
+  const rows = (typeof getDetalleData === 'function') ? getDetalleData() : [];
+  const sinCosto = rows.filter(r => rvNum(r.venta) > 0 && !(rvNum(r.costo) > 0));
+  const cands = [];
+  sinCosto.forEach(r => { const m = rvBuscarCostoDetalle(r.modelo, r.marca); if (m) cands.push({ r, m }); });
+  if (cands.length === 0) {
+    alert(sinCosto.length === 0 ? '✓ Todas las ventas ya tienen costo.' : 'No se encontró compra con ≥80% de similitud para las ' + sinCosto.length + ' ventas sin costo.');
+    return;
+  }
+  window.__rvCandCostos = cands;
+  const filas = cands.slice(0, 400).map(x => `<tr>
+    <td style="font-size:11px">${rvEsc(x.r.modelo || '—')}</td>
+    <td style="font-size:11px">${rvEsc(x.r.marca || '—')}</td>
+    <td style="font-size:11px;text-align:right">${rvMoney(x.r.venta)}</td>
+    <td style="font-size:11px;text-align:right;color:#198c35;font-weight:600">${rvMoney(x.m.costo)}</td>
+    <td style="font-size:10px;color:#666">${rvEsc(x.m.prov)} · ${(x.m.sim * 100).toFixed(0)}%</td>
+  </tr>`).join('');
+  rvModal(`
+    <h3 style="margin:0 0 10px 0">🔧 Completar costos desde compras</h3>
+    <div style="font-size:12px;color:#455a64;margin-bottom:10px">Se encontró el costo (precio de compra) para <b>${cands.length}</b> venta(s) sin costo, con ≥80% de similitud. Revisa y aplica:</div>
+    <div style="overflow:auto;max-height:52vh"><table style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:#0f2540;color:#fff;font-size:11px"><th style="padding:5px">Producto</th><th>Marca</th><th style="text-align:right">Venta</th><th style="text-align:right">Costo hallado</th><th>Origen (compra · match)</th></tr></thead>
+      <tbody>${filas}</tbody>
+    </table></div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button onclick="rvAplicarCostos()" style="flex:1;padding:10px;background:#198c35;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:600">✓ Aplicar a ${cands.length} venta(s)</button>
+      <button onclick="closeRvModal()" style="flex:1;padding:10px;background:#eceff1;color:#333;border:none;border-radius:5px;cursor:pointer">Cancelar</button>
+    </div>
+  `, 780);
+}
+function rvAplicarCostos() {
+  const cands = window.__rvCandCostos || [];
+  const ov = rvCostosOverride();
+  cands.forEach(({ r, m }) => {
+    r.costo = m.costo;
+    r.margen = rvNum(r.venta) - r.costo;
+    r.margen_pct = r.venta ? (r.margen / r.venta * 100) : 0;
+    ov[rvSigVenta(r)] = m.costo;
+  });
+  localStorage.setItem('rv_costos_override', JSON.stringify(ov)); // se respalda en la BD
+  closeRvModal();
+  try { if (typeof recomputeSeedTotals === 'function') recomputeSeedTotals(); } catch (e) {}
+  try { if (typeof renderAll === 'function') renderAll(); } catch (e) {}
+  try { if (typeof initCharts === 'function') setTimeout(initCharts, 100); } catch (e) {}
+  if (typeof showToast === 'function') showToast('✓ Costos completados: ' + cands.length + ' ventas');
+}
+function rvInyectarBotonCostos() {
+  const page = document.getElementById('page-detalle');
+  if (!page || document.getElementById('rv-btn-costos')) return;
+  const b = document.createElement('button');
+  b.id = 'rv-btn-costos';
+  b.className = 'btn btn-outline';
+  b.style.cssText = 'margin:10px 0 10px 8px;font-size:12px';
+  b.textContent = '🔧 Completar costos desde compras';
+  b.onclick = rvCompletarCostos;
+  const a = page.querySelector('.page-sub') || page.querySelector('.page-title');
+  if (a) a.insertAdjacentElement('afterend', b);
 }
 
 function rvCorpLineHTML() {
@@ -1335,6 +1420,7 @@ function rvPersistirCompras() {
         rvDecorarCorp();
         rvDecorarEcommerce();
         rvInyectarBotonAgregar('page-detalle', 'rv-btn-det-add', '➕ Nueva Venta', '');
+        rvInyectarBotonCostos();
         rvInyectarBotonRecalc();
         rvRestaurarCompras();
         rvWireAutoCosto();
@@ -1409,6 +1495,7 @@ async function rvRebuildTxns() {
     }
 
     const nProy = TXNS_DATA.filter(t => t.__proy).length;
+    rvAplicarOverridesCostos();  // re-aplica costos completados a datos históricos
     if (typeof SEED !== 'undefined') SEED.transacciones = TXNS_DATA;
     rvAsegurarMeses();       // crea filas de meses faltantes (hasta el mes real)
     recomputeSeedTotals();   // puebla esos meses desde las transacciones
@@ -1832,8 +1919,8 @@ function rvDecorarPP() {
   envolver('renderInvRepos', () => rvDecorarStock());
   // Pagos pendientes: comprobante por fila
   envolver('renderPPAlq', () => rvDecorarPP());
-  // Detalle por Producto: botón para agregar ventas nuevas (cualquier canal)
-  envolver('filterDetalle', () => rvInyectarBotonAgregar('page-detalle', 'rv-btn-det-add', '➕ Nueva Venta', ''));
+  // Detalle por Producto: botones (agregar venta + completar costos)
+  envolver('filterDetalle', () => { rvInyectarBotonAgregar('page-detalle', 'rv-btn-det-add', '➕ Nueva Venta', ''); rvInyectarBotonCostos(); });
 
   console.log('[RV-EXT2] ✓ Extensiones v7 activas');
 })();
