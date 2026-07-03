@@ -179,7 +179,7 @@ async function loadProyectos() {
 
     tbody.innerHTML = '';
     if (proyectos.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:20px">Sin proyectos registrados. Usa ➕ Nuevo Proyecto.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:20px">Sin proyectos registrados. Usa ➕ Nuevo Proyecto.</td></tr>';
       return;
     }
 
@@ -196,6 +196,7 @@ async function loadProyectos() {
         <td>${rvMoney(mTotal)}</td>
         <td>${rvMoney(mEjec)} <span style="color:#777;font-size:11px">(${pct}%)</span></td>
         <td><span style="background:${color}22;color:${color};padding:3px 8px;border-radius:10px;font-size:11px;font-weight:600">${rvEsc(p.estado)}</span></td>
+        <td>${(p.condicion_pago === 'credito' || p.condicion_pago === 'crédito') ? '<span style="background:#fef3e8;color:#e67e22;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:600">Crédito</span>' : '<span style="background:#ebf7ee;color:#155724;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:600">Contado</span>'}</td>
         <td>
           ${p.ruta_oc ? `<button onclick="viewFile('${p.ruta_oc}','OC ${rvEsc(p.numero_oc)}')" style="padding:4px 8px;background:#eceff1;border:1px solid #d8dde3;border-radius:4px;cursor:pointer;font-size:11px">📄 Ver</button>` : '<span style="color:#bbb">—</span>'}
           <button onclick="uploadFile(${p.id}, 'proyectos', 'proyectos')" title="Subir/reemplazar OC" style="padding:4px 8px;background:#1565c0;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">📤</button>
@@ -231,7 +232,9 @@ function openAddProyecto() {
       <div style="flex:1"><label style="${RV_LABEL}">Monto Ejecutado (S/.)</label><input type="number" id="proy-ejec" placeholder="0.00" step="0.01" min="0" value="0" style="${RV_INPUT}" /></div>
       <div style="flex:1"><label style="${RV_LABEL}">Costo (S/.)</label><input type="number" id="proy-costo" placeholder="0.00" step="0.01" min="0" value="0" style="${RV_INPUT}" /></div>
     </div>
-    <div style="background:#e3f0fb;padding:8px;border-radius:5px;font-size:11px;color:#455a64;margin-top:4px">💡 El <b>monto ejecutado</b> se suma como venta del canal <b>San Isidro</b> en el dashboard y EBITDA. El <b>costo</b> define el margen.</div>
+    <label style="${RV_LABEL}">Condición de pago</label>
+    <select id="proy-cond" style="${RV_INPUT}"><option value="contado">Contado</option><option value="credito">Crédito</option></select>
+    <div style="background:#e3f0fb;padding:8px;border-radius:5px;font-size:11px;color:#455a64;margin-top:4px">💡 El <b>monto ejecutado</b> se suma como venta del canal <b>Proyectos</b> (independiente) en el dashboard y EBITDA. El <b>costo</b> define el margen.</div>
     <label style="${RV_LABEL}">📎 Archivo OC (PDF, opcional)</label>
     <input type="file" id="proy-file" accept=".pdf,.xml,.jpg,.png" style="${RV_INPUT}" />
     <div style="display:flex;gap:8px;margin-top:14px">
@@ -261,6 +264,7 @@ async function saveProyecto() {
   formData.append('monto_total', monto);
   formData.append('monto_ejecutado', rvNum(document.getElementById('proy-ejec').value));
   formData.append('costo', rvNum(document.getElementById('proy-costo').value));
+  formData.append('condicion_pago', document.getElementById('proy-cond').value);
   const file = document.getElementById('proy-file').files[0];
   if (file) formData.append('ruta_oc', file);
 
@@ -297,7 +301,9 @@ function editProyecto(id) {
       <div style="flex:1"><label style="${RV_LABEL}">Monto Ejecutado (S/.)</label><input type="number" id="ep-ejec" value="${rvNum(p.monto_ejecutado)}" step="0.01" min="0" style="${RV_INPUT}" /></div>
       <div style="flex:1"><label style="${RV_LABEL}">Costo (S/.)</label><input type="number" id="ep-costo" value="${rvNum(p.costo)}" step="0.01" min="0" style="${RV_INPUT}" /></div>
     </div>
-    <div style="background:#e3f0fb;padding:8px;border-radius:5px;font-size:11px;color:#455a64;margin-bottom:4px">💡 El monto ejecutado suma como venta de <b>San Isidro</b>; el costo define el margen para EBITDA.</div>
+    <label style="${RV_LABEL}">Condición de pago</label>
+    <select id="ep-cond" style="${RV_INPUT}"><option value="contado" ${(p.condicion_pago !== 'credito' && p.condicion_pago !== 'crédito') ? 'selected' : ''}>Contado</option><option value="credito" ${(p.condicion_pago === 'credito' || p.condicion_pago === 'crédito') ? 'selected' : ''}>Crédito</option></select>
+    <div style="background:#e3f0fb;padding:8px;border-radius:5px;font-size:11px;color:#455a64;margin-bottom:4px">💡 El monto ejecutado suma como venta del canal <b>Proyectos</b> (independiente); el costo define el margen para EBITDA.</div>
     <label style="${RV_LABEL}">Estado</label>
     <select id="ep-estado" style="${RV_INPUT}">${opts}</select>
     <div style="display:flex;gap:8px;margin-top:14px">
@@ -318,6 +324,7 @@ async function saveEditProyecto(id) {
   formData.append('monto_total', total);
   formData.append('monto_ejecutado', ejec);
   formData.append('costo', rvNum(document.getElementById('ep-costo').value));
+  formData.append('condicion_pago', document.getElementById('ep-cond').value);
   formData.append('estado', document.getElementById('ep-estado').value);
 
   try {
@@ -1050,6 +1057,7 @@ async function rvRebuildTxns() {
         tipo_doc: r.tipo_doc || 'MANUAL', serie: r.serie || '', correlativo: r.correlativo || '',
         n_operacion: r.n_operacion || '', modelo: r.modelo || '—', marca: r.marca || '—',
         qty: r.qty || 1, venta, costo, margen: venta - costo,
+        medio_pago: r.condicion || r.medio_pago || '', condicion: r.condicion || '',
         margen_pct: venta > 0 ? ((venta - costo) / venta * 100) : 0, __extra: true
       });
     });
@@ -1061,12 +1069,13 @@ async function rvRebuildTxns() {
         const venta = rvNum(p.monto_ejecutado);
         if (venta <= 0) return;
         const costo = rvNum(p.costo);
+        const cond = (p.condicion_pago === 'credito' || p.condicion_pago === 'crédito') ? 'Crédito' : 'Contado';
         TXNS_DATA.push({
-          canal: 'San Isidro', cliente: p.cliente || 'Proyecto',
+          canal: 'Proyectos', cliente: p.cliente || 'Proyecto',
           mes: (p.fecha_oc || '').slice(0, 7), fecha: (p.fecha_oc || '').slice(0, 10),
           tipo_doc: 'OC', serie: p.numero_oc || '', correlativo: '', n_operacion: p.numero_oc || '',
           modelo: 'Proyecto: ' + (p.descripcion || p.numero_oc || ''), marca: 'Proyectos',
-          qty: 1, venta, costo, margen: venta - costo,
+          qty: 1, venta, costo, margen: venta - costo, medio_pago: cond, condicion: cond,
           margen_pct: venta > 0 ? ((venta - costo) / venta * 100) : 0, __proy: p.id
         });
       });

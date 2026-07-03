@@ -193,6 +193,13 @@ async function migrarColumnaCosto() {
       if (e.code === 'ER_DUP_FIELDNAME') console.log('✓ Columna proyectos.costo ya existe');
       else console.error('migrarColumnaCosto:', e.message);
     }
+    try {
+      await conn.query("ALTER TABLE proyectos ADD COLUMN condicion_pago VARCHAR(20) DEFAULT 'contado'");
+      console.log('✓ Columna proyectos.condicion_pago agregada');
+    } catch (e) {
+      if (e.code === 'ER_DUP_FIELDNAME') console.log('✓ Columna proyectos.condicion_pago ya existe');
+      else console.error('migrar condicion_pago:', e.message);
+    }
     conn.release();
   } catch (err) {
     console.error('✗ migrarColumnaCosto:', err.message);
@@ -435,12 +442,12 @@ app.get('/api/analytics/meses', async (req, res) => {
 // Proyectos
 app.post('/api/proyectos', upload.single('ruta_oc'), async (req, res) => {
   try {
-    const { numero_oc, fecha_oc, cliente, descripcion, monto_total, monto_ejecutado, costo } = req.body;
+    const { numero_oc, fecha_oc, cliente, descripcion, monto_total, monto_ejecutado, costo, condicion_pago } = req.body;
     const ruta_oc = req.file ? `/uploads/${req.file.filename}` : null;
     const conn = await pool.getConnection();
     const result = await conn.execute(
-      'INSERT INTO proyectos (numero_oc, fecha_oc, cliente, descripcion, monto_total, monto_ejecutado, costo, ruta_oc) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [numero_oc, fecha_oc, cliente, descripcion, monto_total, monto_ejecutado || 0, costo || 0, ruta_oc]
+      'INSERT INTO proyectos (numero_oc, fecha_oc, cliente, descripcion, monto_total, monto_ejecutado, costo, condicion_pago, ruta_oc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [numero_oc, fecha_oc, cliente, descripcion, monto_total, monto_ejecutado || 0, costo || 0, condicion_pago || 'contado', ruta_oc]
     );
     conn.release();
     res.json({ id: result[0].insertId, mensaje: 'Proyecto creado' });
@@ -471,9 +478,9 @@ app.put('/api/proyectos/:id', upload.single('ruta_oc'), async (req, res) => {
       conn.release();
       res.json({ id, mensaje: 'Proyecto actualizado' });
     } else {
-      const { cliente, descripcion, monto_total, monto_ejecutado, costo, estado } = req.body;
-      let query = 'UPDATE proyectos SET cliente=?, descripcion=?, monto_total=?, monto_ejecutado=?, costo=?, estado=? WHERE id=?';
-      let params = [cliente, descripcion, monto_total, monto_ejecutado, costo || 0, estado, id];
+      const { cliente, descripcion, monto_total, monto_ejecutado, costo, estado, condicion_pago } = req.body;
+      let query = 'UPDATE proyectos SET cliente=?, descripcion=?, monto_total=?, monto_ejecutado=?, costo=?, estado=?, condicion_pago=? WHERE id=?';
+      let params = [cliente, descripcion, monto_total, monto_ejecutado, costo || 0, estado, condicion_pago || 'contado', id];
       await conn.execute(query, params);
       conn.release();
       res.json({ id, mensaje: 'Proyecto actualizado' });
