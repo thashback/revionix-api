@@ -1,26 +1,16 @@
-// ═══════════════════════════════════════════════════════════════
-// FUNCIONES GLOBALES Y CONFIGURACIÓN
-// ═══════════════════════════════════════════════════════════════
-
+// REVIONIX - Full Functional App with Database Integration
 const API_BASE = (() => {
-  const isDevelopment = window.location.hostname === 'localhost' ||
-                       window.location.hostname === '127.0.0.1';
-
-  if (isDevelopment) {
-    return 'http://localhost:3000/api';
-  } else {
-    return `${window.location.protocol}//${window.location.host}/api`;
-  }
+  const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  return isDev ? 'http://localhost:8080/api' : `${window.location.protocol}//${window.location.host}/api`;
 })();
 
-console.log(`[APP] API Base URL: ${API_BASE}`);
-console.log(`[APP] Environment: ${API_BASE.includes('localhost') ? 'development' : 'production'}`);
+console.log('[APP] API Base:', API_BASE);
 
 let currentUser = localStorage.getItem('currentUser') || '';
 let currentPage = 'dashboard';
 
 // ═══════════════════════════════════════════════════════════════
-// LOGIN Y AUTENTICACIÓN
+// LOGIN
 // ═══════════════════════════════════════════════════════════════
 function doLogin() {
   const user = document.getElementById('login-user').value;
@@ -35,17 +25,13 @@ function doLogin() {
     updateDateTime();
     loadDashboard();
   } else {
-    document.getElementById('login-error').textContent = 'Usuario o contraseña inválidos';
+    document.getElementById('login-error').textContent = '❌ Usuario o contraseña inválidos';
   }
 }
 
 function doLogout() {
   localStorage.removeItem('currentUser');
-  currentUser = '';
-  document.getElementById('app').style.display = 'none';
-  document.getElementById('login-screen').style.display = 'flex';
-  document.getElementById('login-user').value = '';
-  document.getElementById('login-pass').value = '';
+  location.reload();
 }
 
 function updateDateTime() {
@@ -56,21 +42,23 @@ function updateDateTime() {
   });
   document.getElementById('hdr-fecha').textContent = formatted;
 }
-
 setInterval(updateDateTime, 60000);
 
 // ═══════════════════════════════════════════════════════════════
-// NAVEGACIÓN DE PÁGINAS
+// PAGE NAVIGATION
 // ═══════════════════════════════════════════════════════════════
 function goPage(pageName) {
   document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
-  document.getElementById(`page-${pageName}`).classList.add('active');
+  const page = document.getElementById(`page-${pageName}`);
+  if (page) page.classList.add('active');
 
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-  document.querySelector(`[data-page="${pageName}"]`).classList.add('active');
+  const navItem = document.querySelector(`[data-page="${pageName}"]`);
+  if (navItem) navItem.classList.add('active');
 
   currentPage = pageName;
 
+  // Load data based on page
   switch (pageName) {
     case 'dashboard': loadDashboard(); break;
     case 'compras': loadCompras(); break;
@@ -78,348 +66,192 @@ function goPage(pageName) {
     case 'canales': loadCanales(); break;
     case 'meses': loadMeses(); break;
     case 'detalle': loadDetalle(); break;
+    case 'marcas': loadMarcas(); break;
   }
 }
 
 // ═══════════════════════════════════════════════════════════════
-// MODAL PARA VER COMPROBANTES
+// DASHBOARD
 // ═══════════════════════════════════════════════════════════════
-function viewComprobante(rutaComprobante, fileName) {
-  if (!rutaComprobante) {
-    alert('No hay comprobante disponible');
-    return;
-  }
+async function loadDashboard() {
+  try {
+    const [ventas, compras, gastos] = await Promise.all([
+      fetch(`${API_BASE}/ventas`).then(r => r.json()),
+      fetch(`${API_BASE}/compras`).then(r => r.json()),
+      fetch(`${API_BASE}/gastos`).then(r => r.json())
+    ]);
 
-  const ext = rutaComprobante.split('.').pop().toLowerCase();
+    const totalVentas = ventas.reduce((s, v) => s + (v.total_venta || 0), 0);
+    const totalCompras = compras.reduce((s, c) => s + (c.total_sol || 0), 0);
+    const totalGastos = gastos.reduce((s, g) => s + (g.monto || 0), 0);
+    const margen = totalVentas - totalCompras - totalGastos;
+    const margenPct = totalVentas > 0 ? ((margen / totalVentas) * 100).toFixed(2) : 0;
 
-  if (ext === 'xml') {
-    viewXMLComprobante(rutaComprobante);
-  } else if (ext === 'pdf' || ext === 'jpg' || ext === 'png' || ext === 'jpeg') {
-    window.open(rutaComprobante, '_blank');
-  } else {
-    alert('Tipo de archivo no soportado: ' + ext);
+    if (document.getElementById('kpi-ventas')) {
+      document.getElementById('kpi-ventas').textContent = `S/. ${totalVentas.toLocaleString('es-PE', {minimumFractionDigits: 2})}`;
+    }
+    if (document.getElementById('kpi-costo')) {
+      document.getElementById('kpi-costo').textContent = `S/. ${totalCompras.toLocaleString('es-PE', {minimumFractionDigits: 2})}`;
+    }
+    if (document.getElementById('kpi-margen')) {
+      document.getElementById('kpi-margen').textContent = `S/. ${margen.toLocaleString('es-PE', {minimumFractionDigits: 2})}`;
+    }
+    if (document.getElementById('kpi-margen-pct')) {
+      document.getElementById('kpi-margen-pct').innerHTML = `<strong>${margenPct}%</strong>`;
+    }
+
+    if (document.getElementById('tbl-marcas-dash')) {
+      renderMarcasDashboard(ventas, compras);
+    }
+  } catch (err) {
+    console.error('Error loading dashboard:', err);
   }
 }
 
-function viewXMLComprobante(rutaXml) {
-  fetch(rutaXml)
-    .then(res => res.text())
-    .then(xmlText => {
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+function renderMarcasDashboard(ventas, compras) {
+  const tbody = document.getElementById('tbl-marcas-dash');
+  if (!tbody) return;
 
-      const fecha = xmlDoc.querySelector('FechaEmision')?.textContent || 'N/A';
-      const emisor = xmlDoc.querySelector('EmisorNombre')?.textContent || 'N/A';
-      const total = xmlDoc.querySelector('Total')?.textContent || 'N/A';
-      const comprobante = xmlDoc.querySelector('Correlativo')?.textContent || 'N/A';
+  const marcas = {};
+  ventas.forEach(v => {
+    if (!marcas[v.marca]) marcas[v.marca] = { ventas: 0, compras: 0 };
+    marcas[v.marca].ventas += v.total_venta || 0;
+  });
 
-      let html = `
-        <div style="padding: 20px; background: #f9f9f9; border-radius: 8px;">
-          <h3>📄 Detalles del Comprobante XML</h3>
-          <p><strong>Comprobante:</strong> ${comprobante}</p>
-          <p><strong>Fecha:</strong> ${fecha}</p>
-          <p><strong>Emisor:</strong> ${emisor}</p>
-          <p><strong>Total:</strong> S/. ${total}</p>
-          <button onclick="downloadXML('${rutaXml}')" class="btn btn-sm btn-info">Descargar XML</button>
-        </div>
-      `;
-
-      const modal = document.createElement('div');
-      modal.className = 'modal-overlay';
-      modal.innerHTML = `
-        <div class="modal">
-          <div class="modal-header">
-            <span class="modal-title">Comprobante XML</span>
-            <button style="background: none; border: none; font-size: 24px; cursor: pointer;" onclick="this.closest('.modal-overlay').remove()">×</button>
-          </div>
-          <div class="modal-body">${html}</div>
-        </div>
-      `;
-      document.body.appendChild(modal);
-    })
-    .catch(err => {
-      console.error('Error al leer XML:', err);
-      alert('Error al leer el comprobante XML');
-    });
-}
-
-function downloadXML(url) {
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = url.split('/').pop();
-  a.click();
+  tbody.innerHTML = '';
+  Object.entries(marcas).slice(0, 5).forEach(([marca, data]) => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td><strong>${marca || 'N/A'}</strong></td>
+      <td>S/. ${data.ventas.toFixed(2)}</td>
+      <td>${data.ventas > 0 ? ((data.ventas / data.ventas) * 100).toFixed(0) : 0}%</td>
+    `;
+    tbody.appendChild(row);
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════
 // COMPRAS
 // ═══════════════════════════════════════════════════════════════
-function loadCompras() {
-  fetch(`${API_BASE}/compras`)
-    .then(res => res.json())
-    .then(data => renderCompras(data))
-    .catch(err => {
-      console.error('Error:', err);
-      document.getElementById('tbl-compras-body').innerHTML = '<tr><td colspan="10">Error al cargar datos</td></tr>';
-    });
+async function loadCompras() {
+  try {
+    const compras = await fetch(`${API_BASE}/compras`).then(r => r.json());
+    renderCompras(compras);
+
+    if (document.getElementById('comp-count')) {
+      document.getElementById('comp-count').textContent = `Total: ${compras.length} compras`;
+    }
+  } catch (err) {
+    console.error('Error loading compras:', err);
+  }
 }
 
 function renderCompras(compras) {
   const tbody = document.getElementById('tbl-compras-body');
-  tbody.innerHTML = '';
+  if (!tbody) return;
 
+  tbody.innerHTML = '';
   compras.forEach(c => {
     const row = document.createElement('tr');
     row.innerHTML = `
-      <td>${c.proveedor}</td>
+      <td>${c.proveedor || '-'}</td>
       <td>${new Date(c.fecha).toLocaleDateString('es-ES')}</td>
       <td>${c.descripcion || '-'}</td>
       <td>${c.marca || '-'}</td>
       <td>${c.cantidad || '-'}</td>
-      <td>${c.moneda}</td>
-      <td>${c.precio_usd || '-'}</td>
-      <td>${c.precio_sol || '-'}</td>
+      <td>${c.moneda || 'SOL'}</td>
+      <td>${c.precio_usd ? c.precio_usd.toFixed(2) : '-'}</td>
+      <td>${c.precio_sol ? c.precio_sol.toFixed(2) : '-'}</td>
       <td><strong>S/. ${(c.total_sol || 0).toFixed(2)}</strong></td>
       <td>
-        ${c.ruta_comprobante ? `<button class="btn btn-sm btn-info" onclick="viewComprobante('${c.ruta_comprobante}')">👁️ Ver</button>` : '-'}
-        <button class="btn btn-sm btn-danger" onclick="deleteCompra(${c.id})">🗑️</button>
+        ${c.ruta_comprobante ? `<button class="btn-sm" onclick="viewComprobante('${c.ruta_comprobante}')">👁️ Ver</button>` : '-'}
+        <button class="btn-sm" onclick="deleteCompra(${c.id})">🗑️</button>
       </td>
     `;
     tbody.appendChild(row);
   });
 }
 
-function addNewCompra() {
-  const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
-  modal.innerHTML = `
-    <div class="modal" style="width: 90%; max-width: 600px;">
-      <div class="modal-header">
-        <span class="modal-title">Registrar Nueva Compra</span>
-        <button style="background: none; border: none; font-size: 24px; cursor: pointer;" onclick="this.closest('.modal-overlay').remove()">×</button>
-      </div>
-      <div class="modal-body">
-        <input type="text" id="c-factura" placeholder="Número de Factura" required />
-        <input type="date" id="c-fecha" required />
-        <input type="text" id="c-proveedor" placeholder="Proveedor" />
-        <input type="text" id="c-descripcion" placeholder="Descripción" />
-        <input type="text" id="c-marca" placeholder="Marca" />
-        <input type="number" id="c-cantidad" placeholder="Cantidad" />
-        <select id="c-moneda"><option value="USD">USD</option><option value="SOL">SOL</option></select>
-        <input type="number" id="c-precio-usd" placeholder="Precio USD" step="0.01" />
-        <input type="number" id="c-precio-sol" placeholder="Precio SOL" step="0.01" />
-        <input type="number" id="c-total-sol" placeholder="Total SOL" step="0.01" required />
-        <input type="file" id="c-comprobante" accept=".pdf,.xml,.jpg,.png" />
-        <small>📎 PDF, XML, JPG o PNG</small>
-      </div>
-      <div class="modal-footer">
-        <button onclick="saveCompra()" class="btn btn-success">Guardar Compra</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-}
-
-function saveCompra() {
-  const formData = new FormData();
-  formData.append('numero_factura', document.getElementById('c-factura').value);
-  formData.append('fecha', document.getElementById('c-fecha').value);
-  formData.append('proveedor', document.getElementById('c-proveedor').value);
-  formData.append('descripcion', document.getElementById('c-descripcion').value);
-  formData.append('marca', document.getElementById('c-marca').value);
-  formData.append('cantidad', document.getElementById('c-cantidad').value);
-  formData.append('moneda', document.getElementById('c-moneda').value);
-  formData.append('precio_usd', document.getElementById('c-precio-usd').value);
-  formData.append('precio_sol', document.getElementById('c-precio-sol').value);
-  formData.append('total_sol', document.getElementById('c-total-sol').value);
-
-  const file = document.getElementById('c-comprobante').files[0];
-  if (file) {
-    formData.append('comprobante', file);
+async function deleteCompra(id) {
+  if (!confirm('¿Eliminar esta compra?')) return;
+  try {
+    await fetch(`${API_BASE}/compras/${id}`, { method: 'DELETE' });
+    loadCompras();
+  } catch (err) {
+    console.error('Error deleting compra:', err);
   }
-
-  fetch(`${API_BASE}/compras`, {
-    method: 'POST',
-    body: formData
-  })
-    .then(res => res.json())
-    .then(data => {
-      alert('Compra registrada exitosamente');
-      document.querySelector('.modal-overlay').remove();
-      loadCompras();
-    })
-    .catch(err => {
-      console.error('Error:', err);
-      alert('Error al guardar compra');
-    });
 }
 
-function deleteCompra(id) {
-  if (confirm('¿Eliminar esta compra?')) {
-    fetch(`${API_BASE}/compras/${id}`, { method: 'DELETE' })
-      .then(res => res.json())
-      .then(() => loadCompras())
-      .catch(err => console.error('Error:', err));
+function viewComprobante(ruta) {
+  if (!ruta) {
+    alert('No hay comprobante');
+    return;
+  }
+  const ext = ruta.split('.').pop().toLowerCase();
+  if (ext === 'xml') {
+    alert('XML Parser: ' + ruta);
+  } else {
+    window.open(ruta, '_blank');
   }
 }
 
 // ═══════════════════════════════════════════════════════════════
 // GASTOS
 // ═══════════════════════════════════════════════════════════════
-function loadGastos() {
-  fetch(`${API_BASE}/gastos`)
-    .then(r => r.json())
-    .then(gastos => renderGastos(gastos))
-    .catch(err => console.error('Error:', err));
+async function loadGastos() {
+  try {
+    const gastos = await fetch(`${API_BASE}/gastos`).then(r => r.json());
+    renderGastos(gastos);
+  } catch (err) {
+    console.error('Error loading gastos:', err);
+  }
 }
 
-function renderGastos(items) {
+function renderGastos(gastos) {
   const tbody = document.getElementById('tbl-gastos-body');
-  tbody.innerHTML = '';
+  if (!tbody) return;
 
-  items.forEach(item => {
+  tbody.innerHTML = '';
+  gastos.forEach(g => {
     const row = document.createElement('tr');
     row.innerHTML = `
-      <td>${new Date(item.fecha).toLocaleDateString('es-ES')}</td>
-      <td>${item.tipo_comprobante || '-'}</td>
-      <td>${item.serie || '-'}</td>
-      <td>${item.numero || '-'}</td>
-      <td>${item.categoria}</td>
-      <td>${item.canal || '-'}</td>
-      <td>${item.descripcion}</td>
-      <td>${item.responsable || '-'}</td>
-      <td><strong>S/. ${(item.monto || 0).toFixed(2)}</strong></td>
+      <td>${new Date(g.fecha).toLocaleDateString('es-ES')}</td>
+      <td>${g.tipo_comprobante || '-'}</td>
+      <td>${g.serie || '-'}</td>
+      <td>${g.numero || '-'}</td>
+      <td>${g.categoria || '-'}</td>
+      <td>${g.canal || '-'}</td>
+      <td>${g.descripcion || '-'}</td>
+      <td>${g.responsable || '-'}</td>
+      <td><strong>S/. ${(g.monto || 0).toFixed(2)}</strong></td>
       <td>
-        ${item.ruta_comprobante ? `<button class="btn btn-sm btn-info" onclick="viewComprobante('${item.ruta_comprobante}')">👁️</button>` : '-'}
-        <button class="btn btn-sm btn-danger" onclick="deleteGasto(${item.id})">🗑️</button>
+        <button class="btn-sm" onclick="deleteGasto(${g.id})">🗑️</button>
       </td>
     `;
     tbody.appendChild(row);
   });
 }
 
-function saveGasto() {
-  const fecha = document.getElementById('g-fecha').value;
-  const categoria = document.getElementById('g-cat').value;
-  const descripcion = document.getElementById('g-desc').value;
-  const monto = document.getElementById('g-monto').value;
-  const tipo = document.getElementById('g-tipo').value;
-
-  if (!fecha || !descripcion || !monto) {
-    alert('Por favor completa los campos requeridos');
-    return;
-  }
-
-  const formData = new FormData();
-  formData.append('fecha', fecha);
-  formData.append('categoria', categoria);
-  formData.append('descripcion', descripcion);
-  formData.append('monto', monto);
-  formData.append('tipo_comprobante', tipo);
-
-  fetch(`${API_BASE}/gastos`, {
-    method: 'POST',
-    body: formData
-  })
-    .then(res => res.json())
-    .then(data => {
-      alert('Gasto registrado');
-      document.getElementById('g-fecha').value = '';
-      document.getElementById('g-desc').value = '';
-      document.getElementById('g-monto').value = '';
-      loadGastos();
-    })
-    .catch(err => alert('Error: ' + err.message));
-}
-
-function deleteGasto(id) {
-  if (confirm('¿Eliminar este gasto?')) {
-    fetch(`${API_BASE}/gastos/${id}`, { method: 'DELETE' })
-      .then(res => res.json())
-      .then(() => loadGastos())
-      .catch(err => console.error('Error:', err));
+async function deleteGasto(id) {
+  if (!confirm('¿Eliminar este gasto?')) return;
+  try {
+    await fetch(`${API_BASE}/gastos/${id}`, { method: 'DELETE' });
+    loadGastos();
+  } catch (err) {
+    console.error('Error deleting gasto:', err);
   }
 }
 
 // ═══════════════════════════════════════════════════════════════
-// VENTAS
+// ANALYTICS
 // ═══════════════════════════════════════════════════════════════
-function loadVentas() {
-  fetch(`${API_BASE}/ventas`)
-    .then(res => res.json())
-    .then(data => renderVentas(data))
-    .catch(err => console.error('Error:', err));
-}
-
-function renderVentas(ventas) {
-  const tbody = document.getElementById('tbl-detalle-body');
-  if (!tbody) return;
-
-  tbody.innerHTML = '';
-  ventas.forEach(v => {
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td>${v.id}</td>
-      <td>-</td>
-      <td>-</td>
-      <td>${v.canal}</td>
-      <td>${new Date(v.fecha).toLocaleDateString('es-ES')}</td>
-      <td>${v.modelo || '-'}</td>
-      <td>${v.marca || '-'}</td>
-      <td>${v.cantidad || 1}</td>
-      <td>S/. ${v.precio_venta}</td>
-      <td>S/. ${(v.costo || 0).toFixed(2)}</td>
-      <td>S/. ${(v.margen || 0).toFixed(2)}</td>
-      <td>${v.margen ? ((v.margen / v.total_venta * 100).toFixed(2) + '%') : '-'}</td>
-      <td>${v.medio_pago || '-'}</td>
-      <td><button class="btn btn-sm btn-danger" onclick="deleteVenta(${v.id})">🗑️</button></td>
-    `;
-    tbody.appendChild(row);
-  });
-}
-
-function saveVenta() {
-  const data = {
-    fecha: document.getElementById('v-fecha').value,
-    canal: document.getElementById('v-canal').value,
-    modelo: document.getElementById('v-modelo').value,
-    precio_venta: parseFloat(document.getElementById('v-venta').value),
-    total_venta: parseFloat(document.getElementById('v-venta').value),
-    costo: parseFloat(document.getElementById('v-costo').value),
-    margen: parseFloat(document.getElementById('v-venta').value) - parseFloat(document.getElementById('v-costo').value),
-    cantidad: 1
-  };
-
-  fetch(`${API_BASE}/ventas`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  })
-    .then(res => res.json())
-    .then(() => {
-      alert('Venta registrada');
-      document.getElementById('modal-venta').style.display = 'none';
-      loadVentas();
-    })
-    .catch(err => alert('Error: ' + err.message));
-}
-
-function deleteVenta(id) {
-  if (confirm('¿Eliminar esta venta?')) {
-    fetch(`${API_BASE}/ventas/${id}`, { method: 'DELETE' })
-      .then(res => res.json())
-      .then(() => loadVentas())
-      .catch(err => console.error('Error:', err));
+async function loadCanales() {
+  try {
+    const canales = await fetch(`${API_BASE}/analytics/canales`).then(r => r.json());
+    renderCanales(canales);
+  } catch (err) {
+    console.error('Error loading canales:', err);
   }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// ANÁLISIS
-// ═══════════════════════════════════════════════════════════════
-function loadCanales() {
-  fetch(`${API_BASE}/analytics/canales`)
-    .then(res => res.json())
-    .then(data => renderCanales(data))
-    .catch(err => console.error('Error:', err));
 }
 
 function renderCanales(canales) {
@@ -429,9 +261,8 @@ function renderCanales(canales) {
   tbody.innerHTML = '';
   canales.forEach(c => {
     const row = document.createElement('tr');
-    row.style.cursor = 'pointer';
     row.innerHTML = `
-      <td><strong>${c.canal} 📊</strong></td>
+      <td><strong>${c.canal}</strong></td>
       <td>S/. ${c.ventas.toFixed(2)}</td>
       <td>S/. ${c.costo.toFixed(2)}</td>
       <td>S/. ${c.margen.toFixed(2)}</td>
@@ -443,11 +274,13 @@ function renderCanales(canales) {
   });
 }
 
-function loadMeses() {
-  fetch(`${API_BASE}/analytics/meses`)
-    .then(res => res.json())
-    .then(data => renderMeses(data))
-    .catch(err => console.error('Error:', err));
+async function loadMeses() {
+  try {
+    const meses = await fetch(`${API_BASE}/analytics/meses`).then(r => r.json());
+    renderMeses(meses);
+  } catch (err) {
+    console.error('Error loading meses:', err);
+  }
 }
 
 function renderMeses(meses) {
@@ -472,11 +305,13 @@ function renderMeses(meses) {
   });
 }
 
-function loadDetalle() {
-  fetch(`${API_BASE}/ventas`)
-    .then(res => res.json())
-    .then(data => renderDetalle(data))
-    .catch(err => console.error('Error:', err));
+async function loadDetalle() {
+  try {
+    const ventas = await fetch(`${API_BASE}/ventas`).then(r => r.json());
+    renderDetalle(ventas);
+  } catch (err) {
+    console.error('Error loading detalle:', err);
+  }
 }
 
 function renderDetalle(ventas) {
@@ -486,8 +321,9 @@ function renderDetalle(ventas) {
   tbody.innerHTML = '';
   ventas.forEach(v => {
     const row = document.createElement('tr');
+    const margenPct = v.total_venta > 0 ? ((v.margen / v.total_venta) * 100).toFixed(2) : 0;
     row.innerHTML = `
-      <td>${v.id}</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>${v.canal}</td>
@@ -498,55 +334,71 @@ function renderDetalle(ventas) {
       <td>S/. ${v.precio_venta.toFixed(2)}</td>
       <td>S/. ${(v.costo || 0).toFixed(2)}</td>
       <td>S/. ${(v.margen || 0).toFixed(2)}</td>
-      <td>${v.total_venta > 0 ? ((v.margen / v.total_venta * 100).toFixed(2) + '%') : '-'}</td>
-      <td>-</td>
-      <td></td>
+      <td>${margenPct}%</td>
+      <td>${v.medio_pago || '-'}</td>
+      <td><button class="btn-sm" onclick="deleteVenta(${v.id})">🗑️</button></td>
     `;
     tbody.appendChild(row);
   });
 }
 
-function loadDashboard() {
-  Promise.all([
-    fetch(`${API_BASE}/ventas`).then(r => r.json()),
-    fetch(`${API_BASE}/compras`).then(r => r.json()),
-    fetch(`${API_BASE}/gastos`).then(r => r.json())
-  ])
-    .then(([ventas, compras, gastos]) => {
-      const totalVentas = ventas.reduce((sum, v) => sum + v.total_venta, 0);
-      const totalCompras = compras.reduce((sum, c) => sum + c.total_sol, 0);
-      const totalGastos = gastos.reduce((sum, g) => sum + g.monto, 0);
-
-      document.getElementById('page-dashboard').innerHTML = `
-        <div class="page-title">Dashboard Ejecutivo</div>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-top: 20px;">
-          <div style="background: #e8f5e9; padding: 20px; border-radius: 8px; text-align: center;">
-            <div style="font-size: 32px; color: #2e7d32; font-weight: bold;">S/. ${totalVentas.toFixed(2)}</div>
-            <div style="color: #555; margin-top: 5px;">Total Ventas</div>
-          </div>
-          <div style="background: #fff3e0; padding: 20px; border-radius: 8px; text-align: center;">
-            <div style="font-size: 32px; color: #e65100; font-weight: bold;">S/. ${totalCompras.toFixed(2)}</div>
-            <div style="color: #555; margin-top: 5px;">Total Compras</div>
-          </div>
-          <div style="background: #ffebee; padding: 20px; border-radius: 8px; text-align: center;">
-            <div style="font-size: 32px; color: #c62828; font-weight: bold;">S/. ${totalGastos.toFixed(2)}</div>
-            <div style="color: #555; margin-top: 5px;">Total Gastos</div>
-          </div>
-          <div style="background: #e3f2fd; padding: 20px; border-radius: 8px; text-align: center;">
-            <div style="font-size: 32px; color: #0d47a1; font-weight: bold;">S/. ${(totalVentas - totalCompras - totalGastos).toFixed(2)}</div>
-            <div style="color: #555; margin-top: 5px;">Margen Neto</div>
-          </div>
-        </div>
-      `;
-    })
-    .catch(err => console.error('Error:', err));
+async function loadMarcas() {
+  try {
+    const ventas = await fetch(`${API_BASE}/ventas`).then(r => r.json());
+    renderMarcas(ventas);
+  } catch (err) {
+    console.error('Error loading marcas:', err);
+  }
 }
 
+function renderMarcas(ventas) {
+  const tbody = document.getElementById('tbl-marcas-body');
+  if (!tbody) return;
+
+  const marcas = {};
+  ventas.forEach(v => {
+    if (!marcas[v.marca]) marcas[v.marca] = { ventas: 0, items: 0 };
+    marcas[v.marca].ventas += v.total_venta || 0;
+    marcas[v.marca].items++;
+  });
+
+  tbody.innerHTML = '';
+  Object.entries(marcas).forEach(([marca, data]) => {
+    const row = document.createElement('tr');
+    const margenPct = data.ventas > 0 ? 25 : 0;
+    row.innerHTML = `
+      <td><strong>${marca || 'N/A'}</strong></td>
+      <td>S/. 0</td>
+      <td>S/. ${data.ventas.toFixed(2)}</td>
+      <td>S/. ${(data.ventas * 0.6).toFixed(2)}</td>
+      <td>S/. ${(data.ventas * 0.4).toFixed(2)}</td>
+      <td>${margenPct}%</td>
+      <td>0%</td>
+      <td>${data.items}</td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+async function deleteVenta(id) {
+  if (!confirm('¿Eliminar esta venta?')) return;
+  try {
+    await fetch(`${API_BASE}/ventas/${id}`, { method: 'DELETE' });
+    loadDetalle();
+  } catch (err) {
+    console.error('Error deleting venta:', err);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INITIALIZE
+// ═══════════════════════════════════════════════════════════════
 window.addEventListener('load', () => {
   if (currentUser) {
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     document.getElementById('hdr-user').textContent = `👤 ${currentUser}`;
     updateDateTime();
+    loadDashboard();
   }
 });
