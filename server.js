@@ -68,11 +68,15 @@ app.use((req, res, next) => {
   next();
 });
 
-// no-cache en html/js: el navegador siempre revalida y recibe la última versión
+// no-store en html/js: el navegador NUNCA guarda copia, siempre pide la última
 app.use(express.static(path.join(__dirname, 'public'), {
+  etag: false,
+  lastModified: false,
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html') || filePath.endsWith('.js')) {
-      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
     }
   }
 }));
