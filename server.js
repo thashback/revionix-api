@@ -370,10 +370,11 @@ async function guardarStorage(req, res) {
       }
     }
     conn.release();
-    // Reflejar los datasets clave en tablas relacionales reales (consultables)
+    // Reflejar los datasets clave en tablas relacionales reales (consultables).
+    // Se espera a que termine para que una recarga inmediata ya vea los cambios.
     for (const [clave, valor] of entries) {
       if (['rv_ventas', 'rv_gastos', 'rv_compras'].includes(clave)) {
-        espejarDataset(clave, valor).catch(e => console.error('espejarDataset', clave, e.message));
+        try { await espejarDataset(clave, valor); } catch (e) { console.error('espejarDataset', clave, e.message); }
       }
     }
     res.json({ guardadas: entries.length });

@@ -924,6 +924,7 @@ function rvGuardarVentaCorpVolumen() {
     });
   });
   localStorage.setItem('rv_ventas', JSON.stringify(ev));
+  rvFlushVentas();  // guardar en la BD de inmediato
   closeRvModal();
   if (typeof rvRebuildTxns === 'function') rvRebuildTxns();
   rvRenderVentasCorpVolumen();
@@ -1326,6 +1327,54 @@ async function rvRebuildTxns() {
 // Alias usado por el CRUD de proyectos
 async function rvSyncProyectos() { return rvRebuildTxns(); }
 
+// ═══════════════════════════════════════════════════════════════
+// MIGRACIÓN MÓDULO VENTAS → BASE DE DATOS (tabla reg_ventas)
+// La BD es la fuente de verdad de las ventas de usuario: se cargan al
+// iniciar sesión y cada venta nueva se envía de inmediato. La caché local
+// (rv_ventas / extraVentas) se mantiene para que el resto del sistema
+// (dashboard, canales, EBITDA, rvRebuildTxns) siga funcionando igual.
+// ═══════════════════════════════════════════════════════════════
+async function rvCargarVentasDesdeBD() {
+  try {
+    const rows = await fetch(`${RV_API}/reg/ventas`).then(r => r.json());
+    if (!Array.isArray(rows)) return;
+    let local = [];
+    try { local = JSON.parse(localStorage.getItem('rv_ventas') || '[]'); } catch (e) { local = []; }
+
+    // Primera vez: si la BD está vacía pero hay ventas locales, subirlas (no perder nada)
+    if (rows.length === 0 && local.length > 0) {
+      rvFlushVentas();
+      console.log('[VENTAS-BD] BD vacía → subidas', local.length, 'ventas locales');
+      return;
+    }
+    // BD es fuente de verdad → reconstruir caché local desde la BD
+    const mapped = rows.map(r => ({
+      fecha: r.fecha, mes: (r.fecha || '').slice(0, 7), canal: r.canal, cliente: r.cliente,
+      modelo: r.modelo, marca: r.marca, qty: r.qty || 1, venta: rvNum(r.venta), costo: rvNum(r.costo),
+      condicion: r.condicion || '', medio_pago: r.condicion || '', grupo: r.grupo || ''
+    }));
+    localStorage.setItem('rv_ventas', JSON.stringify(mapped));
+    if (typeof extraVentas !== 'undefined' && Array.isArray(extraVentas)) {
+      extraVentas.length = 0; mapped.forEach(m => extraVentas.push(m));
+    }
+    console.log('[VENTAS-BD] ✓ Cargadas', mapped.length, 'ventas desde la base de datos');
+  } catch (e) {
+    console.warn('[VENTAS-BD] No se pudo cargar desde la BD (se usa caché local):', e.message);
+  }
+}
+
+// Envía rv_ventas a la BD de inmediato (sin esperar el debounce) → refleja en reg_ventas
+function rvFlushVentas() {
+  try {
+    const v = localStorage.getItem('rv_ventas');
+    if (v == null) return;
+    fetch(`${RV_API}/storage`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rv_ventas: v })
+    }).then(() => console.log('[VENTAS-BD] ✓ Ventas guardadas en la BD')).catch(() => {});
+  } catch (e) {}
+}
+
 // Asegura que SEED.meses tenga una fila por cada mes con transacciones y hasta
 // el mes real actual (para que Junio/Julio existan y se poblen). recomputeSeedTotals
 // solo actualiza meses ya existentes, por eso hay que crearlos antes.
@@ -1611,7 +1660,7 @@ function rvDecorarPP() {
             USERS[u] = { pass: p, role: data.user.role, canal: data.user.canal, name: data.user.nombre, email: '', activo: true };
           }
           inlineDoLogin();
-          setTimeout(() => { try { rvRebuildTxns(); rvActualizarFechaReal(); } catch (e) {} }, 400);
+          setTimeout(async () => { try { await rvCargarVentasDesdeBD(); rvRebuildTxns(); rvActualizarFechaReal(); } catch (e) {} }, 400);
         } else {
           if (errEl) errEl.textContent = (data && data.error) || 'Usuario o contraseña incorrectos';
         }
@@ -1619,7 +1668,7 @@ function rvDecorarPP() {
         // Servidor no disponible → login interno de respaldo (evita bloqueo total)
         console.warn('[AUTH] Servidor no disponible, usando login local:', e.message);
         inlineDoLogin();
-        setTimeout(() => { try { rvRebuildTxns(); rvActualizarFechaReal(); } catch (e2) {} }, 400);
+        setTimeout(async () => { try { await rvCargarVentasDesdeBD(); rvRebuildTxns(); rvActualizarFechaReal(); } catch (e2) {} }, 400);
       }
     };
   }
@@ -1634,9 +1683,9 @@ function rvDecorarPP() {
     };
   }
 
-  // Tras registrar/importar ventas → reconstruir para evitar duplicados
-  envolver('saveVenta', () => setTimeout(rvRebuildTxns, 50));
-  envolver('confirmImport', () => setTimeout(rvRebuildTxns, 50));
+  // Tras registrar/importar ventas → reconstruir + guardar en BD de inmediato
+  envolver('saveVenta', () => setTimeout(() => { rvRebuildTxns(); rvFlushVentas(); }, 50));
+  envolver('confirmImport', () => setTimeout(() => { rvRebuildTxns(); rvFlushVentas(); }, 50));
 
   // Stock: decorar tras render
   envolver('renderInvInicial', () => rvDecorarStock());
