@@ -67,6 +67,10 @@ function goPage(pageName) {
     case 'meses': loadMeses(); break;
     case 'detalle': loadDetalle(); break;
     case 'marcas': loadMarcas(); break;
+    case 'proyectos': loadProyectos(); break;
+    case 'gastos-fijos': loadGastosFijos(); break;
+    case 'pagos-pendientes': loadPagosPendientes(); break;
+    case 'planilla': loadPlanilla(); break;
   }
 }
 

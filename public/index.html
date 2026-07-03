@@ -3069,6 +3069,54 @@
             <div class="page-sub">Administrar acceso al sistema</div>
             <div id="usuarios-content"></div>
           </div>
+
+          <!-- NUEVAS PÁGINAS PHASE 2 -->
+          <div class="page" id="page-proyectos">
+            <div class="page-title">📋 Proyectos / Órdenes de Compra</div>
+            <button class="btn btn-success" onclick="openAddProyecto()">➕ Nuevo Proyecto</button>
+            <table id="tbl-proyectos" style="margin-top: 16px;">
+              <thead>
+                <tr><th>OC #</th><th>Cliente</th><th>Fecha</th><th>Monto</th><th>Ejecutado</th><th>Estado</th><th>OC</th><th></th></tr>
+              </thead>
+              <tbody id="tbl-proyectos-body"></tbody>
+            </table>
+          </div>
+
+          <div class="page" id="page-gastos-fijos">
+            <div class="page-title">💰 Gastos Fijos Mensuales</div>
+            <div style="margin-bottom: 16px; font-size: 14px; color: #666;">
+              Edita los montos y haz click en 💾 para guardar cada mes
+            </div>
+            <table id="tbl-gastos-fijos" style="width: 100%;">
+              <thead>
+                <tr><th>Año</th><th>Mes</th><th>Descripción</th><th>Monto</th><th>Comprobante</th><th></th></tr>
+              </thead>
+              <tbody id="tbl-gastos-fijos-body"></tbody>
+            </table>
+          </div>
+
+          <div class="page" id="page-pagos-pendientes">
+            <div class="page-title">⏳ Pagos Pendientes</div>
+            <table id="tbl-pagos-pendientes" style="width: 100%; margin-top: 16px;">
+              <thead>
+                <tr><th>Factura</th><th>Monto</th><th>Vencimiento</th><th>Estado</th><th>Comprobante</th><th></th></tr>
+              </thead>
+              <tbody id="tbl-pagos-body"></tbody>
+            </table>
+          </div>
+
+          <div class="page" id="page-planilla">
+            <div class="page-title">📊 Planilla de Honorarios</div>
+            <div style="margin-bottom: 16px; font-size: 14px; color: #666;">
+              Edita sueldos, bonificaciones y descuentos. Haz click en 💾 para guardar
+            </div>
+            <table id="tbl-planilla" style="width: 100%;">
+              <thead>
+                <tr><th>Año</th><th>Mes</th><th>Empleado</th><th>Sueldo</th><th>Bonif.</th><th>Descuentos</th><th>Neto</th><th>Recibo</th><th></th></tr>
+              </thead>
+              <tbody id="tbl-planilla-body"></tbody>
+            </table>
+          </div>
         </main>
       </div>
     </div>
