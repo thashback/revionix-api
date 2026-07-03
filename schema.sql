@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS proyectos (
   descripcion TEXT,
   monto_total DECIMAL(12,2),
   monto_ejecutado DECIMAL(12,2) DEFAULT 0,
+  costo DECIMAL(12,2) DEFAULT 0,
   estado ENUM('pendiente','en_proceso','completado','cancelado') DEFAULT 'pendiente',
   ruta_oc VARCHAR(255),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

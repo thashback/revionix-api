@@ -2311,8 +2311,9 @@
                 <div class="kpi-sub" id="g-mes-label">Mayo 2026</div>
               </div>
             </div>
+            <button class="btn btn-success" style="margin-bottom:14px" onclick="rvToggleGastoForm()" id="rv-gasto-toggle">➕ Registrar Gasto</button>
             <div class="two-col">
-              <div class="card">
+              <div class="card" id="rv-gasto-form-wrap" style="display:none">
                 <div class="card-title">➕ Registrar Gasto</div>
                 <div class="form-group">
                   <label>Fecha *</label>
@@ -2701,6 +2702,7 @@
                     <th style="width: 80px">Comprobante</th>
                     <th style="width: 60px">Serie</th>
                     <th style="width: 60px">Correl.</th>
+                    <th style="width: 80px">N° Operación</th>
                     <th style="width: 90px">Canal</th>
                     <th style="width: 80px">Mes</th>
                     <th>Producto</th>
@@ -3242,6 +3244,10 @@
               <label>Cliente (corporativo)</label>
               <input type="text" id="v-cliente" placeholder="Opcional" />
             </div>
+          </div>
+          <div class="form-group">
+            <label>N° de Operación</label>
+            <input type="text" id="v-noperacion" placeholder="Opcional · N° de operación bancaria/comprobante" />
           </div>
           <div class="form-row">
             <div class="form-group">
@@ -18029,6 +18035,7 @@
       <td style="font-size:10px;color:var(--c-gray)">${r.tipo_doc || "—"}</td>
       <td style="font-size:10px;color:var(--c-gray)">${r.serie || "—"}</td>
       <td style="font-size:10px;color:var(--c-gray)">${r.correlativo || "—"}</td>
+      <td style="font-size:10px;color:var(--c-gray)">${r.n_operacion || "—"}</td>
       <td><span class="pill pill-gray" style="font-size:10px">${r.canal}</span></td>
       <td style="font-size:11px;color:var(--c-gray)">${r.mes}</td>
       <td>
@@ -19154,6 +19161,7 @@
             pago: "TARJETA",
           });
         }
+        const n_operacion = document.getElementById("v-noperacion")?.value.trim() || "";
         // Always push to TXNS_DATA
         TXNS_DATA.push({
           canal,
@@ -19163,6 +19171,7 @@
           tipo_doc: "MANUAL",
           serie: "",
           correlativo: "",
+          n_operacion,
           modelo,
           marca,
           qty: 1,
@@ -19187,9 +19196,10 @@
         closeModal("modal-venta");
         renderAll();
         setTimeout(() => initCharts(), 100);
-        ["v-fecha", "v-modelo", "v-cliente", "v-venta", "v-costo"].forEach(
+        ["v-fecha", "v-modelo", "v-cliente", "v-venta", "v-costo", "v-noperacion"].forEach(
           (id) => {
-            document.getElementById(id).value = "";
+            const el = document.getElementById(id);
+            if (el) el.value = "";
           },
         );
         document.getElementById("v-canal").value = "";
@@ -20071,7 +20081,7 @@
     </div>
 
   <!-- Indicador de versión: si NO ves este número, tu navegador tiene caché viejo -->
-  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v6 · 03-Jul</div>
-  <script src="app.js?v=6"></script>
+  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v7 · 03-Jul</div>
+  <script src="app.js?v=7"></script>
   </body>
 </html>

@@ -112,6 +112,24 @@ async function initStorageTable() {
 }
 initStorageTable();
 
+// Migración: agregar columna costo a proyectos si no existe (MySQL 8 no soporta IF NOT EXISTS en ADD COLUMN)
+async function migrarColumnaCosto() {
+  try {
+    const conn = await pool.getConnection();
+    try {
+      await conn.query('ALTER TABLE proyectos ADD COLUMN costo DECIMAL(12,2) DEFAULT 0');
+      console.log('✓ Columna proyectos.costo agregada');
+    } catch (e) {
+      if (e.code === 'ER_DUP_FIELDNAME') console.log('✓ Columna proyectos.costo ya existe');
+      else console.error('migrarColumnaCosto:', e.message);
+    }
+    conn.release();
+  } catch (err) {
+    console.error('✗ migrarColumnaCosto:', err.message);
+  }
+}
+migrarColumnaCosto();
+
 app.get('/api/storage', async (req, res) => {
   try {
     const conn = await pool.getConnection();
@@ -347,12 +365,12 @@ app.get('/api/analytics/meses', async (req, res) => {
 // Proyectos
 app.post('/api/proyectos', upload.single('ruta_oc'), async (req, res) => {
   try {
-    const { numero_oc, fecha_oc, cliente, descripcion, monto_total } = req.body;
+    const { numero_oc, fecha_oc, cliente, descripcion, monto_total, monto_ejecutado, costo } = req.body;
     const ruta_oc = req.file ? `/uploads/${req.file.filename}` : null;
     const conn = await pool.getConnection();
     const result = await conn.execute(
-      'INSERT INTO proyectos (numero_oc, fecha_oc, cliente, descripcion, monto_total, ruta_oc) VALUES (?, ?, ?, ?, ?, ?)',
-      [numero_oc, fecha_oc, cliente, descripcion, monto_total, ruta_oc]
+      'INSERT INTO proyectos (numero_oc, fecha_oc, cliente, descripcion, monto_total, monto_ejecutado, costo, ruta_oc) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [numero_oc, fecha_oc, cliente, descripcion, monto_total, monto_ejecutado || 0, costo || 0, ruta_oc]
     );
     conn.release();
     res.json({ id: result[0].insertId, mensaje: 'Proyecto creado' });
@@ -383,9 +401,9 @@ app.put('/api/proyectos/:id', upload.single('ruta_oc'), async (req, res) => {
       conn.release();
       res.json({ id, mensaje: 'Proyecto actualizado' });
     } else {
-      const { cliente, descripcion, monto_total, monto_ejecutado, estado } = req.body;
-      let query = 'UPDATE proyectos SET cliente=?, descripcion=?, monto_total=?, monto_ejecutado=?, estado=? WHERE id=?';
-      let params = [cliente, descripcion, monto_total, monto_ejecutado, estado, id];
+      const { cliente, descripcion, monto_total, monto_ejecutado, costo, estado } = req.body;
+      let query = 'UPDATE proyectos SET cliente=?, descripcion=?, monto_total=?, monto_ejecutado=?, costo=?, estado=? WHERE id=?';
+      let params = [cliente, descripcion, monto_total, monto_ejecutado, costo || 0, estado, id];
       await conn.execute(query, params);
       conn.release();
       res.json({ id, mensaje: 'Proyecto actualizado' });

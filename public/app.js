@@ -227,6 +227,11 @@ function openAddProyecto() {
     <textarea id="proy-desc" rows="2" placeholder="Detalle del proyecto" style="${RV_INPUT}"></textarea>
     <label style="${RV_LABEL}">Monto Total (S/.) *</label>
     <input type="number" id="proy-monto" placeholder="0.00" step="0.01" min="0" style="${RV_INPUT}" />
+    <div style="display:flex;gap:8px">
+      <div style="flex:1"><label style="${RV_LABEL}">Monto Ejecutado (S/.)</label><input type="number" id="proy-ejec" placeholder="0.00" step="0.01" min="0" value="0" style="${RV_INPUT}" /></div>
+      <div style="flex:1"><label style="${RV_LABEL}">Costo (S/.)</label><input type="number" id="proy-costo" placeholder="0.00" step="0.01" min="0" value="0" style="${RV_INPUT}" /></div>
+    </div>
+    <div style="background:#e3f0fb;padding:8px;border-radius:5px;font-size:11px;color:#455a64;margin-top:4px">💡 El <b>monto ejecutado</b> se suma como venta del canal <b>San Isidro</b> en el dashboard y EBITDA. El <b>costo</b> define el margen.</div>
     <label style="${RV_LABEL}">📎 Archivo OC (PDF, opcional)</label>
     <input type="file" id="proy-file" accept=".pdf,.xml,.jpg,.png" style="${RV_INPUT}" />
     <div style="display:flex;gap:8px;margin-top:14px">
@@ -254,6 +259,8 @@ async function saveProyecto() {
   formData.append('cliente', cliente);
   formData.append('descripcion', document.getElementById('proy-desc').value.trim());
   formData.append('monto_total', monto);
+  formData.append('monto_ejecutado', rvNum(document.getElementById('proy-ejec').value));
+  formData.append('costo', rvNum(document.getElementById('proy-costo').value));
   const file = document.getElementById('proy-file').files[0];
   if (file) formData.append('ruta_oc', file);
 
@@ -264,6 +271,7 @@ async function saveProyecto() {
       alert('✅ Proyecto creado');
       closeRvModal();
       loadProyectos();
+      rvSyncProyectos();
     } else {
       const msg = (data.error || '').includes('Duplicate') ? 'Ya existe un proyecto con ese número de OC' : (data.error || 'Error del servidor');
       alert('❌ ' + msg);
@@ -285,8 +293,11 @@ function editProyecto(id) {
     <textarea id="ep-desc" rows="2" style="${RV_INPUT}">${rvEsc(p.descripcion || '')}</textarea>
     <label style="${RV_LABEL}">Monto Total (S/.)</label>
     <input type="number" id="ep-total" value="${rvNum(p.monto_total)}" step="0.01" min="0" style="${RV_INPUT}" />
-    <label style="${RV_LABEL}">Monto Ejecutado (S/.) — avance del proyecto</label>
-    <input type="number" id="ep-ejec" value="${rvNum(p.monto_ejecutado)}" step="0.01" min="0" style="${RV_INPUT}" />
+    <div style="display:flex;gap:8px">
+      <div style="flex:1"><label style="${RV_LABEL}">Monto Ejecutado (S/.)</label><input type="number" id="ep-ejec" value="${rvNum(p.monto_ejecutado)}" step="0.01" min="0" style="${RV_INPUT}" /></div>
+      <div style="flex:1"><label style="${RV_LABEL}">Costo (S/.)</label><input type="number" id="ep-costo" value="${rvNum(p.costo)}" step="0.01" min="0" style="${RV_INPUT}" /></div>
+    </div>
+    <div style="background:#e3f0fb;padding:8px;border-radius:5px;font-size:11px;color:#455a64;margin-bottom:4px">💡 El monto ejecutado suma como venta de <b>San Isidro</b>; el costo define el margen para EBITDA.</div>
     <label style="${RV_LABEL}">Estado</label>
     <select id="ep-estado" style="${RV_INPUT}">${opts}</select>
     <div style="display:flex;gap:8px;margin-top:14px">
@@ -306,6 +317,7 @@ async function saveEditProyecto(id) {
   formData.append('descripcion', document.getElementById('ep-desc').value.trim());
   formData.append('monto_total', total);
   formData.append('monto_ejecutado', ejec);
+  formData.append('costo', rvNum(document.getElementById('ep-costo').value));
   formData.append('estado', document.getElementById('ep-estado').value);
 
   try {
@@ -314,6 +326,7 @@ async function saveEditProyecto(id) {
       alert('✅ Proyecto actualizado');
       closeRvModal();
       loadProyectos();
+      rvSyncProyectos();
     } else {
       const data = await response.json().catch(() => ({}));
       alert('❌ ' + (data.error || 'Error del servidor'));
@@ -328,6 +341,7 @@ async function deleteProyecto(id) {
   try {
     await fetch(`${RV_API}/proyectos/${id}`, { method: 'DELETE' });
     loadProyectos();
+    rvSyncProyectos();
   } catch (err) {
     alert('❌ Error: ' + err.message);
   }
@@ -995,6 +1009,241 @@ function rvImportarPlanilla() {
   });
 
   console.log('[RV-EXT] ✓ Extensiones activas:', activadas.join(', '));
+})();
+
+// ═══════════════════════════════════════════════════════════════
+// PROYECTOS → TRANSACCIONES (canal San Isidro)
+// Inyecta cada proyecto (monto ejecutado) como transacción en
+// TXNS_DATA para que sume a dashboard, mes a mes, canales y EBITDA.
+// Idempotente: elimina las transacciones de proyectos previas (__proy)
+// antes de reinyectar, evitando duplicados.
+// ═══════════════════════════════════════════════════════════════
+let rvSyncEnCurso = false;
+async function rvSyncProyectos() {
+  if (typeof TXNS_DATA === 'undefined' || typeof recomputeSeedTotals !== 'function') return;
+  if (rvSyncEnCurso) return;
+  rvSyncEnCurso = true;
+  try {
+    // Quitar transacciones de proyectos previas
+    for (let i = TXNS_DATA.length - 1; i >= 0; i--) {
+      if (TXNS_DATA[i] && TXNS_DATA[i].__proy) TXNS_DATA.splice(i, 1);
+    }
+    const proys = await fetch(`${RV_API}/proyectos`).then(r => r.json()).catch(() => []);
+    if (Array.isArray(proys)) {
+      proys.forEach(p => {
+        const venta = rvNum(p.monto_ejecutado);
+        if (venta <= 0) return; // solo lo ejecutado suma
+        const costo = rvNum(p.costo);
+        const margen = venta - costo;
+        TXNS_DATA.push({
+          canal: 'San Isidro',
+          cliente: p.cliente || 'Proyecto',
+          mes: (p.fecha_oc || '').slice(0, 7),
+          fecha: (p.fecha_oc || '').slice(0, 10),
+          tipo_doc: 'OC',
+          serie: p.numero_oc || '',
+          correlativo: '',
+          n_operacion: p.numero_oc || '',
+          modelo: 'Proyecto: ' + (p.descripcion || p.numero_oc || ''),
+          marca: 'Proyectos',
+          qty: 1,
+          venta: venta,
+          costo: costo,
+          margen: margen,
+          margen_pct: venta > 0 ? (margen / venta * 100) : 0,
+          __proy: p.id
+        });
+      });
+    }
+    if (typeof SEED !== 'undefined') SEED.transacciones = TXNS_DATA;
+    recomputeSeedTotals();
+    if (typeof renderAll === 'function') renderAll();
+    if (typeof initCharts === 'function') setTimeout(initCharts, 120);
+    console.log('[PROY-SYNC] ✓ Proyectos integrados a los cálculos');
+  } catch (e) {
+    console.error('[PROY-SYNC]', e);
+  } finally {
+    rvSyncEnCurso = false;
+  }
+}
+
+// ══ GASTOS / MOVILIDAD: formulario desplegable ══
+function rvToggleGastoForm() {
+  const wrap = document.getElementById('rv-gasto-form-wrap');
+  if (!wrap) return;
+  const visible = wrap.style.display !== 'none';
+  wrap.style.display = visible ? 'none' : 'block';
+  if (!visible) {
+    const f = document.getElementById('g-fecha');
+    if (f && !f.value) f.value = new Date().toISOString().slice(0, 10);
+  }
+}
+
+// ══ STOCK INICIAL / REPOSICIÓN: comprobante por proveedor ══
+function rvStockPdfs() {
+  try { return JSON.parse(localStorage.getItem('rv_stock_pdfs') || '{}'); } catch (e) { return {}; }
+}
+function rvGuardarPdfStock(clave, ruta) {
+  const m = rvStockPdfs();
+  m[clave] = ruta;
+  localStorage.setItem('rv_stock_pdfs', JSON.stringify(m));
+}
+async function rvSubirPdfStock(clave, recargar) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,.xml,.jpg,.png,.jpeg';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const ruta = await rvSubirArchivo(file);
+    if (ruta) {
+      rvGuardarPdfStock(clave, ruta);
+      if (typeof window[recargar] === 'function') window[recargar]();
+      if (typeof showToast === 'function') showToast('✅ Comprobante guardado');
+    }
+  };
+  input.click();
+}
+// Decora las tablas de proveedores con acción de comprobante (📤/📄)
+function rvDecorarTablaStock(tbodyId, prefijo, recargarFn) {
+  const tbody = document.getElementById(tbodyId);
+  if (!tbody) return;
+  const pdfs = rvStockPdfs();
+  tbody.querySelectorAll('tr').forEach(tr => {
+    const primera = tr.querySelector('td');
+    if (!primera || tr.querySelector('.rv-stock-btn')) return;
+    const prov = primera.textContent.trim();
+    if (!prov) return;
+    const clave = prefijo + prov;
+    const ruta = pdfs[clave];
+    const td = document.createElement('td');
+    td.style.whiteSpace = 'nowrap';
+    td.innerHTML =
+      (ruta ? `<button class="rv-stock-btn" onclick="viewFile('${ruta}')" title="Ver comprobante" style="background:#e3f0fb;border:1px solid #bdd7f3;border-radius:4px;cursor:pointer;padding:2px 6px;font-size:11px">📄</button> ` : '') +
+      `<button class="rv-stock-btn" onclick="rvSubirPdfStock('${clave.replace(/'/g, "\\'")}','${recargarFn}')" title="${ruta ? 'Reemplazar' : 'Subir'} comprobante" style="background:#1565c0;color:#fff;border:none;border-radius:4px;cursor:pointer;padding:2px 6px;font-size:11px">📤</button>`;
+    tr.appendChild(td);
+  });
+  // Asegurar encabezado "Comprobante" una sola vez
+  const table = tbody.closest('table');
+  if (table) {
+    const headRow = table.querySelector('thead tr');
+    if (headRow && !headRow.querySelector('.rv-stock-th')) {
+      const th = document.createElement('th');
+      th.className = 'rv-stock-th';
+      th.textContent = 'Comprobante';
+      headRow.appendChild(th);
+    }
+  }
+}
+function rvDecorarStock() {
+  rvDecorarTablaStock('tbl-inv-inicial-body', 'ini_', 'renderInvInicial');
+  rvDecorarTablaStock('tbl-inv-repos-body', 'rep_', 'renderInvRepos');
+}
+
+// ══ GASTOS FIJOS: registro manual mensual con comprobante ══
+function rvAbrirRegistroFijo() {
+  const now = new Date();
+  const meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  const mesOpts = meses.map((m, i) => i === 0 ? '' : `<option value="${i}" ${now.getMonth() + 1 === i ? 'selected' : ''}>${m}</option>`).join('');
+  rvModal(`
+    <h3 style="margin:0 0 12px 0">➕ Registrar Gasto Fijo del Mes</h3>
+    <div style="display:flex;gap:8px">
+      <div style="flex:1"><label style="${RV_LABEL}">Mes *</label><select id="gf-mes" style="${RV_INPUT}">${mesOpts}</select></div>
+      <div style="flex:1"><label style="${RV_LABEL}">Año *</label><input type="number" id="gf-ano" value="${now.getFullYear()}" min="2020" max="2100" style="${RV_INPUT}" /></div>
+    </div>
+    <label style="${RV_LABEL}">Descripción / Concepto *</label>
+    <input type="text" id="gf-desc" placeholder="Ej: Alquiler local San Isidro" style="${RV_INPUT}" />
+    <label style="${RV_LABEL}">Monto (S/.) *</label>
+    <input type="number" id="gf-monto" placeholder="0.00" step="0.01" min="0" style="${RV_INPUT}" />
+    <label style="${RV_LABEL}">📎 Comprobante de pago (opcional)</label>
+    <input type="file" id="gf-file" accept=".pdf,.xml,.jpg,.png,.jpeg" style="${RV_INPUT}" />
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button onclick="rvGuardarFijoManual()" style="flex:1;padding:10px;background:#198c35;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:600">💾 Guardar</button>
+      <button onclick="closeRvModal()" style="flex:1;padding:10px;background:#eceff1;color:#333;border:none;border-radius:5px;cursor:pointer">Cancelar</button>
+    </div>
+  `);
+}
+async function rvGuardarFijoManual() {
+  const mes = document.getElementById('gf-mes').value;
+  const ano = document.getElementById('gf-ano').value;
+  const desc = document.getElementById('gf-desc').value.trim();
+  const monto = document.getElementById('gf-monto').value;
+  if (!mes) { alert('❌ Selecciona el mes'); return; }
+  if (!desc) { alert('❌ Ingresa la descripción'); return; }
+  if (!monto || rvNum(monto) <= 0) { alert('❌ Ingresa un monto válido'); return; }
+  const fd = new FormData();
+  fd.append('mes', mes);
+  fd.append('ano', ano);
+  fd.append('descripcion', desc);
+  fd.append('monto', rvNum(monto));
+  const file = document.getElementById('gf-file').files[0];
+  if (file) fd.append('ruta_comprobante', file);
+  try {
+    const r = await fetch(`${RV_API}/gastos-fijos`, { method: 'POST', body: fd });
+    if (r.ok) {
+      alert('✅ Gasto fijo registrado');
+      closeRvModal();
+      rvRenderHistorialFijos();
+    } else {
+      const d = await r.json().catch(() => ({}));
+      alert('❌ ' + (d.error || 'Error del servidor'));
+    }
+  } catch (e) {
+    alert('❌ Error: ' + e.message);
+  }
+}
+
+// ══ ACTIVACIÓN DE ESTAS EXTENSIONES ══
+(function rvActivarExtensiones2() {
+  function envolver(nombre, despues) {
+    if (typeof window[nombre] === 'function') {
+      const original = window[nombre];
+      window[nombre] = function (...args) {
+        const r = original.apply(this, args);
+        try { despues.apply(this, args); } catch (e) { console.error('[RV-EXT2]', nombre, e); }
+        return r;
+      };
+      return true;
+    }
+    return false;
+  }
+
+  // Login → integrar proyectos a los cálculos (tras render inicial)
+  if (typeof window.doLogin === 'function') {
+    const doLoginOriginal = window.doLogin;
+    window.doLogin = function (...args) {
+      const r = doLoginOriginal.apply(this, args);
+      setTimeout(() => { try { rvSyncProyectos(); } catch (e) {} }, 800);
+      return r;
+    };
+  }
+
+  // Stock: decorar tras render
+  envolver('renderInvInicial', () => rvDecorarStock());
+  envolver('renderInvRepos', () => rvDecorarStock());
+
+  console.log('[RV-EXT2] ✓ Extensiones v7 activas');
+})();
+
+// Botón "Registrar Gasto Fijo" en la tarjeta de historial (se añade al render)
+(function () {
+  const _histOrig = rvRenderHistorialFijos;
+  rvRenderHistorialFijos = async function () {
+    await _histOrig.apply(this, arguments);
+    const card = document.getElementById('rv-fijos-historial');
+    if (card && !card.querySelector('.rv-fijo-add')) {
+      const t = card.querySelector('.card-title');
+      if (t) {
+        t.style.display = 'inline-block';
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-success rv-fijo-add';
+        btn.style.cssText = 'float:right;font-size:12px';
+        btn.textContent = '➕ Registrar Gasto Fijo';
+        btn.onclick = rvAbrirRegistroFijo;
+        t.parentElement.insertBefore(btn, t.nextSibling);
+      }
+    }
+  };
 })();
 
 console.log('[RV-API] ✓ Módulos API cargados sin conflictos');
