@@ -250,6 +250,204 @@ app.get('/api/analytics/meses', async (req, res) => {
   }
 });
 
+// Proyectos
+app.post('/api/proyectos', upload.single('ruta_oc'), async (req, res) => {
+  try {
+    const { numero_oc, fecha_oc, cliente, descripcion, monto_total } = req.body;
+    const ruta_oc = req.file ? `/uploads/${req.file.filename}` : null;
+    const conn = await pool.getConnection();
+    const result = await conn.execute(
+      'INSERT INTO proyectos (numero_oc, fecha_oc, cliente, descripcion, monto_total, ruta_oc) VALUES (?, ?, ?, ?, ?, ?)',
+      [numero_oc, fecha_oc, cliente, descripcion, monto_total, ruta_oc]
+    );
+    conn.release();
+    res.json({ id: result[0].insertId, mensaje: 'Proyecto creado' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/proyectos', async (req, res) => {
+  try {
+    const conn = await pool.getConnection();
+    const [rows] = await conn.execute('SELECT * FROM proyectos ORDER BY fecha_oc DESC LIMIT 100');
+    conn.release();
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/proyectos/:id', upload.single('ruta_oc'), async (req, res) => {
+  try {
+    const { cliente, descripcion, monto_total, monto_ejecutado, estado } = req.body;
+    const ruta_oc = req.file ? `/uploads/${req.file.filename}` : null;
+    const conn = await pool.getConnection();
+    let query = 'UPDATE proyectos SET cliente=?, descripcion=?, monto_total=?, monto_ejecutado=?, estado=?';
+    let params = [cliente, descripcion, monto_total, monto_ejecutado, estado];
+    if (ruta_oc) {
+      query += ', ruta_oc=?';
+      params.push(ruta_oc);
+    }
+    query += ' WHERE id=?';
+    params.push(req.params.id);
+    await conn.execute(query, params);
+    conn.release();
+    res.json({ mensaje: 'Proyecto actualizado' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/proyectos/:id', async (req, res) => {
+  try {
+    const conn = await pool.getConnection();
+    await conn.execute('DELETE FROM proyectos WHERE id = ?', [req.params.id]);
+    conn.release();
+    res.json({ mensaje: 'Proyecto eliminado' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Gastos Fijos
+app.get('/api/gastos-fijos', async (req, res) => {
+  try {
+    const conn = await pool.getConnection();
+    const [rows] = await conn.execute('SELECT * FROM gastos_fijos ORDER BY ano DESC, mes DESC');
+    conn.release();
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/gastos-fijos', upload.single('ruta_comprobante'), async (req, res) => {
+  try {
+    const { mes, ano, descripcion, monto } = req.body;
+    const ruta_comprobante = req.file ? `/uploads/${req.file.filename}` : null;
+    const conn = await pool.getConnection();
+    const result = await conn.execute(
+      'INSERT INTO gastos_fijos (mes, ano, descripcion, monto, ruta_comprobante) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE monto=?, ruta_comprobante=?',
+      [mes, ano, descripcion, monto, ruta_comprobante, monto, ruta_comprobante]
+    );
+    conn.release();
+    res.json({ id: result[0].insertId, mensaje: 'Gasto fijo guardado' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/gastos-fijos/:id', async (req, res) => {
+  try {
+    const conn = await pool.getConnection();
+    await conn.execute('DELETE FROM gastos_fijos WHERE id = ?', [req.params.id]);
+    conn.release();
+    res.json({ mensaje: 'Gasto fijo eliminado' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Pagos Pendientes
+app.get('/api/pagos-pendientes', async (req, res) => {
+  try {
+    const conn = await pool.getConnection();
+    const [rows] = await conn.execute('SELECT * FROM pagos_pendientes ORDER BY fecha_vencimiento ASC');
+    conn.release();
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/pagos-pendientes', async (req, res) => {
+  try {
+    const { factura_id, monto, fecha_vencimiento } = req.body;
+    const conn = await pool.getConnection();
+    const result = await conn.execute(
+      'INSERT INTO pagos_pendientes (factura_id, monto, fecha_vencimiento) VALUES (?, ?, ?)',
+      [factura_id, monto, fecha_vencimiento]
+    );
+    conn.release();
+    res.json({ id: result[0].insertId, mensaje: 'Pago pendiente creado' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/pagos-pendientes/:id', upload.single('ruta_comprobante_pago'), async (req, res) => {
+  try {
+    const { estado, metodo_pago } = req.body;
+    const ruta_comprobante_pago = req.file ? `/uploads/${req.file.filename}` : null;
+    const conn = await pool.getConnection();
+    let query = 'UPDATE pagos_pendientes SET estado=?, metodo_pago=?';
+    let params = [estado, metodo_pago];
+    if (ruta_comprobante_pago) {
+      query += ', ruta_comprobante_pago=?, fecha_pago=NOW()';
+      params.push(ruta_comprobante_pago);
+    }
+    query += ' WHERE id=?';
+    params.push(req.params.id);
+    await conn.execute(query, params);
+    conn.release();
+    res.json({ mensaje: 'Pago actualizado' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/pagos-pendientes/:id', async (req, res) => {
+  try {
+    const conn = await pool.getConnection();
+    await conn.execute('DELETE FROM pagos_pendientes WHERE id = ?', [req.params.id]);
+    conn.release();
+    res.json({ mensaje: 'Pago eliminado' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Planilla
+app.get('/api/planilla', async (req, res) => {
+  try {
+    const conn = await pool.getConnection();
+    const [rows] = await conn.execute('SELECT * FROM planilla ORDER BY ano DESC, mes DESC');
+    conn.release();
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/planilla', upload.single('ruta_recibo'), async (req, res) => {
+  try {
+    const { mes, ano, empleado, sueldo, bonificacion, descuentos } = req.body;
+    const neto = (parseFloat(sueldo) + parseFloat(bonificacion) - parseFloat(descuentos)).toFixed(2);
+    const ruta_recibo = req.file ? `/uploads/${req.file.filename}` : null;
+    const conn = await pool.getConnection();
+    const result = await conn.execute(
+      'INSERT INTO planilla (mes, ano, empleado, sueldo, bonificacion, descuentos, neto, ruta_recibo) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE sueldo=?, bonificacion=?, descuentos=?, neto=?, ruta_recibo=?',
+      [mes, ano, empleado, sueldo, bonificacion, descuentos, neto, ruta_recibo, sueldo, bonificacion, descuentos, neto, ruta_recibo]
+    );
+    conn.release();
+    res.json({ id: result[0].insertId, mensaje: 'Planilla guardada', neto });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/planilla/:id', async (req, res) => {
+  try {
+    const conn = await pool.getConnection();
+    await conn.execute('DELETE FROM planilla WHERE id = ?', [req.params.id]);
+    conn.release();
+    res.json({ mensaje: 'Planilla eliminada' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Download files
 app.get('/uploads/:filename', (req, res) => {
   const file = path.join(uploadsDir, req.params.filename);

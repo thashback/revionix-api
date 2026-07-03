@@ -63,3 +63,64 @@ CREATE TABLE IF NOT EXISTS movilidad (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_fecha (fecha)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS proyectos (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  numero_oc VARCHAR(50) UNIQUE NOT NULL,
+  fecha_oc DATE NOT NULL,
+  cliente VARCHAR(200) NOT NULL,
+  descripcion TEXT,
+  monto_total DECIMAL(12,2),
+  monto_ejecutado DECIMAL(12,2) DEFAULT 0,
+  estado ENUM('pendiente','en_proceso','completado','cancelado') DEFAULT 'pendiente',
+  ruta_oc VARCHAR(255),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_numero_oc (numero_oc),
+  INDEX idx_fecha_oc (fecha_oc),
+  INDEX idx_estado (estado)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS gastos_fijos (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  mes INT NOT NULL,
+  ano INT NOT NULL,
+  descripcion VARCHAR(200) NOT NULL,
+  monto DECIMAL(10,2),
+  ruta_comprobante VARCHAR(255),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY unique_mes_desc (mes, ano, descripcion),
+  INDEX idx_mes_ano (mes, ano)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS pagos_pendientes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  factura_id INT,
+  monto DECIMAL(10,2),
+  fecha_vencimiento DATE,
+  estado ENUM('pendiente','pagado','cancelado') DEFAULT 'pendiente',
+  ruta_comprobante_pago VARCHAR(255),
+  fecha_pago DATE,
+  metodo_pago VARCHAR(50),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_estado (estado),
+  INDEX idx_factura_id (factura_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS planilla (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  mes INT NOT NULL,
+  ano INT NOT NULL,
+  empleado VARCHAR(100) NOT NULL,
+  sueldo DECIMAL(10,2),
+  bonificacion DECIMAL(10,2) DEFAULT 0,
+  descuentos DECIMAL(10,2) DEFAULT 0,
+  neto DECIMAL(10,2),
+  ruta_recibo VARCHAR(255),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY unique_mes_emp (mes, ano, empleado),
+  INDEX idx_mes_ano (mes, ano)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
