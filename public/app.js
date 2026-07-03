@@ -833,11 +833,79 @@ function rvDecorarEcommerce() {
 // ═══════════════════════════════════════════════════════════════
 const RV_MARCAS = ['EZVIZ', 'HIKVISION', 'DAHUA', 'HUAWEI', 'MSI', 'ASUS', 'LENOVO', 'HP', 'WD / HDD', 'TP-LINK', 'ZKTeco', 'LAPTOPS', 'Servicios', 'Otros'];
 
+// ═══════════════════════════════════════════════════════════════
+// AUTO-COSTO: al registrar una venta, jala el costo del PRECIO DE COMPRA
+// del mismo producto (busca en COMPRAS_DATA por código de modelo + marca).
+// ═══════════════════════════════════════════════════════════════
+function rvCostoUnitCompra(c) {
+  const sol = rvNum(c.sol), usd = rvNum(c.usd);
+  const tc = (typeof TC_FIJO !== 'undefined') ? TC_FIJO : 3.5;
+  return sol > 0 ? sol : (usd > 0 ? usd * tc : 0);
+}
+function rvBuscarCostoCompra(modelo, marca) {
+  if (typeof COMPRAS_DATA === 'undefined' || !modelo) return null;
+  const m = String(modelo).trim().toLowerCase();
+  const mk = String(marca || '').trim().toLowerCase();
+  const codeM = (typeof extractModelCode === 'function') ? extractModelCode(modelo) : '';
+  let best = null, bestScore = 0;
+  COMPRAS_DATA.forEach(c => {
+    const unit = rvCostoUnitCompra(c);
+    if (unit <= 0) return;
+    const desc = String(c.desc || '').toLowerCase();
+    const cMarca = String(c.marca || '').toLowerCase();
+    let score = 0;
+    if (mk && cMarca === mk) score += 2;
+    if (m.length >= 3 && desc.includes(m)) score += 3;
+    if (codeM) {
+      const codeD = (typeof extractModelCode === 'function') ? extractModelCode(c.desc) : '';
+      if (codeD && codeD.toUpperCase() === codeM.toUpperCase()) score += 4;
+    }
+    if (score > bestScore) { bestScore = score; best = unit; }
+  });
+  return bestScore >= 3 ? best : null; // requiere al menos coincidencia de modelo/código
+}
+// Conecta el auto-costo al modal de venta individual (v-modelo/v-marca → v-costo)
+function rvWireAutoCosto() {
+  const modelo = document.getElementById('v-modelo');
+  const marca = document.getElementById('v-marca');
+  const costo = document.getElementById('v-costo');
+  if (!modelo || !costo || modelo.dataset.rvWired === '1') return;
+  modelo.dataset.rvWired = '1';
+  const aplicar = () => {
+    const c = rvBuscarCostoCompra(modelo.value, marca ? marca.value : '');
+    if (c != null && (!costo.value || parseFloat(costo.value) === 0 || costo.dataset.rvAuto === '1')) {
+      costo.value = c.toFixed(2);
+      costo.dataset.rvAuto = '1';
+      costo.style.background = '#ebf7ee';
+      costo.title = 'Costo tomado automáticamente del precio de compra';
+      if (typeof updateMargenPreview === 'function') try { updateMargenPreview(); } catch (e) {}
+    }
+  };
+  modelo.addEventListener('blur', aplicar);
+  modelo.addEventListener('change', aplicar);
+  if (marca) marca.addEventListener('change', aplicar);
+  costo.addEventListener('input', () => { costo.dataset.rvAuto = ''; costo.style.background = ''; });
+}
+// Auto-costo para cada línea de la venta corporativa por volumen
+function rvAutoCostoLinea(inputModelo) {
+  const tr = inputModelo.closest('tr');
+  if (!tr) return;
+  const marcaSel = tr.querySelector('.rvc-marca');
+  const costoInp = tr.querySelector('.rvc-costo');
+  const c = rvBuscarCostoCompra(inputModelo.value, marcaSel ? marcaSel.value : '');
+  if (c != null && costoInp && (!costoInp.value || parseFloat(costoInp.value) === 0)) {
+    costoInp.value = c.toFixed(2);
+    costoInp.style.background = '#ebf7ee';
+    costoInp.title = 'Costo tomado del precio de compra';
+    if (typeof rvCorpCalc === 'function') rvCorpCalc();
+  }
+}
+
 function rvCorpLineHTML() {
   const marcaOpts = RV_MARCAS.map(m => `<option value="${m}">${m}</option>`).join('');
   return `<tr class="rv-corp-line">
-    <td><input type="text" class="rvc-modelo" placeholder="Modelo / producto" style="width:100%;padding:5px;border:1px solid #d8dde3;border-radius:4px;font-size:12px"></td>
-    <td><select class="rvc-marca" style="width:100%;padding:5px;border:1px solid #d8dde3;border-radius:4px;font-size:12px">${marcaOpts}</select></td>
+    <td><input type="text" class="rvc-modelo" placeholder="Modelo / producto" onblur="rvAutoCostoLinea(this)" style="width:100%;padding:5px;border:1px solid #d8dde3;border-radius:4px;font-size:12px"></td>
+    <td><select class="rvc-marca" onchange="rvAutoCostoLinea(this.closest('tr').querySelector('.rvc-modelo'))" style="width:100%;padding:5px;border:1px solid #d8dde3;border-radius:4px;font-size:12px">${marcaOpts}</select></td>
     <td><input type="number" class="rvc-qty" value="1" min="1" step="1" oninput="rvCorpCalc()" style="width:60px;padding:5px;border:1px solid #d8dde3;border-radius:4px;font-size:12px;text-align:center"></td>
     <td><input type="number" class="rvc-precio" value="0" min="0" step="0.01" oninput="rvCorpCalc()" style="width:90px;padding:5px;border:1px solid #d8dde3;border-radius:4px;font-size:12px"></td>
     <td><input type="number" class="rvc-costo" value="0" min="0" step="0.01" oninput="rvCorpCalc()" style="width:90px;padding:5px;border:1px solid #d8dde3;border-radius:4px;font-size:12px"></td>
@@ -1237,6 +1305,7 @@ function rvPersistirCompras() {
         rvInyectarBotonAgregar('page-detalle', 'rv-btn-det-add', '➕ Nueva Venta', '');
         rvInyectarBotonRecalc();
         rvRestaurarCompras();
+        rvWireAutoCosto();
       } catch (e) { console.error('[RV-EXT] init', e); }
     }, 600);
   });
