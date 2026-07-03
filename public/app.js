@@ -1018,54 +1018,73 @@ function rvImportarPlanilla() {
 // Idempotente: elimina las transacciones de proyectos previas (__proy)
 // antes de reinyectar, evitando duplicados.
 // ═══════════════════════════════════════════════════════════════
+// Copia intacta de las transacciones base (seed), capturada antes de que
+// entren ventas manuales/importadas/proyectos.
+const RV_BASE_TXNS = (typeof TXNS_DATA !== 'undefined') ? TXNS_DATA.slice() : [];
+
 let rvSyncEnCurso = false;
-async function rvSyncProyectos() {
+// Reconstruye TXNS_DATA = base + ventas extra (corporativo/ecommerce/importadas)
+// + proyectos (monto ejecutado). Así TODO suma una sola vez a dashboard,
+// mes a mes, canales, marcas y EBITDA.
+async function rvRebuildTxns() {
   if (typeof TXNS_DATA === 'undefined' || typeof recomputeSeedTotals !== 'function') return;
   if (rvSyncEnCurso) return;
   rvSyncEnCurso = true;
   try {
-    // Quitar transacciones de proyectos previas
-    for (let i = TXNS_DATA.length - 1; i >= 0; i--) {
-      if (TXNS_DATA[i] && TXNS_DATA[i].__proy) TXNS_DATA.splice(i, 1);
-    }
+    // 1) Reset a base
+    TXNS_DATA.length = 0;
+    RV_BASE_TXNS.forEach(t => TXNS_DATA.push(t));
+
+    // 2) Ventas extra (manuales + importadas) desde rv_ventas
+    let ev = [];
+    try {
+      ev = (typeof extraVentas !== 'undefined' && Array.isArray(extraVentas))
+        ? extraVentas
+        : JSON.parse(localStorage.getItem('rv_ventas') || '[]');
+    } catch (e) { ev = []; }
+    ev.forEach(r => {
+      const venta = rvNum(r.venta), costo = rvNum(r.costo);
+      TXNS_DATA.push({
+        canal: r.canal || '—', cliente: r.cliente || 'Tienda',
+        mes: r.mes || (r.fecha || '').slice(0, 7), fecha: r.fecha || '',
+        tipo_doc: r.tipo_doc || 'MANUAL', serie: r.serie || '', correlativo: r.correlativo || '',
+        n_operacion: r.n_operacion || '', modelo: r.modelo || '—', marca: r.marca || '—',
+        qty: r.qty || 1, venta, costo, margen: venta - costo,
+        margen_pct: venta > 0 ? ((venta - costo) / venta * 100) : 0, __extra: true
+      });
+    });
+
+    // 3) Proyectos (monto ejecutado → canal San Isidro)
     const proys = await fetch(`${RV_API}/proyectos`).then(r => r.json()).catch(() => []);
     if (Array.isArray(proys)) {
       proys.forEach(p => {
         const venta = rvNum(p.monto_ejecutado);
-        if (venta <= 0) return; // solo lo ejecutado suma
+        if (venta <= 0) return;
         const costo = rvNum(p.costo);
-        const margen = venta - costo;
         TXNS_DATA.push({
-          canal: 'San Isidro',
-          cliente: p.cliente || 'Proyecto',
-          mes: (p.fecha_oc || '').slice(0, 7),
-          fecha: (p.fecha_oc || '').slice(0, 10),
-          tipo_doc: 'OC',
-          serie: p.numero_oc || '',
-          correlativo: '',
-          n_operacion: p.numero_oc || '',
-          modelo: 'Proyecto: ' + (p.descripcion || p.numero_oc || ''),
-          marca: 'Proyectos',
-          qty: 1,
-          venta: venta,
-          costo: costo,
-          margen: margen,
-          margen_pct: venta > 0 ? (margen / venta * 100) : 0,
-          __proy: p.id
+          canal: 'San Isidro', cliente: p.cliente || 'Proyecto',
+          mes: (p.fecha_oc || '').slice(0, 7), fecha: (p.fecha_oc || '').slice(0, 10),
+          tipo_doc: 'OC', serie: p.numero_oc || '', correlativo: '', n_operacion: p.numero_oc || '',
+          modelo: 'Proyecto: ' + (p.descripcion || p.numero_oc || ''), marca: 'Proyectos',
+          qty: 1, venta, costo, margen: venta - costo,
+          margen_pct: venta > 0 ? ((venta - costo) / venta * 100) : 0, __proy: p.id
         });
       });
     }
+
     if (typeof SEED !== 'undefined') SEED.transacciones = TXNS_DATA;
     recomputeSeedTotals();
     if (typeof renderAll === 'function') renderAll();
     if (typeof initCharts === 'function') setTimeout(initCharts, 120);
-    console.log('[PROY-SYNC] ✓ Proyectos integrados a los cálculos');
+    console.log('[TXNS] ✓ Reconstruido: base + extras + proyectos =', TXNS_DATA.length, 'transacciones');
   } catch (e) {
-    console.error('[PROY-SYNC]', e);
+    console.error('[TXNS]', e);
   } finally {
     rvSyncEnCurso = false;
   }
 }
+// Alias usado por el CRUD de proyectos
+async function rvSyncProyectos() { return rvRebuildTxns(); }
 
 // ══ GASTOS / MOVILIDAD: formulario desplegable ══
 function rvToggleGastoForm() {
@@ -1193,6 +1212,57 @@ async function rvGuardarFijoManual() {
   }
 }
 
+// ══ PAGOS PENDIENTES: comprobante por concepto ══
+function rvPpPdfs() {
+  try { return JSON.parse(localStorage.getItem('rv_pp_pdfs') || '{}'); } catch (e) { return {}; }
+}
+async function rvSubirPdfPP(clave) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,.xml,.jpg,.png,.jpeg';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const ruta = await rvSubirArchivo(file);
+    if (ruta) {
+      const m = rvPpPdfs();
+      m[clave] = ruta;
+      localStorage.setItem('rv_pp_pdfs', JSON.stringify(m));
+      if (typeof window.renderPPAlq === 'function') window.renderPPAlq();
+      if (typeof showToast === 'function') showToast('✅ Comprobante de pago guardado');
+    }
+  };
+  input.click();
+}
+function rvDecorarPP() {
+  const tbody = document.getElementById('tbl-pp-alq-body');
+  if (!tbody) return;
+  const pdfs = rvPpPdfs();
+  const table = tbody.closest('table');
+  if (table) {
+    const headRow = table.querySelector('thead tr');
+    if (headRow && !headRow.querySelector('.rv-pp-th')) {
+      const th = document.createElement('th');
+      th.className = 'rv-pp-th';
+      th.textContent = 'Comprobante';
+      headRow.appendChild(th);
+    }
+  }
+  tbody.querySelectorAll('tr').forEach(tr => {
+    if (tr.querySelector('.rv-pp-btn')) return;
+    const primera = tr.querySelector('td');
+    if (!primera) return;
+    const clave = 'pp_' + primera.textContent.trim().slice(0, 40);
+    const ruta = pdfs[clave];
+    const td = document.createElement('td');
+    td.style.whiteSpace = 'nowrap';
+    td.innerHTML =
+      (ruta ? `<button class="rv-pp-btn" onclick="viewFile('${ruta}')" title="Ver comprobante" style="background:#e3f0fb;border:1px solid #bdd7f3;border-radius:4px;cursor:pointer;padding:2px 6px;font-size:11px">📄</button> ` : '') +
+      `<button class="rv-pp-btn" onclick="rvSubirPdfPP('${clave.replace(/'/g, "\\'")}')" title="${ruta ? 'Reemplazar' : 'Subir'} comprobante" style="background:#1565c0;color:#fff;border:none;border-radius:4px;cursor:pointer;padding:2px 6px;font-size:11px">📤</button>`;
+    tr.appendChild(td);
+  });
+}
+
 // ══ ACTIVACIÓN DE ESTAS EXTENSIONES ══
 (function rvActivarExtensiones2() {
   function envolver(nombre, despues) {
@@ -1208,19 +1278,35 @@ async function rvGuardarFijoManual() {
     return false;
   }
 
-  // Login → integrar proyectos a los cálculos (tras render inicial)
+  // Evitar doble conteo: como ahora las ventas extra están DENTRO de TXNS_DATA
+  // (y por tanto en SEED.tot_v tras recompute), computeTotals ya no debe
+  // volver a sumar extraVentas.
+  if (typeof window.computeTotals === 'function') {
+    window.computeTotals = function () {
+      if (typeof SEED === 'undefined') return { tot_v: 0, tot_c: 0, tot_m: 0 };
+      return { tot_v: SEED.tot_v || 0, tot_c: SEED.tot_c || 0, tot_m: (SEED.tot_v || 0) - (SEED.tot_c || 0) };
+    };
+  }
+
+  // Login → reconstruir transacciones (extras + proyectos) y recalcular todo
   if (typeof window.doLogin === 'function') {
     const doLoginOriginal = window.doLogin;
     window.doLogin = function (...args) {
       const r = doLoginOriginal.apply(this, args);
-      setTimeout(() => { try { rvSyncProyectos(); } catch (e) {} }, 800);
+      setTimeout(() => { try { rvRebuildTxns(); } catch (e) {} }, 400);
       return r;
     };
   }
 
+  // Tras registrar/importar ventas → reconstruir para evitar duplicados
+  envolver('saveVenta', () => setTimeout(rvRebuildTxns, 50));
+  envolver('confirmImport', () => setTimeout(rvRebuildTxns, 50));
+
   // Stock: decorar tras render
   envolver('renderInvInicial', () => rvDecorarStock());
   envolver('renderInvRepos', () => rvDecorarStock());
+  // Pagos pendientes: comprobante por fila
+  envolver('renderPPAlq', () => rvDecorarPP());
 
   console.log('[RV-EXT2] ✓ Extensiones v7 activas');
 })();

@@ -45,17 +45,50 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadsDir),
-  filename: (req, file, cb) => {
+// Guarda el binario del archivo en MySQL (sobrevive a los redeploys de Railway,
+// cuyo sistema de archivos es efímero)
+async function guardarArchivoBD(nombre, mime, buffer) {
+  try {
+    const conn = await pool.getConnection();
+    await conn.execute(
+      'INSERT INTO archivos_bin (nombre, mime, datos) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE datos=VALUES(datos), mime=VALUES(mime)',
+      [nombre, mime || 'application/octet-stream', buffer]
+    );
+    conn.release();
+  } catch (err) {
+    console.error('✗ guardarArchivoBD:', err.message);
+  }
+}
+
+// Motor de almacenamiento: escribe a disco (para servir rápido en la misma
+// sesión) Y persiste una copia en MySQL. req.file.filename se mantiene igual,
+// así que todos los endpoints existentes siguen funcionando sin cambios.
+const storage = {
+  _handleFile(req, file, cb) {
     const timestamp = Date.now();
     const ext = path.extname(file.originalname);
-    const name = path.basename(file.originalname, ext);
-    cb(null, `${name}-${timestamp}${ext}`);
+    const base = path.basename(file.originalname, ext);
+    const name = `${base}-${timestamp}${ext}`;
+    const finalPath = path.join(uploadsDir, name);
+    const chunks = [];
+    const ws = fs.createWriteStream(finalPath);
+    file.stream.on('data', (d) => chunks.push(d));
+    file.stream.on('error', cb);
+    file.stream.pipe(ws);
+    ws.on('error', cb);
+    ws.on('finish', () => {
+      const buffer = Buffer.concat(chunks);
+      guardarArchivoBD(name, file.mimetype, buffer).finally(() => {
+        cb(null, { filename: name, path: finalPath, size: buffer.length });
+      });
+    });
+  },
+  _removeFile(req, file, cb) {
+    fs.unlink(file.path, () => cb(null));
   }
-});
+};
 
-const upload = multer({ storage });
+const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
 
 // Middleware (límite alto: rv_ventas/rv_gastos pueden pesar varios MB)
 app.use(express.json({ limit: '50mb' }));
@@ -80,7 +113,26 @@ app.use(express.static(path.join(__dirname, 'public'), {
     }
   }
 }));
-app.use('/uploads', express.static(uploadsDir));
+// Sirve /uploads/:archivo desde disco si existe; si no (tras un redeploy),
+// lo recupera desde MySQL.
+app.get('/uploads/:nombre', async (req, res) => {
+  const nombre = req.params.nombre;
+  const rutaDisco = path.join(uploadsDir, nombre);
+  if (fs.existsSync(rutaDisco)) return res.sendFile(rutaDisco);
+  try {
+    const conn = await pool.getConnection();
+    const [rows] = await conn.execute('SELECT mime, datos FROM archivos_bin WHERE nombre = ?', [nombre]);
+    conn.release();
+    if (rows.length) {
+      res.setHeader('Content-Type', rows[0].mime || 'application/octet-stream');
+      res.setHeader('Content-Disposition', 'inline; filename="' + nombre + '"');
+      return res.send(rows[0].datos);
+    }
+    res.status(404).send('Archivo no encontrado');
+  } catch (err) {
+    res.status(500).send('Error al recuperar archivo');
+  }
+});
 
 // Health checks
 app.get('/health', (req, res) => {
@@ -111,6 +163,24 @@ async function initStorageTable() {
   }
 }
 initStorageTable();
+
+// Tabla para binarios de archivos (persisten a los redeploys de Railway)
+async function initArchivosTable() {
+  try {
+    const conn = await pool.getConnection();
+    await conn.query(`CREATE TABLE IF NOT EXISTS archivos_bin (
+      nombre VARCHAR(255) PRIMARY KEY,
+      mime VARCHAR(100),
+      datos LONGBLOB,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+    conn.release();
+    console.log('✓ Tabla archivos_bin lista');
+  } catch (err) {
+    console.error('✗ initArchivosTable:', err.message);
+  }
+}
+initArchivosTable();
 
 // Migración: agregar columna costo a proyectos si no existe (MySQL 8 no soporta IF NOT EXISTS en ADD COLUMN)
 async function migrarColumnaCosto() {
