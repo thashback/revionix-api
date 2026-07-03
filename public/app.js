@@ -1350,6 +1350,19 @@ function rvAsegurarMeses() {
   SEED.meses.sort((a, b) => (a.p < b.p ? -1 : a.p > b.p ? 1 : 0));
 }
 
+// Sincroniza los usuarios de la UI (USERS) a la BD, para que el login real los reconozca
+function rvSyncUsuariosAPI() {
+  if (typeof USERS === 'undefined') return;
+  Object.keys(USERS).forEach(username => {
+    const u = USERS[username];
+    if (!u) return;
+    fetch(`${RV_API}/auth/users`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: username, password: u.pass, nombre: u.name, role: u.role, canal: u.canal, activo: u.activo !== false })
+    }).catch(() => {});
+  });
+}
+
 // Botón manual de recálculo en el dashboard (fuerza integrar proyectos + junio)
 function rvInyectarBotonRecalc() {
   const page = document.getElementById('page-dashboard');
@@ -1576,12 +1589,47 @@ function rvDecorarPP() {
     };
   }
 
-  // Login → reconstruir transacciones (extras + proyectos) y recalcular todo
+  // Login → autenticación REAL contra la BD (contraseñas con hash en el servidor)
   if (typeof window.doLogin === 'function') {
-    const doLoginOriginal = window.doLogin;
-    window.doLogin = function (...args) {
-      const r = doLoginOriginal.apply(this, args);
-      setTimeout(() => { try { rvRebuildTxns(); rvActualizarFechaReal(); } catch (e) {} }, 400);
+    const inlineDoLogin = window.doLogin;
+    window.doLogin = async function () {
+      const uEl = document.getElementById('login-user');
+      const pEl = document.getElementById('login-pass');
+      const errEl = document.getElementById('login-error');
+      const u = (uEl ? uEl.value : '').trim().toLowerCase();
+      const p = pEl ? pEl.value : '';
+      if (!u || !p) { if (errEl) errEl.textContent = 'Ingresa usuario y contraseña'; return; }
+      try {
+        const res = await fetch(`${RV_API}/auth/login`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: u, password: p })
+        });
+        const data = await res.json();
+        if (data && data.ok) {
+          // Inyectar el usuario ya verificado para que el flujo interno prosiga
+          if (typeof USERS !== 'undefined') {
+            USERS[u] = { pass: p, role: data.user.role, canal: data.user.canal, name: data.user.nombre, email: '', activo: true };
+          }
+          inlineDoLogin();
+          setTimeout(() => { try { rvRebuildTxns(); rvActualizarFechaReal(); } catch (e) {} }, 400);
+        } else {
+          if (errEl) errEl.textContent = (data && data.error) || 'Usuario o contraseña incorrectos';
+        }
+      } catch (e) {
+        // Servidor no disponible → login interno de respaldo (evita bloqueo total)
+        console.warn('[AUTH] Servidor no disponible, usando login local:', e.message);
+        inlineDoLogin();
+        setTimeout(() => { try { rvRebuildTxns(); rvActualizarFechaReal(); } catch (e2) {} }, 400);
+      }
+    };
+  }
+
+  // Sincronizar usuarios creados/editados en la UI hacia la BD (para que el login real los reconozca)
+  if (typeof window.saveUsers === 'function') {
+    const saveUsersOrig = window.saveUsers;
+    window.saveUsers = function () {
+      const r = saveUsersOrig.apply(this, arguments);
+      try { rvSyncUsuariosAPI(); } catch (e) { console.error('[AUTH] sync users', e); }
       return r;
     };
   }

@@ -3,6 +3,7 @@ const mysql = require('mysql2/promise');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+const crypto = require('crypto');
 
 require('dotenv').config();
 
@@ -181,6 +182,139 @@ async function initArchivosTable() {
   }
 }
 initArchivosTable();
+
+// ═══════════════════════════════════════════════════════════════
+// AUTENTICACIÓN REAL (usuarios en MySQL, contraseñas con hash scrypt)
+// ═══════════════════════════════════════════════════════════════
+function hashPass(password, salt) {
+  salt = salt || crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(String(password), salt, 64).toString('hex');
+  return { salt, hash };
+}
+function verifyPass(password, salt, hash) {
+  try {
+    const h = crypto.scryptSync(String(password), salt, 64).toString('hex');
+    const a = Buffer.from(h, 'hex'), b = Buffer.from(hash, 'hex');
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  } catch (e) { return false; }
+}
+
+const USUARIOS_DEFAULT = [
+  { u: 'admin', p: 'R3v10n1x#2026', n: 'Administrador General', role: 'admin', canal: '*' },
+  { u: 'compuplaza', p: 'Cpz2026#', n: 'Encargado Compuplaza', role: 'tienda', canal: 'Compuplaza' },
+  { u: 'malvitec', p: 'Mlv2026#', n: 'Encargado Malvitec', role: 'tienda', canal: 'Malvitec' },
+  { u: 'compupalace', p: 'Cpl2026#', n: 'Encargado Compupalace', role: 'tienda', canal: 'Compupalace' },
+  { u: 'corporativo', p: 'Corp2026#', n: 'Ejecutivo Corporativo', role: 'tienda', canal: 'Corporativo' },
+  { u: 'sanisidro', p: 'Si2026#', n: 'Encargado San Isidro', role: 'tienda', canal: 'San Isidro' },
+  { u: 'visor', p: 'V1s0r2026#', n: 'Solo Lectura', role: 'visor', canal: '*' },
+  { u: 'ccervep', p: 'ccervep2026@', n: 'Cervep — Solo Lectura', role: 'visor', canal: '*' }
+];
+
+async function initUsuariosTable() {
+  try {
+    const conn = await pool.getConnection();
+    await conn.query(`CREATE TABLE IF NOT EXISTS usuarios (
+      username VARCHAR(50) PRIMARY KEY,
+      salt VARCHAR(64),
+      pass_hash VARCHAR(200),
+      nombre VARCHAR(120),
+      role VARCHAR(20) DEFAULT 'tienda',
+      canal VARCHAR(50) DEFAULT '*',
+      activo TINYINT DEFAULT 1,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+    const [rows] = await conn.query('SELECT COUNT(*) AS c FROM usuarios');
+    if (rows[0].c === 0) {
+      for (const d of USUARIOS_DEFAULT) {
+        const { salt, hash } = hashPass(d.p);
+        await conn.execute(
+          'INSERT INTO usuarios (username, salt, pass_hash, nombre, role, canal, activo) VALUES (?, ?, ?, ?, ?, ?, 1)',
+          [d.u, salt, hash, d.n, d.role, d.canal]
+        );
+      }
+      console.log('✓ Usuarios por defecto sembrados (' + USUARIOS_DEFAULT.length + ')');
+    }
+    conn.release();
+    console.log('✓ Tabla usuarios lista');
+  } catch (err) {
+    console.error('✗ initUsuariosTable:', err.message);
+  }
+}
+initUsuariosTable();
+
+// Verifica credenciales contra la BD
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const username = String(req.body.username || '').trim().toLowerCase();
+    const password = String(req.body.password || '');
+    if (!username || !password) return res.json({ ok: false, error: 'Faltan credenciales' });
+    const conn = await pool.getConnection();
+    const [rows] = await conn.execute('SELECT * FROM usuarios WHERE username = ?', [username]);
+    conn.release();
+    if (!rows.length) return res.json({ ok: false, error: 'Usuario o contraseña incorrectos' });
+    const u = rows[0];
+    if (u.activo === 0) return res.json({ ok: false, error: 'Usuario desactivado' });
+    if (!verifyPass(password, u.salt, u.pass_hash)) return res.json({ ok: false, error: 'Usuario o contraseña incorrectos' });
+    res.json({ ok: true, user: { username: u.username, nombre: u.nombre, role: u.role, canal: u.canal } });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Lista de usuarios (sin hashes)
+app.get('/api/auth/users', async (req, res) => {
+  try {
+    const conn = await pool.getConnection();
+    const [rows] = await conn.execute('SELECT username, nombre, role, canal, activo FROM usuarios ORDER BY username');
+    conn.release();
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Crear/actualizar usuario (contraseña opcional al actualizar)
+app.post('/api/auth/users', async (req, res) => {
+  try {
+    const username = String(req.body.username || '').trim().toLowerCase();
+    const { password, nombre, role, canal } = req.body;
+    const activo = (req.body.activo === false || req.body.activo === 0) ? 0 : 1;
+    if (!username) return res.status(400).json({ error: 'Falta username' });
+    const conn = await pool.getConnection();
+    const [ex] = await conn.execute('SELECT username FROM usuarios WHERE username = ?', [username]);
+    if (ex.length) {
+      if (password) {
+        const { salt, hash } = hashPass(password);
+        await conn.execute('UPDATE usuarios SET salt=?, pass_hash=?, nombre=?, role=?, canal=?, activo=? WHERE username=?',
+          [salt, hash, nombre || username, role || 'tienda', canal || '*', activo, username]);
+      } else {
+        await conn.execute('UPDATE usuarios SET nombre=?, role=?, canal=?, activo=? WHERE username=?',
+          [nombre || username, role || 'tienda', canal || '*', activo, username]);
+      }
+    } else {
+      const { salt, hash } = hashPass(password || 'cambiar123');
+      await conn.execute('INSERT INTO usuarios (username, salt, pass_hash, nombre, role, canal, activo) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [username, salt, hash, nombre || username, role || 'tienda', canal || '*', activo]);
+    }
+    conn.release();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/auth/users/:username', async (req, res) => {
+  try {
+    const username = String(req.params.username || '').toLowerCase();
+    if (username === 'admin') return res.status(400).json({ error: 'No se puede eliminar el admin' });
+    const conn = await pool.getConnection();
+    await conn.execute('DELETE FROM usuarios WHERE username = ?', [username]);
+    conn.release();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Migración: agregar columna costo a proyectos si no existe (MySQL 8 no soporta IF NOT EXISTS en ADD COLUMN)
 async function migrarColumnaCosto() {
