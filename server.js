@@ -390,15 +390,19 @@ async function initRegistrosTables() {
     await conn.query(`CREATE TABLE IF NOT EXISTS reg_ventas (
       id INT AUTO_INCREMENT PRIMARY KEY, fecha VARCHAR(20), canal VARCHAR(80), cliente VARCHAR(200),
       modelo VARCHAR(300), marca VARCHAR(80), qty INT, venta DECIMAL(12,2), costo DECIMAL(12,2),
-      condicion VARCHAR(20), grupo VARCHAR(40)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+      condicion VARCHAR(20), grupo VARCHAR(40), raw LONGTEXT) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
     await conn.query(`CREATE TABLE IF NOT EXISTS reg_gastos (
       id INT AUTO_INCREMENT PRIMARY KEY, fecha VARCHAR(20), categoria VARCHAR(80), canal VARCHAR(80),
       descripcion VARCHAR(400), monto DECIMAL(12,2), responsable VARCHAR(120), comentarios VARCHAR(500),
-      numero VARCHAR(60)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+      numero VARCHAR(60), raw LONGTEXT) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
     await conn.query(`CREATE TABLE IF NOT EXISTS reg_compras (
       id INT AUTO_INCREMENT PRIMARY KEY, prov VARCHAR(150), fecha VARCHAR(20), descripcion VARCHAR(400),
       marca VARCHAR(80), cant INT, usd DECIMAL(12,2), sol DECIMAL(12,2), destino VARCHAR(40),
-      numero_comprobante VARCHAR(80)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+      numero_comprobante VARCHAR(80), raw LONGTEXT) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+    // Migración: agregar columna raw si las tablas ya existían sin ella
+    for (const t of ['reg_ventas', 'reg_gastos', 'reg_compras']) {
+      try { await conn.query('ALTER TABLE ' + t + ' ADD COLUMN raw LONGTEXT'); } catch (e) { /* ya existe */ }
+    }
     conn.release();
     console.log('✓ Tablas reg_ventas/reg_gastos/reg_compras listas');
   } catch (err) {
@@ -418,20 +422,20 @@ async function espejarDataset(clave, valorJSON) {
     if (clave === 'rv_ventas') {
       await conn.query('DELETE FROM reg_ventas');
       for (const r of arr) {
-        await conn.execute('INSERT INTO reg_ventas (fecha,canal,cliente,modelo,marca,qty,venta,costo,condicion,grupo) VALUES (?,?,?,?,?,?,?,?,?,?)',
-          [r.fecha || '', r.canal || '', r.cliente || '', r.modelo || '', r.marca || '', parseInt(r.qty) || 1, num(r.venta), num(r.costo), r.condicion || '', r.grupo || '']);
+        await conn.execute('INSERT INTO reg_ventas (fecha,canal,cliente,modelo,marca,qty,venta,costo,condicion,grupo,raw) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+          [r.fecha || '', r.canal || '', r.cliente || '', r.modelo || '', r.marca || '', parseInt(r.qty) || 1, num(r.venta), num(r.costo), r.condicion || '', r.grupo || '', JSON.stringify(r)]);
       }
     } else if (clave === 'rv_gastos') {
       await conn.query('DELETE FROM reg_gastos');
       for (const r of arr) {
-        await conn.execute('INSERT INTO reg_gastos (fecha,categoria,canal,descripcion,monto,responsable,comentarios,numero) VALUES (?,?,?,?,?,?,?,?)',
-          [r.fecha || '', r.cat || '', r.canal || '', r.desc || '', num(r.monto), r.resp || '', r.comentarios || '', r.numero || '']);
+        await conn.execute('INSERT INTO reg_gastos (fecha,categoria,canal,descripcion,monto,responsable,comentarios,numero,raw) VALUES (?,?,?,?,?,?,?,?,?)',
+          [r.fecha || '', r.cat || '', r.canal || '', r.desc || '', num(r.monto), r.resp || '', r.comentarios || '', r.numero || '', JSON.stringify(r)]);
       }
     } else if (clave === 'rv_compras') {
       await conn.query('DELETE FROM reg_compras');
       for (const r of arr) {
-        await conn.execute('INSERT INTO reg_compras (prov,fecha,descripcion,marca,cant,usd,sol,destino,numero_comprobante) VALUES (?,?,?,?,?,?,?,?,?)',
-          [r.prov || '', r.fecha || '', r.desc || '', r.marca || '', parseInt(r.cant) || 0, num(r.usd), num(r.sol), r.destino || '', r.numero_comprobante || '']);
+        await conn.execute('INSERT INTO reg_compras (prov,fecha,descripcion,marca,cant,usd,sol,destino,numero_comprobante,raw) VALUES (?,?,?,?,?,?,?,?,?,?)',
+          [r.prov || '', r.fecha || '', r.desc || '', r.marca || '', parseInt(r.cant) || 0, num(r.usd), num(r.sol), r.destino || '', r.numero_comprobante || '', JSON.stringify(r)]);
       }
     }
   } finally {

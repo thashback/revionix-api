@@ -1193,8 +1193,8 @@ function rvPersistirCompras() {
     } catch (e) { console.error('[RV-EXT] pp', e); }
   })) activadas.push('pagos→fijos');
   // Persistir compras mayoristas / inversión al guardar (saveEdit maneja compras)
-  if (envolver('saveEdit', () => rvPersistirCompras())) activadas.push('compras-persist');
-  if (envolver('deleteTxn', () => rvPersistirCompras())) { /* por si borran filas */ }
+  if (envolver('saveEdit', () => { rvPersistirCompras(); rvFlushCompras(); })) activadas.push('compras-persist');
+  if (envolver('deleteTxn', () => { rvPersistirCompras(); rvFlushCompras(); })) { /* por si borran filas */ }
 
   // saveGasto: adjuntar comprobante al nuevo registro
   if (typeof window.saveGasto === 'function') {
@@ -1217,9 +1217,13 @@ function rvPersistirCompras() {
           });
         }
       } catch (e) { console.error('[RV-EXT] saveGasto', e); }
+      setTimeout(rvFlushGastos, 60); // guardar gastos en la BD de inmediato
     };
     activadas.push('gasto-nuevo-pdf');
   }
+  // clearGastos / deleteGasto → reflejar el borrado en la BD
+  if (envolver('deleteGasto', () => setTimeout(rvFlushGastos, 60))) { /* borrar gasto */ }
+  if (envolver('clearGastos', () => setTimeout(rvFlushGastos, 60))) { /* limpiar gastos */ }
 
   // Primera pasada de decoración (el sistema pudo renderizar antes que app.js)
   window.addEventListener('load', () => {
@@ -1334,45 +1338,80 @@ async function rvSyncProyectos() { return rvRebuildTxns(); }
 // (rv_ventas / extraVentas) se mantiene para que el resto del sistema
 // (dashboard, canales, EBITDA, rvRebuildTxns) siga funcionando igual.
 // ═══════════════════════════════════════════════════════════════
+// Reconstruye registros desde las filas de la BD usando la columna raw (sin pérdida)
+function rvDesdeRaw(rows) {
+  return rows.map(r => { try { return JSON.parse(r.raw); } catch (e) { return r; } });
+}
+// Envía una clave rv_* a la BD de inmediato (sin esperar el debounce)
+function rvFlushClave(clave) {
+  try {
+    const v = localStorage.getItem(clave);
+    if (v == null) return;
+    const body = {}; body[clave] = v;
+    fetch(`${RV_API}/storage`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(() => console.log('[BD] ✓ Guardado', clave)).catch(() => {});
+  } catch (e) {}
+}
+function rvFlushVentas() { rvFlushClave('rv_ventas'); }
+function rvFlushGastos() { rvFlushClave('rv_gastos'); }
+function rvFlushCompras() { rvFlushClave('rv_compras'); }
+
+// VENTAS: BD como fuente de verdad
 async function rvCargarVentasDesdeBD() {
   try {
     const rows = await fetch(`${RV_API}/reg/ventas`).then(r => r.json());
     if (!Array.isArray(rows)) return;
-    let local = [];
-    try { local = JSON.parse(localStorage.getItem('rv_ventas') || '[]'); } catch (e) { local = []; }
-
-    // Primera vez: si la BD está vacía pero hay ventas locales, subirlas (no perder nada)
-    if (rows.length === 0 && local.length > 0) {
-      rvFlushVentas();
-      console.log('[VENTAS-BD] BD vacía → subidas', local.length, 'ventas locales');
-      return;
-    }
-    // BD es fuente de verdad → reconstruir caché local desde la BD
-    const mapped = rows.map(r => ({
-      fecha: r.fecha, mes: (r.fecha || '').slice(0, 7), canal: r.canal, cliente: r.cliente,
-      modelo: r.modelo, marca: r.marca, qty: r.qty || 1, venta: rvNum(r.venta), costo: rvNum(r.costo),
-      condicion: r.condicion || '', medio_pago: r.condicion || '', grupo: r.grupo || ''
-    }));
+    let local = []; try { local = JSON.parse(localStorage.getItem('rv_ventas') || '[]'); } catch (e) {}
+    if (rows.length === 0 && local.length > 0) { rvFlushVentas(); return; }
+    const mapped = rvDesdeRaw(rows);
     localStorage.setItem('rv_ventas', JSON.stringify(mapped));
-    if (typeof extraVentas !== 'undefined' && Array.isArray(extraVentas)) {
-      extraVentas.length = 0; mapped.forEach(m => extraVentas.push(m));
-    }
-    console.log('[VENTAS-BD] ✓ Cargadas', mapped.length, 'ventas desde la base de datos');
-  } catch (e) {
-    console.warn('[VENTAS-BD] No se pudo cargar desde la BD (se usa caché local):', e.message);
-  }
+    if (typeof extraVentas !== 'undefined' && Array.isArray(extraVentas)) { extraVentas.length = 0; mapped.forEach(m => extraVentas.push(m)); }
+    console.log('[VENTAS-BD] ✓', mapped.length, 'ventas desde la BD');
+  } catch (e) { console.warn('[VENTAS-BD]', e.message); }
 }
 
-// Envía rv_ventas a la BD de inmediato (sin esperar el debounce) → refleja en reg_ventas
-function rvFlushVentas() {
+// GASTOS: BD como fuente de verdad
+async function rvCargarGastosDesdeBD() {
   try {
-    const v = localStorage.getItem('rv_ventas');
-    if (v == null) return;
-    fetch(`${RV_API}/storage`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rv_ventas: v })
-    }).then(() => console.log('[VENTAS-BD] ✓ Ventas guardadas en la BD')).catch(() => {});
-  } catch (e) {}
+    const rows = await fetch(`${RV_API}/reg/gastos`).then(r => r.json());
+    if (!Array.isArray(rows)) return;
+    let local = []; try { local = JSON.parse(localStorage.getItem('rv_gastos') || '[]'); } catch (e) {}
+    if (rows.length === 0 && local.length > 0) { rvFlushGastos(); return; }
+    const mapped = rvDesdeRaw(rows);
+    localStorage.setItem('rv_gastos', JSON.stringify(mapped));
+    if (typeof gastosLocal !== 'undefined' && Array.isArray(gastosLocal)) { gastosLocal.length = 0; mapped.forEach(m => gastosLocal.push(m)); }
+    if (typeof renderGastos === 'function') try { renderGastos(); } catch (e) {}
+    console.log('[GASTOS-BD] ✓', mapped.length, 'gastos desde la BD');
+  } catch (e) { console.warn('[GASTOS-BD]', e.message); }
+}
+
+// COMPRAS: BD como fuente de verdad (reconstruye COMPRAS_DATA = base + BD)
+async function rvCargarComprasDesdeBD() {
+  try {
+    const rows = await fetch(`${RV_API}/reg/compras`).then(r => r.json());
+    if (!Array.isArray(rows)) return;
+    let local = []; try { local = JSON.parse(localStorage.getItem('rv_compras') || '[]'); } catch (e) {}
+    if (rows.length === 0 && local.length > 0) { rvFlushCompras(); return; }
+    const mapped = rvDesdeRaw(rows);
+    localStorage.setItem('rv_compras', JSON.stringify(mapped));
+    if (typeof COMPRAS_DATA !== 'undefined') {
+      COMPRAS_DATA.length = RV_BASE_COMPRAS_LEN;         // dejar solo las base (seed)
+      mapped.forEach(c => COMPRAS_DATA.push(c));         // + las de la BD
+      rvComprasRestauradas = true;
+      try { if (typeof recomputeFromCompras === 'function') recomputeFromCompras(); } catch (e) {}
+      try { if (typeof filterCompras === 'function') filterCompras(); } catch (e) {}
+      try { if (typeof renderInvInicial === 'function') renderInvInicial(); } catch (e) {}
+      try { if (typeof renderInvRepos === 'function') renderInvRepos(); } catch (e) {}
+    }
+    console.log('[COMPRAS-BD] ✓', mapped.length, 'compras desde la BD');
+  } catch (e) { console.warn('[COMPRAS-BD]', e.message); }
+}
+
+// Carga los tres módulos migrados desde la BD
+async function rvCargarTodoDesdeBD() {
+  await rvCargarVentasDesdeBD();
+  await rvCargarGastosDesdeBD();
+  await rvCargarComprasDesdeBD();
 }
 
 // Asegura que SEED.meses tenga una fila por cada mes con transacciones y hasta
@@ -1660,7 +1699,7 @@ function rvDecorarPP() {
             USERS[u] = { pass: p, role: data.user.role, canal: data.user.canal, name: data.user.nombre, email: '', activo: true };
           }
           inlineDoLogin();
-          setTimeout(async () => { try { await rvCargarVentasDesdeBD(); rvRebuildTxns(); rvActualizarFechaReal(); } catch (e) {} }, 400);
+          setTimeout(async () => { try { await rvCargarTodoDesdeBD(); rvRebuildTxns(); rvActualizarFechaReal(); } catch (e) {} }, 400);
         } else {
           if (errEl) errEl.textContent = (data && data.error) || 'Usuario o contraseña incorrectos';
         }
@@ -1668,7 +1707,7 @@ function rvDecorarPP() {
         // Servidor no disponible → login interno de respaldo (evita bloqueo total)
         console.warn('[AUTH] Servidor no disponible, usando login local:', e.message);
         inlineDoLogin();
-        setTimeout(async () => { try { await rvCargarVentasDesdeBD(); rvRebuildTxns(); rvActualizarFechaReal(); } catch (e2) {} }, 400);
+        setTimeout(async () => { try { await rvCargarTodoDesdeBD(); rvRebuildTxns(); rvActualizarFechaReal(); } catch (e2) {} }, 400);
       }
     };
   }
