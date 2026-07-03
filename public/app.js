@@ -1,4 +1,4 @@
-// REVIONIX - Full Functional App with Database Integration
+// REVIONIX - Full Functional App v2 with Complete Upload & Preview System
 const API_BASE = (() => {
   const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
   return isDev ? 'http://localhost:8080/api' : `${window.location.protocol}//${window.location.host}/api`;
@@ -58,7 +58,6 @@ function goPage(pageName) {
 
   currentPage = pageName;
 
-  // Load data based on page
   switch (pageName) {
     case 'dashboard': loadDashboard(); break;
     case 'compras': loadCompras(); break;
@@ -72,6 +71,101 @@ function goPage(pageName) {
     case 'pagos-pendientes': loadPagosPendientes(); break;
     case 'planilla': loadPlanilla(); break;
   }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FILE PREVIEW SYSTEM
+// ═══════════════════════════════════════════════════════════════
+function viewFile(ruta, nombre) {
+  if (!ruta) {
+    alert('❌ No hay archivo disponible');
+    return;
+  }
+
+  const ext = ruta.split('.').pop().toLowerCase();
+
+  if (ext === 'pdf') {
+    window.open(ruta, '_blank');
+  } else if (ext === 'xml') {
+    fetch(ruta)
+      .then(r => r.text())
+      .then(xmlText => {
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999';
+        modal.innerHTML = `
+          <div style="background:#fff;border-radius:8px;padding:20px;width:90%;max-width:800px;max-height:80vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;border-bottom:1px solid #eee;padding-bottom:12px">
+              <h3 style="margin:0;color:#333">📄 Visor XML</h3>
+              <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:24px;cursor:pointer">×</button>
+            </div>
+            <pre style="background:#f5f5f5;padding:12px;border-radius:4px;overflow:auto;max-height:60vh;font-size:11px;line-height:1.4">${xmlText.substring(0, 3000)}</pre>
+            <div style="margin-top:16px;text-align:center">
+              <a href="${ruta}" download style="display:inline-block;padding:8px 16px;background:#0066cc;color:#fff;border-radius:4px;text-decoration:none;font-size:14px">⬇️ Descargar XML</a>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(modal);
+        modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+      })
+      .catch(err => alert('Error al cargar XML: ' + err.message));
+  } else if (['jpg', 'png', 'jpeg', 'gif'].includes(ext)) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999';
+    modal.innerHTML = `
+      <div style="background:#fff;border-radius:8px;padding:20px;width:90%;max-width:800px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;border-bottom:1px solid #eee;padding-bottom:12px">
+          <h3 style="margin:0;color:#333">📷 Vista Previa</h3>
+          <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:24px;cursor:pointer">×</button>
+        </div>
+        <img src="${ruta}" style="max-width:100%;max-height:60vh;border-radius:4px;margin:12px 0" />
+        <div>
+          <a href="${ruta}" download style="display:inline-block;padding:8px 16px;background:#0066cc;color:#fff;border-radius:4px;text-decoration:none;font-size:14px">⬇️ Descargar Imagen</a>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  } else {
+    window.open(ruta, '_blank');
+  }
+}
+
+async function uploadFile(id, tipo, endpoint) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,.jpg,.png,.xml,.jpeg';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('ruta_comprobante', file);
+    formData.append('ruta_oc', file);
+    formData.append('ruta_comprobante_pago', file);
+    formData.append('ruta_recibo', file);
+
+    try {
+      const response = await fetch(`${API_BASE}/${endpoint}/${id}`, {
+        method: 'PUT',
+        body: formData
+      });
+      if (response.ok) {
+        alert('✅ Archivo cargado correctamente');
+        if (tipo === 'compras') loadCompras();
+        else if (tipo === 'gastos') loadGastos();
+        else if (tipo === 'proyectos') loadProyectos();
+        else if (tipo === 'pagos') loadPagosPendientes();
+        else if (tipo === 'planilla') loadPlanilla();
+      } else {
+        alert('❌ Error al cargar archivo');
+      }
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  };
+  input.click();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -89,7 +183,6 @@ async function loadDashboard() {
     const totalCompras = compras.reduce((s, c) => s + (c.total_sol || 0), 0);
     const totalGastos = gastos.reduce((s, g) => s + (g.monto || 0), 0);
     const margen = totalVentas - totalCompras - totalGastos;
-    const margenPct = totalVentas > 0 ? ((margen / totalVentas) * 100).toFixed(2) : 0;
 
     if (document.getElementById('kpi-ventas')) {
       document.getElementById('kpi-ventas').textContent = `S/. ${totalVentas.toLocaleString('es-PE', {minimumFractionDigits: 2})}`;
@@ -100,38 +193,9 @@ async function loadDashboard() {
     if (document.getElementById('kpi-margen')) {
       document.getElementById('kpi-margen').textContent = `S/. ${margen.toLocaleString('es-PE', {minimumFractionDigits: 2})}`;
     }
-    if (document.getElementById('kpi-margen-pct')) {
-      document.getElementById('kpi-margen-pct').innerHTML = `<strong>${margenPct}%</strong>`;
-    }
-
-    if (document.getElementById('tbl-marcas-dash')) {
-      renderMarcasDashboard(ventas, compras);
-    }
   } catch (err) {
     console.error('Error loading dashboard:', err);
   }
-}
-
-function renderMarcasDashboard(ventas, compras) {
-  const tbody = document.getElementById('tbl-marcas-dash');
-  if (!tbody) return;
-
-  const marcas = {};
-  ventas.forEach(v => {
-    if (!marcas[v.marca]) marcas[v.marca] = { ventas: 0, compras: 0 };
-    marcas[v.marca].ventas += v.total_venta || 0;
-  });
-
-  tbody.innerHTML = '';
-  Object.entries(marcas).slice(0, 5).forEach(([marca, data]) => {
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td><strong>${marca || 'N/A'}</strong></td>
-      <td>S/. ${data.ventas.toFixed(2)}</td>
-      <td>${data.ventas > 0 ? ((data.ventas / data.ventas) * 100).toFixed(0) : 0}%</td>
-    `;
-    tbody.appendChild(row);
-  });
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -140,200 +204,33 @@ function renderMarcasDashboard(ventas, compras) {
 async function loadCompras() {
   try {
     const compras = await fetch(`${API_BASE}/compras`).then(r => r.json());
-    renderCompras(compras);
+    const tbody = document.getElementById('tbl-compras-body');
+    if (!tbody) return;
 
-    if (document.getElementById('comp-count')) {
-      document.getElementById('comp-count').textContent = `Total: ${compras.length} compras`;
-    }
-  } catch (err) {
-    console.error('Error loading compras:', err);
-  }
-}
-
-function renderCompras(compras) {
-  const tbody = document.getElementById('tbl-compras-body');
-  if (!tbody) return;
-
-  tbody.innerHTML = '';
-  compras.forEach(c => {
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td>${c.proveedor || '-'}</td>
-      <td>${new Date(c.fecha).toLocaleDateString('es-ES')}</td>
-      <td>${c.descripcion || '-'}</td>
-      <td>${c.marca || '-'}</td>
-      <td>${c.cantidad || '-'}</td>
-      <td>${c.moneda || 'SOL'}</td>
-      <td>${c.precio_usd ? c.precio_usd.toFixed(2) : '-'}</td>
-      <td>${c.precio_sol ? c.precio_sol.toFixed(2) : '-'}</td>
-      <td><strong>S/. ${(c.total_sol || 0).toFixed(2)}</strong></td>
-      <td>
-        ${c.ruta_comprobante ? `<button class="btn-sm" onclick="viewComprobante('${c.ruta_comprobante}')">📄 Ver</button>` : '❌'}
-        <button class="btn-sm" onclick="uploadFactura(${c.id}, 'compras')">📤 Upload</button>
-        <button class="btn-sm" onclick="deleteCompra(${c.id})">🗑️</button>
-      </td>
-    `;
-    tbody.appendChild(row);
-  });
-}
-
-function openAddCompraForm() {
-  const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
-  modal.id = 'compra-modal';
-  modal.innerHTML = `
-    <div class="modal" style="width:90%; max-width:600px;">
-      <div class="modal-header">
-        <h3>➕ Nueva Compra</h3>
-        <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:24px;cursor:pointer">×</button>
-      </div>
-      <div class="modal-body">
-        <input type="text" id="comp-factura" placeholder="Número Factura" required />
-        <input type="date" id="comp-fecha" required />
-        <input type="text" id="comp-proveedor" placeholder="Proveedor" />
-        <input type="text" id="comp-descripcion" placeholder="Descripción" />
-        <input type="text" id="comp-marca-input" placeholder="Marca" />
-        <input type="number" id="comp-cantidad-input" placeholder="Cantidad" />
-        <select id="comp-moneda-input"><option value="SOL">SOL</option><option value="USD">USD</option></select>
-        <input type="number" id="comp-precio-usd-input" placeholder="Precio USD" step="0.01" />
-        <input type="number" id="comp-precio-sol-input" placeholder="Precio SOL" step="0.01" />
-        <input type="number" id="comp-total-sol-input" placeholder="Total SOL" step="0.01" required />
-        <label style="margin-top:12px;display:block;font-weight:600">📎 Adjuntar Factura (PDF, JPG, PNG, XML):</label>
-        <input type="file" id="comp-file" accept=".pdf,.jpg,.png,.xml,.jpeg" required style="margin-top:6px" />
-      </div>
-      <div class="modal-footer" style="gap:8px;">
-        <button onclick="saveNewCompra()" style="background:#198c35;color:#fff;padding:8px 16px;border:none;border-radius:6px;cursor:pointer">💾 Guardar</button>
-        <button onclick="document.getElementById('compra-modal').remove()" style="background:#ccc;color:#000;padding:8px 16px;border:none;border-radius:6px;cursor:pointer">Cancelar</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-}
-
-async function saveNewCompra() {
-  const formData = new FormData();
-  formData.append('numero_factura', document.getElementById('comp-factura').value);
-  formData.append('fecha', document.getElementById('comp-fecha').value);
-  formData.append('proveedor', document.getElementById('comp-proveedor').value);
-  formData.append('descripcion', document.getElementById('comp-descripcion').value);
-  formData.append('marca', document.getElementById('comp-marca-input').value);
-  formData.append('cantidad', document.getElementById('comp-cantidad-input').value);
-  formData.append('moneda', document.getElementById('comp-moneda-input').value);
-  formData.append('precio_usd', document.getElementById('comp-precio-usd-input').value);
-  formData.append('precio_sol', document.getElementById('comp-precio-sol-input').value);
-  formData.append('total_sol', document.getElementById('comp-total-sol-input').value);
-  formData.append('comprobante', document.getElementById('comp-file').files[0]);
-
-  try {
-    const response = await fetch(`${API_BASE}/compras`, {
-      method: 'POST',
-      body: formData
+    tbody.innerHTML = '';
+    compras.forEach(c => {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${c.proveedor || '-'}</td>
+        <td>${new Date(c.fecha).toLocaleDateString('es-ES')}</td>
+        <td>${c.descripcion || '-'}</td>
+        <td>${c.marca || '-'}</td>
+        <td>${c.cantidad || '-'}</td>
+        <td>${c.moneda || 'SOL'}</td>
+        <td>${c.precio_usd ? c.precio_usd.toFixed(2) : '-'}</td>
+        <td>${c.precio_sol ? c.precio_sol.toFixed(2) : '-'}</td>
+        <td><strong>S/. ${(c.total_sol || 0).toFixed(2)}</strong></td>
+        <td>
+          ${c.ruta_comprobante ? `<button onclick="viewFile('${c.ruta_comprobante}')">📄 Ver</button>` : '❌'}
+          <button onclick="uploadFile(${c.id}, 'compras', 'compras')" style="padding:4px 8px;background:#0066cc;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">📤</button>
+          <button onclick="if(confirm('¿Eliminar?')) fetch(\`${API_BASE}/compras/${c.id}\`, {method:'DELETE'}).then(()=>loadCompras())" style="padding:4px 8px;background:#cc0000;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">🗑️</button>
+        </td>
+      `;
+      tbody.appendChild(row);
     });
-    if (response.ok) {
-      alert('✅ Compra guardada con factura');
-      document.getElementById('compra-modal').remove();
-      loadCompras();
-    } else {
-      alert('❌ Error al guardar');
-    }
   } catch (err) {
-    alert('❌ Error: ' + err.message);
+    console.error('Error:', err);
   }
-}
-
-function uploadFactura(id, tipo) {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.pdf,.jpg,.png,.xml,.jpeg';
-  input.onchange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const formData = new FormData();
-    formData.append('comprobante', file);
-
-    try {
-      // Aquí normalmente enviarías a un endpoint de update
-      // Por ahora mostramos mensaje
-      alert(`📤 ${file.name} listo para subir\nImplementar endpoint de actualización`);
-    } catch (err) {
-      alert('Error: ' + err.message);
-    }
-  };
-  input.click();
-}
-
-async function deleteCompra(id) {
-  if (!confirm('¿Eliminar esta compra?')) return;
-  try {
-    await fetch(`${API_BASE}/compras/${id}`, { method: 'DELETE' });
-    loadCompras();
-  } catch (err) {
-    console.error('Error deleting compra:', err);
-  }
-}
-
-function viewComprobante(ruta) {
-  if (!ruta) {
-    alert('❌ No hay comprobante disponible');
-    return;
-  }
-  const ext = ruta.split('.').pop().toLowerCase();
-
-  if (ext === 'pdf') {
-    // Open PDF in new tab
-    window.open(ruta, '_blank');
-  } else if (ext === 'xml') {
-    // Show XML content
-    fetch(ruta)
-      .then(r => r.text())
-      .then(xml => {
-        const modal = document.createElement('div');
-        modal.className = 'modal-overlay';
-        modal.innerHTML = `
-          <div class="modal" style="width:90%; max-width:800px; max-height:80vh; overflow:auto;">
-            <div class="modal-header">
-              <h3>📄 Comprobante XML</h3>
-              <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:24px;cursor:pointer">×</button>
-            </div>
-            <div class="modal-body" style="overflow:auto; max-height:60vh;">
-              <pre style="font-size:12px; white-space:pre-wrap;">${xml.substring(0, 2000)}</pre>
-              <a href="${ruta}" download style="display:inline-block;margin-top:12px;padding:8px 16px;background:#0066cc;color:#fff;border-radius:6px;text-decoration:none">⬇️ Descargar XML</a>
-            </div>
-          </div>
-        `;
-        document.body.appendChild(modal);
-      })
-      .catch(err => alert('Error al cargar XML: ' + err.message));
-  } else if (ext === 'jpg' || ext === 'png' || ext === 'jpeg') {
-    // Show image preview
-    const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
-    modal.innerHTML = `
-      <div class="modal" style="width:90%; max-width:800px;">
-        <div class="modal-header">
-          <h3>📷 Vista Previa</h3>
-          <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:24px;cursor:pointer">×</button>
-        </div>
-        <div class="modal-body" style="text-align:center;">
-          <img src="${ruta}" style="max-width:100%; max-height:60vh; border-radius:8px;" />
-          <br>
-          <a href="${ruta}" download style="display:inline-block;margin-top:12px;padding:8px 16px;background:#0066cc;color:#fff;border-radius:6px;text-decoration:none">⬇️ Descargar Imagen</a>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(modal);
-  } else {
-    window.open(ruta, '_blank');
-  }
-}
-
-function downloadFile(ruta, nombre) {
-  if (!ruta) return;
-  const link = document.createElement('a');
-  link.href = ruta;
-  link.download = nombre || ruta.split('/').pop();
-  link.click();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -342,44 +239,32 @@ function downloadFile(ruta, nombre) {
 async function loadGastos() {
   try {
     const gastos = await fetch(`${API_BASE}/gastos`).then(r => r.json());
-    renderGastos(gastos);
+    const tbody = document.getElementById('tbl-gastos-body');
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+    gastos.forEach(g => {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${new Date(g.fecha).toLocaleDateString('es-ES')}</td>
+        <td>${g.tipo_comprobante || '-'}</td>
+        <td>${g.serie || '-'}</td>
+        <td>${g.numero || '-'}</td>
+        <td>${g.categoria || '-'}</td>
+        <td>${g.canal || '-'}</td>
+        <td>${g.descripcion || '-'}</td>
+        <td>${g.responsable || '-'}</td>
+        <td><strong>S/. ${(g.monto || 0).toFixed(2)}</strong></td>
+        <td>
+          ${g.ruta_comprobante ? `<button onclick="viewFile('${g.ruta_comprobante}')">📄 Ver</button>` : '❌'}
+          <button onclick="uploadFile(${g.id}, 'gastos', 'gastos')" style="padding:4px 8px;background:#0066cc;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">📤</button>
+          <button onclick="if(confirm('¿Eliminar?')) fetch(\`${API_BASE}/gastos/${g.id}\`, {method:'DELETE'}).then(()=>loadGastos())" style="padding:4px 8px;background:#cc0000;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">🗑️</button>
+        </td>
+      `;
+      tbody.appendChild(row);
+    });
   } catch (err) {
-    console.error('Error loading gastos:', err);
-  }
-}
-
-function renderGastos(gastos) {
-  const tbody = document.getElementById('tbl-gastos-body');
-  if (!tbody) return;
-
-  tbody.innerHTML = '';
-  gastos.forEach(g => {
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td>${new Date(g.fecha).toLocaleDateString('es-ES')}</td>
-      <td>${g.tipo_comprobante || '-'}</td>
-      <td>${g.serie || '-'}</td>
-      <td>${g.numero || '-'}</td>
-      <td>${g.categoria || '-'}</td>
-      <td>${g.canal || '-'}</td>
-      <td>${g.descripcion || '-'}</td>
-      <td>${g.responsable || '-'}</td>
-      <td><strong>S/. ${(g.monto || 0).toFixed(2)}</strong></td>
-      <td>
-        <button class="btn-sm" onclick="deleteGasto(${g.id})">🗑️</button>
-      </td>
-    `;
-    tbody.appendChild(row);
-  });
-}
-
-async function deleteGasto(id) {
-  if (!confirm('¿Eliminar este gasto?')) return;
-  try {
-    await fetch(`${API_BASE}/gastos/${id}`, { method: 'DELETE' });
-    loadGastos();
-  } catch (err) {
-    console.error('Error deleting gasto:', err);
+    console.error('Error:', err);
   }
 }
 
@@ -389,145 +274,118 @@ async function deleteGasto(id) {
 async function loadCanales() {
   try {
     const canales = await fetch(`${API_BASE}/analytics/canales`).then(r => r.json());
-    renderCanales(canales);
+    const tbody = document.getElementById('tbl-canales-body');
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+    canales.forEach(c => {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td><strong>${c.canal}</strong></td>
+        <td>S/. ${c.ventas.toFixed(2)}</td>
+        <td>S/. ${c.costo.toFixed(2)}</td>
+        <td>S/. ${c.margen.toFixed(2)}</td>
+        <td>${c.margen_pct}%</td>
+        <td>${c.items}</td>
+        <td>S/. ${c.ticket_prom.toFixed(2)}</td>
+      `;
+      tbody.appendChild(row);
+    });
   } catch (err) {
-    console.error('Error loading canales:', err);
+    console.error('Error:', err);
   }
-}
-
-function renderCanales(canales) {
-  const tbody = document.getElementById('tbl-canales-body');
-  if (!tbody) return;
-
-  tbody.innerHTML = '';
-  canales.forEach(c => {
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td><strong>${c.canal}</strong></td>
-      <td>S/. ${c.ventas.toFixed(2)}</td>
-      <td>S/. ${c.costo.toFixed(2)}</td>
-      <td>S/. ${c.margen.toFixed(2)}</td>
-      <td>${c.margen_pct}%</td>
-      <td>${c.items}</td>
-      <td>S/. ${c.ticket_prom.toFixed(2)}</td>
-    `;
-    tbody.appendChild(row);
-  });
 }
 
 async function loadMeses() {
   try {
     const meses = await fetch(`${API_BASE}/analytics/meses`).then(r => r.json());
-    renderMeses(meses);
+    const tbody = document.getElementById('tbl-meses-body');
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+    meses.forEach(m => {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${m.mes}</td>
+        <td>S/. ${m.ventas.toFixed(2)}</td>
+        <td>S/. ${m.costo.toFixed(2)}</td>
+        <td>S/. ${m.margen.toFixed(2)}</td>
+        <td>${m.margen_pct}%</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      `;
+      tbody.appendChild(row);
+    });
   } catch (err) {
-    console.error('Error loading meses:', err);
+    console.error('Error:', err);
   }
-}
-
-function renderMeses(meses) {
-  const tbody = document.getElementById('tbl-meses-body');
-  if (!tbody) return;
-
-  tbody.innerHTML = '';
-  meses.forEach(m => {
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td>${m.mes}</td>
-      <td>S/. ${m.ventas.toFixed(2)}</td>
-      <td>S/. ${m.costo.toFixed(2)}</td>
-      <td>S/. ${m.margen.toFixed(2)}</td>
-      <td>${m.margen_pct}%</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    `;
-    tbody.appendChild(row);
-  });
 }
 
 async function loadDetalle() {
   try {
     const ventas = await fetch(`${API_BASE}/ventas`).then(r => r.json());
-    renderDetalle(ventas);
+    const tbody = document.getElementById('tbl-detalle-body');
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+    ventas.forEach(v => {
+      const row = document.createElement('tr');
+      const margenPct = v.total_venta > 0 ? ((v.margen / v.total_venta) * 100).toFixed(2) : 0;
+      row.innerHTML = `
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>${v.canal}</td>
+        <td>${new Date(v.fecha).toLocaleDateString('es-ES')}</td>
+        <td>${v.modelo || '-'}</td>
+        <td>${v.marca || '-'}</td>
+        <td>${v.cantidad || 1}</td>
+        <td>S/. ${v.precio_venta.toFixed(2)}</td>
+        <td>S/. ${(v.costo || 0).toFixed(2)}</td>
+        <td>S/. ${(v.margen || 0).toFixed(2)}</td>
+        <td>${margenPct}%</td>
+        <td>${v.medio_pago || '-'}</td>
+        <td><button onclick="if(confirm('¿Eliminar?')) fetch(\`${API_BASE}/ventas/${v.id}\`, {method:'DELETE'}).then(()=>loadDetalle())">🗑️</button></td>
+      `;
+      tbody.appendChild(row);
+    });
   } catch (err) {
-    console.error('Error loading detalle:', err);
+    console.error('Error:', err);
   }
-}
-
-function renderDetalle(ventas) {
-  const tbody = document.getElementById('tbl-detalle-body');
-  if (!tbody) return;
-
-  tbody.innerHTML = '';
-  ventas.forEach(v => {
-    const row = document.createElement('tr');
-    const margenPct = v.total_venta > 0 ? ((v.margen / v.total_venta) * 100).toFixed(2) : 0;
-    row.innerHTML = `
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>${v.canal}</td>
-      <td>${new Date(v.fecha).toLocaleDateString('es-ES')}</td>
-      <td>${v.modelo || '-'}</td>
-      <td>${v.marca || '-'}</td>
-      <td>${v.cantidad || 1}</td>
-      <td>S/. ${v.precio_venta.toFixed(2)}</td>
-      <td>S/. ${(v.costo || 0).toFixed(2)}</td>
-      <td>S/. ${(v.margen || 0).toFixed(2)}</td>
-      <td>${margenPct}%</td>
-      <td>${v.medio_pago || '-'}</td>
-      <td><button class="btn-sm" onclick="deleteVenta(${v.id})">🗑️</button></td>
-    `;
-    tbody.appendChild(row);
-  });
 }
 
 async function loadMarcas() {
   try {
     const ventas = await fetch(`${API_BASE}/ventas`).then(r => r.json());
-    renderMarcas(ventas);
+    const tbody = document.getElementById('tbl-marcas-body');
+    if (!tbody) return;
+
+    const marcas = {};
+    ventas.forEach(v => {
+      if (!marcas[v.marca]) marcas[v.marca] = { ventas: 0, items: 0 };
+      marcas[v.marca].ventas += v.total_venta || 0;
+      marcas[v.marca].items++;
+    });
+
+    tbody.innerHTML = '';
+    Object.entries(marcas).forEach(([marca, data]) => {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td><strong>${marca || 'N/A'}</strong></td>
+        <td>S/. 0</td>
+        <td>S/. ${data.ventas.toFixed(2)}</td>
+        <td>S/. ${(data.ventas * 0.6).toFixed(2)}</td>
+        <td>S/. ${(data.ventas * 0.4).toFixed(2)}</td>
+        <td>0%</td>
+        <td>0%</td>
+        <td>${data.items}</td>
+      `;
+      tbody.appendChild(row);
+    });
   } catch (err) {
-    console.error('Error loading marcas:', err);
-  }
-}
-
-function renderMarcas(ventas) {
-  const tbody = document.getElementById('tbl-marcas-body');
-  if (!tbody) return;
-
-  const marcas = {};
-  ventas.forEach(v => {
-    if (!marcas[v.marca]) marcas[v.marca] = { ventas: 0, items: 0 };
-    marcas[v.marca].ventas += v.total_venta || 0;
-    marcas[v.marca].items++;
-  });
-
-  tbody.innerHTML = '';
-  Object.entries(marcas).forEach(([marca, data]) => {
-    const row = document.createElement('tr');
-    const margenPct = data.ventas > 0 ? 25 : 0;
-    row.innerHTML = `
-      <td><strong>${marca || 'N/A'}</strong></td>
-      <td>S/. 0</td>
-      <td>S/. ${data.ventas.toFixed(2)}</td>
-      <td>S/. ${(data.ventas * 0.6).toFixed(2)}</td>
-      <td>S/. ${(data.ventas * 0.4).toFixed(2)}</td>
-      <td>${margenPct}%</td>
-      <td>0%</td>
-      <td>${data.items}</td>
-    `;
-    tbody.appendChild(row);
-  });
-}
-
-async function deleteVenta(id) {
-  if (!confirm('¿Eliminar esta venta?')) return;
-  try {
-    await fetch(`${API_BASE}/ventas/${id}`, { method: 'DELETE' });
-    loadDetalle();
-  } catch (err) {
-    console.error('Error deleting venta:', err);
+    console.error('Error:', err);
   }
 }
 
@@ -537,75 +395,66 @@ async function deleteVenta(id) {
 async function loadProyectos() {
   try {
     const proyectos = await fetch(`${API_BASE}/proyectos`).then(r => r.json());
-    renderProyectos(proyectos);
+    const tbody = document.getElementById('tbl-proyectos-body');
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+    proyectos.forEach(p => {
+      const row = document.createElement('tr');
+      const pct = p.monto_total > 0 ? ((p.monto_ejecutado / p.monto_total) * 100).toFixed(0) : 0;
+      row.innerHTML = `
+        <td><strong>${p.numero_oc}</strong></td>
+        <td>${p.cliente}</td>
+        <td>${new Date(p.fecha_oc).toLocaleDateString('es-ES')}</td>
+        <td>S/. ${p.monto_total.toFixed(2)}</td>
+        <td>S/. ${p.monto_ejecutado.toFixed(2)} (${pct}%)</td>
+        <td>${p.estado}</td>
+        <td>
+          ${p.ruta_oc ? `<button onclick="viewFile('${p.ruta_oc}')">📄 Ver</button>` : '❌'}
+          <button onclick="uploadFile(${p.id}, 'proyectos', 'proyectos')" style="padding:4px 8px;background:#0066cc;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">📤</button>
+        </td>
+        <td>
+          <button onclick="if(confirm('¿Eliminar?')) fetch(\`${API_BASE}/proyectos/${p.id}\`, {method:'DELETE'}).then(()=>loadProyectos())">🗑️</button>
+        </td>
+      `;
+      tbody.appendChild(row);
+    });
   } catch (err) {
-    console.error('Error loading proyectos:', err);
+    console.error('Error:', err);
   }
-}
-
-function renderProyectos(proyectos) {
-  const tbody = document.getElementById('tbl-proyectos-body');
-  if (!tbody) return;
-
-  tbody.innerHTML = '';
-  proyectos.forEach(p => {
-    const row = document.createElement('tr');
-    const pct = p.monto_total > 0 ? ((p.monto_ejecutado / p.monto_total) * 100).toFixed(0) : 0;
-    const estadoColor = { pendiente: '#ff9800', en_proceso: '#2196f3', completado: '#4caf50', cancelado: '#f44336' };
-    row.innerHTML = `
-      <td><strong>${p.numero_oc}</strong></td>
-      <td>${p.cliente}</td>
-      <td>${new Date(p.fecha_oc).toLocaleDateString('es-ES')}</td>
-      <td>S/. ${p.monto_total.toFixed(2)}</td>
-      <td>S/. ${p.monto_ejecutado.toFixed(2)} (${pct}%)</td>
-      <td><span style="background:${estadoColor[p.estado]};color:#fff;padding:4px 8px;border-radius:4px;font-size:12px">${p.estado}</span></td>
-      <td>
-        ${p.ruta_oc ? `<button class="btn-sm" onclick="viewFile('${p.ruta_oc}')">📄 Ver</button>` : '❌'}
-      </td>
-      <td>
-        <button class="btn-sm" onclick="editProyecto(${p.id}, '${p.numero_oc}')">✏️</button>
-        <button class="btn-sm" onclick="deleteProyecto(${p.id})">🗑️</button>
-      </td>
-    `;
-    tbody.appendChild(row);
-  });
 }
 
 function openAddProyecto() {
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
-  modal.id = 'proyecto-modal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999';
   modal.innerHTML = `
-    <div class="modal" style="width:90%; max-width:600px;">
-      <div class="modal-header">
-        <h3>➕ Nuevo Proyecto / OC</h3>
-        <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:24px;cursor:pointer">×</button>
-      </div>
-      <div class="modal-body">
-        <input type="text" id="proy-numero-oc" placeholder="Número OC" required />
-        <input type="date" id="proy-fecha-oc" required />
-        <input type="text" id="proy-cliente" placeholder="Cliente" required />
-        <textarea id="proy-descripcion" placeholder="Descripción" rows="3"></textarea>
-        <input type="number" id="proy-monto-total" placeholder="Monto Total" step="0.01" required />
-        <label style="margin-top:12px;display:block;font-weight:600">📎 Adjuntar OC (PDF):</label>
-        <input type="file" id="proy-file" accept=".pdf" required style="margin-top:6px" />
-      </div>
-      <div class="modal-footer" style="gap:8px;">
-        <button onclick="saveNewProyecto()" style="background:#198c35;color:#fff;padding:8px 16px;border:none;border-radius:6px;cursor:pointer">💾 Guardar</button>
-        <button onclick="document.getElementById('proyecto-modal').remove()" style="background:#ccc;color:#000;padding:8px 16px;border:none;border-radius:6px;cursor:pointer">Cancelar</button>
+    <div style="background:#fff;border-radius:8px;padding:20px;width:90%;max-width:500px;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+      <h3 style="margin:0 0 16px 0">➕ Nuevo Proyecto / OC</h3>
+      <input type="text" id="proy-oc" placeholder="Número OC" required style="width:100%;padding:8px;margin:8px 0;border:1px solid #ddd;border-radius:4px" />
+      <input type="date" id="proy-fecha" required style="width:100%;padding:8px;margin:8px 0;border:1px solid #ddd;border-radius:4px" />
+      <input type="text" id="proy-cliente" placeholder="Cliente" required style="width:100%;padding:8px;margin:8px 0;border:1px solid #ddd;border-radius:4px" />
+      <textarea id="proy-desc" placeholder="Descripción" rows="3" style="width:100%;padding:8px;margin:8px 0;border:1px solid #ddd;border-radius:4px"></textarea>
+      <input type="number" id="proy-monto" placeholder="Monto Total" step="0.01" required style="width:100%;padding:8px;margin:8px 0;border:1px solid #ddd;border-radius:4px" />
+      <label style="display:block;margin:12px 0 8px 0;font-weight:600">📎 OC (PDF):</label>
+      <input type="file" id="proy-file" accept=".pdf" required style="width:100%;padding:8px;margin:8px 0;border:1px solid #ddd;border-radius:4px" />
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button onclick="saveProyecto()" style="flex:1;padding:10px;background:#198c35;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600">💾 Guardar</button>
+        <button onclick="this.closest('.modal-overlay').remove()" style="flex:1;padding:10px;background:#ccc;color:#000;border:none;border-radius:4px;cursor:pointer">Cancelar</button>
       </div>
     </div>
   `;
   document.body.appendChild(modal);
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
 }
 
-async function saveNewProyecto() {
+async function saveProyecto() {
   const formData = new FormData();
-  formData.append('numero_oc', document.getElementById('proy-numero-oc').value);
-  formData.append('fecha_oc', document.getElementById('proy-fecha-oc').value);
+  formData.append('numero_oc', document.getElementById('proy-oc').value);
+  formData.append('fecha_oc', document.getElementById('proy-fecha').value);
   formData.append('cliente', document.getElementById('proy-cliente').value);
-  formData.append('descripcion', document.getElementById('proy-descripcion').value);
-  formData.append('monto_total', document.getElementById('proy-monto-total').value);
+  formData.append('descripcion', document.getElementById('proy-desc').value);
+  formData.append('monto_total', document.getElementById('proy-monto').value);
   formData.append('ruta_oc', document.getElementById('proy-file').files[0]);
 
   try {
@@ -615,23 +464,11 @@ async function saveNewProyecto() {
     });
     if (response.ok) {
       alert('✅ Proyecto creado');
-      document.getElementById('proyecto-modal').remove();
+      document.querySelector('.modal-overlay').remove();
       loadProyectos();
-    } else {
-      alert('❌ Error al crear');
     }
   } catch (err) {
     alert('Error: ' + err.message);
-  }
-}
-
-async function deleteProyecto(id) {
-  if (!confirm('¿Eliminar este proyecto?')) return;
-  try {
-    await fetch(`${API_BASE}/proyectos/${id}`, { method: 'DELETE' });
-    loadProyectos();
-  } catch (err) {
-    console.error('Error:', err);
   }
 }
 
@@ -641,59 +478,27 @@ async function deleteProyecto(id) {
 async function loadGastosFijos() {
   try {
     const gastos = await fetch(`${API_BASE}/gastos-fijos`).then(r => r.json());
-    renderGastosFijos(gastos);
-  } catch (err) {
-    console.error('Error loading gastos fijos:', err);
-  }
-}
+    const tbody = document.getElementById('tbl-gastos-fijos-body');
+    if (!tbody) return;
 
-function renderGastosFijos(gastos) {
-  const tbody = document.getElementById('tbl-gastos-fijos-body');
-  if (!tbody) return;
-
-  tbody.innerHTML = '';
-  gastos.forEach(g => {
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td>${g.ano}</td>
-      <td>${g.mes}</td>
-      <td>${g.descripcion}</td>
-      <td><input type="number" id="gf-${g.id}" value="${g.monto || 0}" step="0.01" style="width:100px;padding:4px;border:1px solid #ddd;border-radius:4px" /></td>
-      <td>
-        ${g.ruta_comprobante ? `<button class="btn-sm" onclick="viewFile('${g.ruta_comprobante}')">📄 Ver</button>` : '❌'}
-        <button class="btn-sm" onclick="uploadGF(${g.id})">📤</button>
-      </td>
-      <td>
-        <button class="btn-sm" onclick="saveGastoFijo(${g.id})">💾</button>
-        <button class="btn-sm" onclick="deleteGastoFijo(${g.id})">🗑️</button>
-      </td>
-    `;
-    tbody.appendChild(row);
-  });
-}
-
-async function saveGastoFijo(id) {
-  const monto = document.getElementById(`gf-${id}`).value;
-  try {
-    const response = await fetch(`${API_BASE}/gastos-fijos`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mes: new Date().getMonth() + 1, ano: new Date().getFullYear(), descripcion: 'Gasto', monto })
+    tbody.innerHTML = '';
+    gastos.forEach(g => {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${g.ano}</td>
+        <td>${g.mes}</td>
+        <td>${g.descripcion}</td>
+        <td>S/. ${g.monto || 0}</td>
+        <td>
+          ${g.ruta_comprobante ? `<button onclick="viewFile('${g.ruta_comprobante}')">📄</button>` : '❌'}
+          <button onclick="uploadFile(${g.id}, 'gastos-fijos', 'gastos-fijos')" style="padding:4px 8px;background:#0066cc;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">📤</button>
+        </td>
+        <td>
+          <button onclick="if(confirm('¿Eliminar?')) fetch(\`${API_BASE}/gastos-fijos/${g.id}\`, {method:'DELETE'}).then(()=>loadGastosFijos())">🗑️</button>
+        </td>
+      `;
+      tbody.appendChild(row);
     });
-    if (response.ok) {
-      alert('✅ Gasto fijo guardado');
-      loadGastosFijos();
-    }
-  } catch (err) {
-    alert('Error: ' + err.message);
-  }
-}
-
-async function deleteGastoFijo(id) {
-  if (!confirm('¿Eliminar?')) return;
-  try {
-    await fetch(`${API_BASE}/gastos-fijos/${id}`, { method: 'DELETE' });
-    loadGastosFijos();
   } catch (err) {
     console.error('Error:', err);
   }
@@ -705,42 +510,27 @@ async function deleteGastoFijo(id) {
 async function loadPagosPendientes() {
   try {
     const pagos = await fetch(`${API_BASE}/pagos-pendientes`).then(r => r.json());
-    renderPagosPendientes(pagos);
-  } catch (err) {
-    console.error('Error loading pagos:', err);
-  }
-}
+    const tbody = document.getElementById('tbl-pagos-body');
+    if (!tbody) return;
 
-function renderPagosPendientes(pagos) {
-  const tbody = document.getElementById('tbl-pagos-body');
-  if (!tbody) return;
-
-  tbody.innerHTML = '';
-  pagos.forEach(p => {
-    const estadoColor = { pendiente: '#ff9800', pagado: '#4caf50', cancelado: '#9e9e9e' };
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td>Factura #${p.factura_id}</td>
-      <td>S/. ${p.monto.toFixed(2)}</td>
-      <td>${new Date(p.fecha_vencimiento).toLocaleDateString('es-ES')}</td>
-      <td><span style="background:${estadoColor[p.estado]};color:#fff;padding:4px 8px;border-radius:4px;font-size:12px">${p.estado}</span></td>
-      <td>
-        ${p.estado === 'pagado' && p.ruta_comprobante_pago ? `<button class="btn-sm" onclick="viewFile('${p.ruta_comprobante_pago}')">📄 Comprobante</button>` : '❌'}
-      </td>
-      <td>
-        ${p.estado === 'pendiente' ? `<button class="btn-sm" onclick="uploadPagoComprobante(${p.id})">📤 Marcar Pagado</button>` : ''}
-        <button class="btn-sm" onclick="deletePago(${p.id})">🗑️</button>
-      </td>
-    `;
-    tbody.appendChild(row);
-  });
-}
-
-async function deletePago(id) {
-  if (!confirm('¿Eliminar?')) return;
-  try {
-    await fetch(`${API_BASE}/pagos-pendientes/${id}`, { method: 'DELETE' });
-    loadPagosPendientes();
+    tbody.innerHTML = '';
+    pagos.forEach(p => {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>Factura #${p.factura_id}</td>
+        <td>S/. ${p.monto.toFixed(2)}</td>
+        <td>${new Date(p.fecha_vencimiento).toLocaleDateString('es-ES')}</td>
+        <td>${p.estado}</td>
+        <td>
+          ${p.ruta_comprobante_pago ? `<button onclick="viewFile('${p.ruta_comprobante_pago}')">📄</button>` : '❌'}
+          ${p.estado === 'pendiente' ? `<button onclick="uploadFile(${p.id}, 'pagos', 'pagos-pendientes')" style="padding:4px 8px;background:#0066cc;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">📤 Pagar</button>` : ''}
+        </td>
+        <td>
+          <button onclick="if(confirm('¿Eliminar?')) fetch(\`${API_BASE}/pagos-pendientes/${p.id}\`, {method:'DELETE'}).then(()=>loadPagosPendientes())">🗑️</button>
+        </td>
+      `;
+      tbody.appendChild(row);
+    });
   } catch (err) {
     console.error('Error:', err);
   }
@@ -752,114 +542,33 @@ async function deletePago(id) {
 async function loadPlanilla() {
   try {
     const planilla = await fetch(`${API_BASE}/planilla`).then(r => r.json());
-    renderPlanilla(planilla);
-  } catch (err) {
-    console.error('Error loading planilla:', err);
-  }
-}
+    const tbody = document.getElementById('tbl-planilla-body');
+    if (!tbody) return;
 
-function renderPlanilla(planilla) {
-  const tbody = document.getElementById('tbl-planilla-body');
-  if (!tbody) return;
-
-  tbody.innerHTML = '';
-  planilla.forEach(p => {
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td>${p.ano}</td>
-      <td>${p.mes}</td>
-      <td>${p.empleado}</td>
-      <td><input type="number" id="pl-sueldo-${p.id}" value="${p.sueldo || 0}" step="0.01" style="width:80px;padding:4px;" /></td>
-      <td><input type="number" id="pl-bono-${p.id}" value="${p.bonificacion || 0}" step="0.01" style="width:80px;padding:4px;" /></td>
-      <td><input type="number" id="pl-desc-${p.id}" value="${p.descuentos || 0}" step="0.01" style="width:80px;padding:4px;" /></td>
-      <td><strong>S/. ${p.neto.toFixed(2)}</strong></td>
-      <td>
-        ${p.ruta_recibo ? `<button class="btn-sm" onclick="viewFile('${p.ruta_recibo}')">📄 Recibo</button>` : '❌'}
-        <button class="btn-sm" onclick="uploadRecibo(${p.id})">📤</button>
-      </td>
-      <td>
-        <button class="btn-sm" onclick="savePlanilla(${p.id})">💾</button>
-        <button class="btn-sm" onclick="deletePlanilla(${p.id})">🗑️</button>
-      </td>
-    `;
-    tbody.appendChild(row);
-  });
-}
-
-async function savePlanilla(id) {
-  const sueldo = document.getElementById(`pl-sueldo-${id}`).value;
-  const bonificacion = document.getElementById(`pl-bono-${id}`).value;
-  const descuentos = document.getElementById(`pl-desc-${id}`).value;
-
-  try {
-    const response = await fetch(`${API_BASE}/planilla`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mes: new Date().getMonth() + 1, ano: new Date().getFullYear(), empleado: 'Empleado', sueldo, bonificacion, descuentos })
+    tbody.innerHTML = '';
+    planilla.forEach(p => {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${p.ano}</td>
+        <td>${p.mes}</td>
+        <td>${p.empleado}</td>
+        <td>S/. ${p.sueldo || 0}</td>
+        <td>S/. ${p.bonificacion || 0}</td>
+        <td>S/. ${p.descuentos || 0}</td>
+        <td><strong>S/. ${p.neto || 0}</strong></td>
+        <td>
+          ${p.ruta_recibo ? `<button onclick="viewFile('${p.ruta_recibo}')">📄</button>` : '❌'}
+          <button onclick="uploadFile(${p.id}, 'planilla', 'planilla')" style="padding:4px 8px;background:#0066cc;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">📤</button>
+        </td>
+        <td>
+          <button onclick="if(confirm('¿Eliminar?')) fetch(\`${API_BASE}/planilla/${p.id}\`, {method:'DELETE'}).then(()=>loadPlanilla())">🗑️</button>
+        </td>
+      `;
+      tbody.appendChild(row);
     });
-    if (response.ok) {
-      alert('✅ Planilla guardada');
-      loadPlanilla();
-    }
-  } catch (err) {
-    alert('Error: ' + err.message);
-  }
-}
-
-async function deletePlanilla(id) {
-  if (!confirm('¿Eliminar?')) return;
-  try {
-    await fetch(`${API_BASE}/planilla/${id}`, { method: 'DELETE' });
-    loadPlanilla();
   } catch (err) {
     console.error('Error:', err);
   }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// UTILITY FUNCTIONS
-// ═══════════════════════════════════════════════════════════════
-function viewFile(ruta) {
-  const ext = ruta.split('.').pop().toLowerCase();
-  if (ext === 'pdf') {
-    window.open(ruta, '_blank');
-  } else if (ext === 'xml') {
-    fetch(ruta).then(r => r.text()).then(xml => {
-      alert('XML:\n' + xml.substring(0, 500));
-    });
-  } else {
-    window.open(ruta, '_blank');
-  }
-}
-
-function uploadGF(id) {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.pdf,.jpg,.png';
-  input.onchange = async (e) => {
-    alert('📤 Upload endpoint: PUT /api/gastos-fijos/' + id);
-  };
-  input.click();
-}
-
-function uploadPagoComprobante(id) {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.pdf,.jpg,.png';
-  input.onchange = async (e) => {
-    alert('📤 Upload endpoint: PUT /api/pagos-pendientes/' + id);
-  };
-  input.click();
-}
-
-function uploadRecibo(id) {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.pdf,.jpg,.png';
-  input.onchange = async (e) => {
-    alert('📤 Upload endpoint: PUT /api/planilla/' + id);
-  };
-  input.click();
 }
 
 // ═══════════════════════════════════════════════════════════════
