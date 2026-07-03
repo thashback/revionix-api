@@ -1665,6 +1665,8 @@ function rvPersistirCompras() {
   // clearGastos / deleteGasto → reflejar el borrado en la BD
   if (envolver('deleteGasto', () => setTimeout(rvFlushGastos, 60))) { /* borrar gasto */ }
   if (envolver('clearGastos', () => setTimeout(rvFlushGastos, 60))) { /* limpiar gastos */ }
+  // Importación de Excel en Gastos → guardar en la BD tras leer el archivo
+  if (envolver('handleGastosImport', () => setTimeout(rvFlushGastos, 1200))) { /* import gastos */ }
 
   // Primera pasada de decoración (el sistema pudo renderizar antes que app.js)
   window.addEventListener('load', () => {
@@ -1806,7 +1808,7 @@ async function rvCargarVentasDesdeBD() {
     const rows = await fetch(`${RV_API}/reg/ventas`).then(r => r.json());
     if (!Array.isArray(rows)) return;
     let local = []; try { local = JSON.parse(localStorage.getItem('rv_ventas') || '[]'); } catch (e) {}
-    if (rows.length === 0 && local.length > 0) { rvFlushVentas(); return; }
+    if (local.length > rows.length) { rvFlushVentas(); return; } // local tiene más → no perder
     const mapped = rvDesdeRaw(rows);
     localStorage.setItem('rv_ventas', JSON.stringify(mapped));
     if (typeof extraVentas !== 'undefined' && Array.isArray(extraVentas)) { extraVentas.length = 0; mapped.forEach(m => extraVentas.push(m)); }
@@ -1820,7 +1822,7 @@ async function rvCargarGastosDesdeBD() {
     const rows = await fetch(`${RV_API}/reg/gastos`).then(r => r.json());
     if (!Array.isArray(rows)) return;
     let local = []; try { local = JSON.parse(localStorage.getItem('rv_gastos') || '[]'); } catch (e) {}
-    if (rows.length === 0 && local.length > 0) { rvFlushGastos(); return; }
+    if (local.length > rows.length) { rvFlushGastos(); return; } // local tiene más → no perder
     const mapped = rvDesdeRaw(rows);
     localStorage.setItem('rv_gastos', JSON.stringify(mapped));
     if (typeof gastosLocal !== 'undefined' && Array.isArray(gastosLocal)) { gastosLocal.length = 0; mapped.forEach(m => gastosLocal.push(m)); }
@@ -1835,7 +1837,7 @@ async function rvCargarComprasDesdeBD() {
     const rows = await fetch(`${RV_API}/reg/compras`).then(r => r.json());
     if (!Array.isArray(rows)) return;
     let local = []; try { local = JSON.parse(localStorage.getItem('rv_compras') || '[]'); } catch (e) {}
-    if (rows.length === 0 && local.length > 0) { rvFlushCompras(); return; }
+    if (local.length > rows.length) { rvFlushCompras(); return; } // local tiene más → no perder
     const mapped = rvDesdeRaw(rows);
     localStorage.setItem('rv_compras', JSON.stringify(mapped));
     if (typeof COMPRAS_DATA !== 'undefined') {
