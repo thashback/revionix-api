@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>REVIONIX — Sistema de Gestión</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <div id="login-screen">
+      <div class="login-card">
+        <div class="login-logo">
+          <h1>REVIONIX</h1>
+          <p>Sistema de Gestión Comercial</p>
+        </div>
+        <div class="login-form">
+          <label>Usuario</label>
+          <input type="text" id="login-user" placeholder="nombre de usuario" autocomplete="username" />
+          <label>Contraseña</label>
+          <input type="password" id="login-pass" placeholder="contraseña" autocomplete="current-password" />
+          <button class="btn-login" onclick="doLogin()">Ingresar</button>
+          <div class="login-error" id="login-error"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="app">
+      <div class="header">
+        <h1>REVIONIX S.A.C.</h1>
+        <span class="header-user" id="hdr-user"></span>
+        <span class="header-badge" id="hdr-badge"></span>
+        <span style="font-size: 11px; color: rgba(255, 255, 255, 0.5); margin-left: auto; margin-right: 8px;">
+          Últ. actualización: <span id="hdr-fecha" style="color: rgba(255, 255, 255, 0.8)"></span>
+        </span>
+        <button class="btn-logout" onclick="doLogout()">Salir</button>
+      </div>
+      <div class="body-layout">
+
+        <nav class="sidebar" id="sidebar">
+          <div class="nav-section">
+            <div class="nav-label">Principal</div>
+            <div class="nav-item active" onclick="goPage('dashboard')" data-page="dashboard"> Dashboard </div>
+            <div class="nav-item" onclick="goPage('marcas')" data-page="marcas"> Por Marca </div>
+            <div class="nav-item" onclick="goPage('meses')" data-page="meses"> Mes a Mes </div>
+            <div class="nav-item" onclick="goPage('canales')" data-page="canales"> Canales </div>
+            <div class="nav-item" onclick="goPage('corporativo')" data-page="corporativo"> Corporativo </div>
+            <div class="nav-item" onclick="goPage('inversion')" data-page="inversion"> Inversión </div>
+            <div class="nav-item" onclick="goPage('compras')" data-page="compras"> Compras Mayoristas </div>
+            <div class="nav-item" onclick="goPage('stock')" data-page="stock"> Stock Disponible </div>
+            <div class="nav-item" onclick="goPage('ecommerce')" data-page="ecommerce"> Ecommerce </div>
+          </div>
+          <div class="nav-section" id="nav-upload-section">
+            <div class="nav-label">Operación</div>
+            <div class="nav-item" onclick="goPage('gastos')" data-page="gastos"> Gastos / Movilidad </div>
+            <div class="nav-item" onclick="goPage('gastos-fijos')" data-page="gastos-fijos"> Gastos Fijos </div>
+            <div class="nav-item" onclick="goPage('ebitda')" data-page="ebitda"> EBITDA Real </div>
+            <div class="nav-item" onclick="goPage('pagos-pendientes')" data-page="pagos-pendientes"> Pagos Pendientes </div>
+            <div class="nav-item" onclick="goPage('detalle')" data-page="detalle"> Detalle por Producto </div>
+            <div class="nav-item" onclick="goPage('carga')" data-page="carga" id="nav-carga"> Cargar Ventas </div>
+            <div class="nav-item" onclick="goPage('usuarios')" data-page="usuarios" id="nav-usuarios"> Usuarios </div>
+          </div>
+        </nav>
+
+        <main class="main">
+
+          <div class="page active" id="page-dashboard">
+            <div class="page-title">Dashboard Ejecutivo</div>
+            </div>
+
+          <div class="page" id="page-marcas">
+            <div class="page-title">Análisis por Marca</div>
+            <table id="tbl-marcas-full">
+              <thead><tr><th>Marca</th><th>Inversión S/.</th><th>Ventas S/.</th><th>Costo Vendido</th><th>Margen S/.</th><th>Margen %</th><th>Avance %</th><th>N° Líneas</th></tr></thead>
+              <tbody id="tbl-marcas-body"></tbody>
+            </table>
+          </div>
+
+          <div class="page" id="page-meses">
+            <div class="page-title">Ventas Mes a Mes</div>
+            <table id="tbl-meses">
+              <thead><tr><th>Mes</th><th>Ventas S/.</th><th>Costo S/.</th><th>Margen S/.</th><th>Margen %</th><th>Corp S/.</th><th>Tiendas S/.</th><th>Ecommerce S/.</th><th>Acumulado</th></tr></thead>
+              <tbody id="tbl-meses-body"></tbody>
+            </table>
+          </div>
+
+          <div class="page" id="page-canales">
+            <div class="page-title">Ventas por Canal</div>
+            <table id="tbl-canales">
+              <thead><tr><th>Canal</th><th>Ventas S/.</th><th>Costo S/.</th><th>Margen S/.</th><th>Margen %</th><th>N° Ítems</th><th>Ticket Prom.</th></tr></thead>
+              <tbody id="tbl-canales-body"></tbody>
+            </table>
+          </div>
+
+          <div class="page" id="page-corporativo">
+             <div class="page-title">Canal Corporativo</div>
+             <table id="tbl-corp">
+               <thead><tr><th>Cliente</th><th>Total S/.</th><th>Mar</th><th>Abr</th><th>May</th><th>Por Facturar</th><th>Estado</th><th></th></tr></thead>
+               <tbody id="tbl-corp-body"></tbody>
+             </table>
+          </div>
+
+          <div class="page" id="page-inversion">
+             <div class="page-title">Inversión en Compras</div>
+             <table id="tbl-inv-inicial">
+               <thead><tr><th>Proveedor</th><th>Categoría</th><th># Líneas</th><th>Total S/.</th><th>%</th></tr></thead>
+               <tbody id="tbl-inv-inicial-body"></tbody>
+             </table>
+          </div>
+
+          <div class="page" id="page-compras">
+            <div class="page-title">Compras a Mayoristas</div>
+            <button class="btn btn-success btn-sm" onclick="addNewCompra()">➕ Agregar Compra</button>
+            <table id="tbl-compras">
+              <thead><tr><th>Proveedor</th><th>Fecha</th><th>Descripción</th><th>Marca</th><th>Cant</th><th>Moneda</th><th>USD/u</th><th>S/./u</th><th>Total S/.</th><th></th></tr></thead>
+              <tbody id="tbl-compras-body"></tbody>
+            </table>
+          </div>
+
+          <div class="page" id="page-stock">
+            <div class="page-title">Stock Disponible</div>
+            <table id="tbl-stock">
+              <thead><tr><th>Producto</th><th>Marca</th><th>Comprado</th><th>Vendido</th><th>Disponible</th><th>Costo Unit.</th><th>Valor Stock</th><th>Estado</th><th></th></tr></thead>
+              <tbody id="tbl-stock-body"></tbody>
+            </table>
+          </div>
+
+          <div class="page" id="page-ecommerce">
+            <div class="page-title">Ecommerce</div>
+            <table id="tbl-ec">
+              <thead><tr><th>Fecha</th><th>Plataforma</th><th>Vendedor</th><th>Qty</th><th>Modelo</th><th>Marca</th><th>P.Unit</th><th>Total S/.</th><th>Costo S/.</th><th>Margen S/.</th><th>MG%</th></tr></thead>
+              <tbody id="tbl-ec-body"></tbody>
+            </table>
+          </div>
+
+          <div class="page" id="page-gastos">
+            <div class="page-title">Gastos y Movilidad</div>
+            <div class="form-row">
+              <input type="date" id="g-fecha" />
+              <select id="g-cat"><option value="Movilidad">🚗 Movilidad</option><option value="Almacén">📦 Almacén</option></select>
+              <input type="text" id="g-desc" placeholder="Descripción" />
+              <input type="number" id="g-monto" placeholder="Monto S/." />
+              <select id="g-tipo"><option value="FACTURA">Factura</option><option value="BOLETA">Boleta</option></select>
+            </div>
+            <button class="btn btn-success" onclick="saveGasto()">Registrar Gasto</button>
+
+            <table id="tbl-gastos">
+              <thead><tr><th>Fecha</th><th>Tipo Comprobante</th><th>Serie</th><th>N°</th><th>Categoría</th><th>Canal</th><th>Descripción</th><th>Responsable</th><th>Monto S/.</th><th></th></tr></thead>
+              <tbody id="tbl-gastos-body"></tbody>
+            </table>
+          </div>
+
+          <div class="page" id="page-detalle">
+            <div class="page-title">Detalle por Producto</div>
+            <table id="tbl-detalle">
+              <thead><tr><th>Comprobante</th><th>Serie</th><th>Correl.</th><th>Canal</th><th>Mes</th><th>Producto</th><th>Marca</th><th>Qty</th><th>P. Venta</th><th>Costo</th><th>Ganancia</th><th>%</th><th>Medio Pago</th><th></th></tr></thead>
+              <tbody id="tbl-detalle-body"></tbody>
+            </table>
+          </div>
+
+          <div class="page" id="page-pagos-pendientes"><div class="page-title">Pagos Pendientes</div></div>
+          <div class="page" id="page-gastos-fijos"><div class="page-title">Gastos Fijos Mensuales</div></div>
+          <div class="page" id="page-ebitda"><div class="page-title">EBITDA Mensual Real</div></div>
+          <div class="page" id="page-carga"><div class="page-title">Cargar Ventas</div><div id="carga-content"></div></div>
+
+        </main>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-venta">
+      <div class="modal">
+        <div class="modal-header"><span class="modal-title">Registrar Nueva Venta</span></div>
+        <div class="modal-body">
+          <input type="date" id="v-fecha" />
+          <select id="v-canal"></select>
+          <input type="text" id="v-modelo" />
+          <input type="number" id="v-venta" />
+          <input type="number" id="v-costo" />
+        </div>
+        <div class="modal-footer"><button onclick="saveVenta()">Guardar Venta</button></div>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+
+  </body>
+</html>
