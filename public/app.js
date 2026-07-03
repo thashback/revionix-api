@@ -622,6 +622,11 @@ async function deletePlanilla(id) {
   if (typeof window.goPage === 'function') {
     const goPageOriginal = window.goPage;
     window.goPage = function (id) {
+      if (window.RV_ROL_REAL === 'operaciones' && RV_PAGINAS_BLOQUEADAS.indexOf(id) !== -1) {
+        if (typeof showToast === 'function') showToast('Tu usuario no tiene acceso a este módulo');
+        else alert('Tu usuario no tiene acceso a este módulo.');
+        id = 'dashboard';
+      }
       goPageOriginal(id);
       if (id === 'proyectos') loadProyectos();
       if (id === 'planilla') loadPlanilla();
@@ -813,14 +818,17 @@ function rvDecorarCorp() {
   (function () {
     const page = document.getElementById('page-corporativo');
     if (page && !document.getElementById('rv-btn-corp-add')) {
-      const btn = document.createElement('button');
-      btn.id = 'rv-btn-corp-add';
-      btn.className = 'btn btn-success';
-      btn.style.cssText = 'margin:10px 0';
-      btn.textContent = '➕ Nueva Venta Corporativa (por volumen)';
-      btn.onclick = () => rvNuevaVentaCorpVolumen();
+      const cont = document.createElement('div');
+      cont.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin:10px 0';
+      cont.innerHTML = `
+        <button id="rv-btn-corp-add" class="btn btn-success">➕ Nueva Venta Corporativa (por volumen)</button>
+        <button id="rv-btn-corp-tpl" class="btn btn-outline">📥 Plantilla XLS</button>
+        <button id="rv-btn-corp-imp" class="btn btn-outline">📂 Importar XLS (por bloque)</button>`;
       const ancla = page.querySelector('.page-sub') || page.querySelector('.page-title');
-      if (ancla) ancla.insertAdjacentElement('afterend', btn);
+      if (ancla) ancla.insertAdjacentElement('afterend', cont);
+      cont.querySelector('#rv-btn-corp-add').onclick = () => rvNuevaVentaCorpVolumen();
+      cont.querySelector('#rv-btn-corp-tpl').onclick = () => rvDescargarPlantillaCorp();
+      cont.querySelector('#rv-btn-corp-imp').onclick = () => rvImportarCorp();
     }
   })();
   rvRenderVentasCorpVolumen();
@@ -1308,6 +1316,72 @@ function rvToggleCorpDet(id) {
   if (row) row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
 }
 
+// ── Corporativo: plantilla + importación por Excel (carga por bloque) ──
+function rvDescargarPlantillaCorp() {
+  if (typeof XLSX === 'undefined') { alert('❌ Librería XLSX no disponible'); return; }
+  const hoy = new Date().toISOString().slice(0, 10);
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['Cliente', 'Fecha', 'Condicion', 'N_Operacion', 'Modelo', 'Marca', 'Cantidad', 'PrecioUnit', 'CostoUnit'],
+    ['ACME SAC (ejemplo, borrar)', hoy, 'Credito', 'OP-123', 'CS-H6C', 'EZVIZ', 5, 150, 100],
+    ['ACME SAC (ejemplo, borrar)', hoy, 'Credito', 'OP-123', 'NVR 8ch', 'DAHUA', 1, 800, 500]
+  ]);
+  ws['!cols'] = [{ wch: 26 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 22 }, { wch: 12 }, { wch: 9 }, { wch: 11 }, { wch: 11 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'VentasCorp');
+  XLSX.writeFile(wb, 'plantilla_ventas_corporativas.xlsx');
+}
+function rvImportarCorp() {
+  if (typeof XLSX === 'undefined') { alert('❌ Librería XLSX no disponible'); return; }
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = '.xlsx,.xls,.csv';
+  input.onchange = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: 'binary' });
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+        const get = (r, names) => { for (const n of names) { if (r[n] !== undefined && r[n] !== '') return r[n]; } return undefined; };
+        const grupos = {}; let seq = 0;
+        rows.forEach(r => {
+          const cliente = String(get(r, ['Cliente', 'cliente', 'CLIENTE']) || '').trim();
+          const modelo = String(get(r, ['Modelo', 'modelo', 'MODELO', 'Producto', 'producto']) || '').trim();
+          if (!cliente || !modelo || cliente.toLowerCase().includes('ejemplo')) return;
+          const fecha = String(get(r, ['Fecha', 'fecha', 'FECHA']) || new Date().toISOString().slice(0, 10)).slice(0, 10);
+          const cond = String(get(r, ['Condicion', 'Condición', 'condicion']) || 'Contado').toLowerCase().includes('cred') ? 'Crédito' : 'Contado';
+          const nop = String(get(r, ['N_Operacion', 'N Operacion', 'NOperacion', 'Operacion', 'operacion']) || '').trim();
+          const key = cliente + '|' + fecha + '|' + cond + '|' + nop;
+          if (!grupos[key]) grupos[key] = { cliente, fecha, cond, nop, grupo: 'CORP-' + Date.now() + '-' + (seq++), lineas: [] };
+          const qty = Math.max(1, Math.round(rvNum(get(r, ['Cantidad', 'cantidad', 'Qty', 'QTY']) || 1)));
+          const precio = rvNum(get(r, ['PrecioUnit', 'Precio', 'precio', 'PRECIO', 'Precio Unit']));
+          const marca = String(get(r, ['Marca', 'marca', 'MARCA']) || 'Otros').trim();
+          let costo = rvNum(get(r, ['CostoUnit', 'Costo', 'costo', 'COSTO', 'Costo Unit']));
+          if (costo <= 0) { const c = rvBuscarCostoCompra(modelo, marca); if (c != null) costo = c; }
+          grupos[key].lineas.push({ modelo, marca, qty, precio, costo });
+        });
+        let ev2 = []; try { ev2 = JSON.parse(localStorage.getItem('rv_ventas') || '[]'); } catch (e) {}
+        let ventas = 0, items = 0;
+        Object.values(grupos).forEach(g => {
+          const validas = g.lineas.filter(l => l.precio > 0);
+          if (!validas.length) return; ventas++;
+          validas.forEach(l => {
+            items++;
+            ev2.push({ fecha: g.fecha, mes: g.fecha.slice(0, 7), canal: 'Corporativo', cliente: g.cliente, modelo: l.modelo, marca: l.marca, qty: l.qty, venta: l.qty * l.precio, costo: l.qty * l.costo, condicion: g.cond, medio_pago: g.cond, n_operacion: g.nop, grupo: g.grupo });
+          });
+        });
+        if (items === 0) { alert('No se encontraron filas válidas (revisa Cliente, Modelo y PrecioUnit).'); return; }
+        localStorage.setItem('rv_ventas', JSON.stringify(ev2));
+        rvFlushVentas();
+        if (typeof rvRebuildTxns === 'function') rvRebuildTxns();
+        rvRenderVentasCorpVolumen();
+        alert('✅ Importado: ' + ventas + ' venta(s) corporativa(s) · ' + items + ' productos');
+      } catch (err) { alert('❌ Error al leer el archivo: ' + err.message); }
+    };
+    reader.readAsBinaryString(file);
+  };
+  input.click();
+}
+
 // ══ PAGOS PENDIENTES → HISTORIAL MENSUAL DE GASTOS FIJOS (BD) ══
 // Al marcar un pago como "Pagado", se registra en la tabla gastos_fijos
 // del mes actual (idempotente: si ya existe ese mes, actualiza el monto).
@@ -1788,6 +1862,20 @@ function rvActualizarFechaReal() {
   el.textContent = 'Últ. actualización: ' + f + ' - ' + h;
 }
 
+// ── Rol "operaciones": edita compras/ventas/ecommerce/stock, pero SIN acceso a
+// planilla, gastos fijos ni usuarios. (Edita como admin en lo demás.) ──
+window.RV_ROL_REAL = '';
+const RV_PAGINAS_BLOQUEADAS = ['planilla', 'gastos-fijos', 'usuarios'];
+function rvAplicarRestriccionesRol() {
+  if (window.RV_ROL_REAL !== 'operaciones') return;
+  RV_PAGINAS_BLOQUEADAS.forEach(pg => {
+    const nav = document.querySelector('.nav-item[data-page="' + pg + '"]');
+    if (nav) { nav.classList.add('nav-disabled'); nav.style.display = 'none'; }
+  });
+  const nu = document.getElementById('nav-usuarios'); if (nu) { nu.classList.add('nav-disabled'); nu.style.display = 'none'; }
+  const bd = document.getElementById('hdr-badge'); if (bd) { bd.textContent = 'Operaciones'; bd.className = 'header-badge badge-tienda'; }
+}
+
 // ══ GASTOS / MOVILIDAD: formulario desplegable ══
 function rvToggleGastoForm() {
   const wrap = document.getElementById('rv-gasto-form-wrap');
@@ -2007,12 +2095,16 @@ function rvDecorarPP() {
         });
         const data = await res.json();
         if (data && data.ok) {
-          // Inyectar el usuario ya verificado para que el flujo interno prosiga
+          window.RV_ROL_REAL = data.user.role;
+          // Inyectar el usuario ya verificado para que el flujo interno prosiga.
+          // 'operaciones' edita como admin (para ver botones de editar/borrar).
           if (typeof USERS !== 'undefined') {
-            USERS[u] = { pass: p, role: data.user.role, canal: data.user.canal, name: data.user.nombre, email: '', activo: true };
+            const rolInline = (data.user.role === 'operaciones') ? 'admin' : data.user.role;
+            USERS[u] = { pass: p, role: rolInline, canal: data.user.canal, name: data.user.nombre, email: '', activo: true };
           }
           inlineDoLogin();
-          setTimeout(async () => { try { await rvCargarTodoDesdeBD(); rvRebuildTxns(); rvActualizarFechaReal(); } catch (e) {} }, 400);
+          rvAplicarRestriccionesRol();
+          setTimeout(async () => { try { await rvCargarTodoDesdeBD(); rvRebuildTxns(); rvActualizarFechaReal(); rvAplicarRestriccionesRol(); } catch (e) {} }, 400);
         } else {
           if (errEl) errEl.textContent = (data && data.error) || 'Usuario o contraseña incorrectos';
         }
