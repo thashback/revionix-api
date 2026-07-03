@@ -1073,7 +1073,8 @@ async function rvRebuildTxns() {
     }
 
     if (typeof SEED !== 'undefined') SEED.transacciones = TXNS_DATA;
-    recomputeSeedTotals();
+    rvAsegurarMeses();       // crea filas de meses faltantes (hasta el mes real)
+    recomputeSeedTotals();   // puebla esos meses desde las transacciones
     if (typeof renderAll === 'function') renderAll();
     if (typeof initCharts === 'function') setTimeout(initCharts, 120);
     console.log('[TXNS] ✓ Reconstruido: base + extras + proyectos =', TXNS_DATA.length, 'transacciones');
@@ -1085,6 +1086,40 @@ async function rvRebuildTxns() {
 }
 // Alias usado por el CRUD de proyectos
 async function rvSyncProyectos() { return rvRebuildTxns(); }
+
+// Asegura que SEED.meses tenga una fila por cada mes con transacciones y hasta
+// el mes real actual (para que Junio/Julio existan y se poblen). recomputeSeedTotals
+// solo actualiza meses ya existentes, por eso hay que crearlos antes.
+function rvAsegurarMeses() {
+  if (typeof SEED === 'undefined' || !Array.isArray(SEED.meses)) return;
+  const NOM = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+  const existentes = new Set(SEED.meses.map(m => m.p));
+  const faltantes = new Set();
+  // meses presentes en las transacciones
+  TXNS_DATA.forEach(t => { if (t.mes && /^\d{4}-\d{2}$/.test(t.mes) && !existentes.has(t.mes)) faltantes.add(t.mes); });
+  // hasta el mes actual real (incluye el mes en curso y el anterior)
+  const hoy = new Date();
+  const curP = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0');
+  const prev = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+  const prevP = prev.getFullYear() + '-' + String(prev.getMonth() + 1).padStart(2, '0');
+  if (!existentes.has(curP)) faltantes.add(curP);
+  if (!existentes.has(prevP)) faltantes.add(prevP);
+  faltantes.forEach(p => {
+    const [y, mm] = p.split('-');
+    SEED.meses.push({ m: NOM[parseInt(mm, 10) - 1] + '-' + y.slice(2), p, v: 0, c: 0, corp: 0, ec: 0 });
+  });
+  SEED.meses.sort((a, b) => (a.p < b.p ? -1 : a.p > b.p ? 1 : 0));
+}
+
+// Fecha/hora real en el encabezado
+function rvActualizarFechaReal() {
+  const el = document.getElementById('hdr-fecha');
+  if (!el) return;
+  const ahora = new Date();
+  const f = ahora.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const h = ahora.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+  el.textContent = 'Últ. actualización: ' + f + ' - ' + h;
+}
 
 // ══ GASTOS / MOVILIDAD: formulario desplegable ══
 function rvToggleGastoForm() {
@@ -1293,7 +1328,7 @@ function rvDecorarPP() {
     const doLoginOriginal = window.doLogin;
     window.doLogin = function (...args) {
       const r = doLoginOriginal.apply(this, args);
-      setTimeout(() => { try { rvRebuildTxns(); } catch (e) {} }, 400);
+      setTimeout(() => { try { rvRebuildTxns(); rvActualizarFechaReal(); } catch (e) {} }, 400);
       return r;
     };
   }

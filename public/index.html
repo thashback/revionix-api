@@ -19822,29 +19822,31 @@
         const fmt = (n) => "S/. " + n.toLocaleString("es-PE", {minimumFractionDigits:0, maximumFractionDigits:0});
         const fmtPct = (n) => n.toFixed(1) + "% sobre ventas";
 
-        const mayRow = rows.find(r => r.p === "2026-05");
-        const abrRow = rows.find(r => r.p === "2026-04");
-        const marRow = rows.find(r => r.p === "2026-03");
-
-        if (mayRow) {
-          const el = document.getElementById("kpi-ebitda-may");
-          if (el) { el.textContent = fmt(mayRow.ebitda); el.style.color = mayRow.ebitda >= 0 ? "var(--c-green2)" : "var(--c-red2)"; }
-          const pe = document.getElementById("kpi-ebitda-may-pct");
-          if (pe) pe.textContent = fmtPct(mayRow.ebitdaPct);
-        }
-        if (abrRow) {
-          const el = document.getElementById("kpi-ebitda-abr");
-          if (el) { el.textContent = fmt(abrRow.ebitda); el.style.color = abrRow.ebitda >= 0 ? "var(--c-green2)" : "var(--c-red2)"; }
-          const pe = document.getElementById("kpi-ebitda-abr-pct");
-          if (pe) pe.textContent = fmtPct(abrRow.ebitdaPct);
-        }
-        if (marRow) {
-          const el = document.getElementById("kpi-ebitda-mar");
-          if (el) { el.textContent = fmt(marRow.ebitda); el.style.color = marRow.ebitda >= 0 ? "var(--c-green2)" : "var(--c-red2)"; }
-          const pe = document.getElementById("kpi-ebitda-mar-pct");
-          if (pe) pe.textContent = fmtPct(marRow.ebitdaPct);
-        }
-        const last3 = rows.slice(-3);
+        // Dinámico: los 3 meses más recientes CON datos (según fecha real),
+        // más reciente primero. Se actualizan valores Y etiquetas.
+        const hoyE = new Date();
+        const curPE = hoyE.getFullYear() + "-" + String(hoyE.getMonth() + 1).padStart(2, "0");
+        const ult3 = rows.filter(r => r.p <= curPE).slice(-3).reverse();
+        const slots = ["may", "abr", "mar"]; // ids existentes de los 3 cards
+        slots.forEach((slot, i) => {
+          const el = document.getElementById("kpi-ebitda-" + slot);
+          const pe = document.getElementById("kpi-ebitda-" + slot + "-pct");
+          const r = ult3[i];
+          if (el) {
+            const lbl = el.parentElement.querySelector(".kpi-label");
+            if (r) {
+              el.textContent = fmt(r.ebitda);
+              el.style.color = r.ebitda >= 0 ? "var(--c-green2)" : "var(--c-red2)";
+              if (lbl) lbl.textContent = "EBITDA " + r.m;
+              if (pe) pe.textContent = fmtPct(r.ebitdaPct);
+            } else {
+              el.textContent = "S/. —";
+              if (lbl) lbl.textContent = "EBITDA —";
+              if (pe) pe.textContent = "sin datos";
+            }
+          }
+        });
+        const last3 = rows.filter(r => r.p <= curPE).slice(-3);
         if (last3.length) {
           const avg = last3.reduce((s,r) => s+r.ebitda, 0) / last3.length;
           const el = document.getElementById("kpi-ebitda-prom");
@@ -20081,7 +20083,7 @@
     </div>
 
   <!-- Indicador de versión: si NO ves este número, tu navegador tiene caché viejo -->
-  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v8 · 03-Jul</div>
-  <script src="app.js?v=8"></script>
+  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v9 · 03-Jul</div>
+  <script src="app.js?v=9"></script>
   </body>
 </html>
