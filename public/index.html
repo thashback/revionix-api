@@ -1822,7 +1822,7 @@
                   </select>
                 </div>
                 <table id="tbl-inv-inicial-det">
-                  <thead><tr><th>Proveedor</th><th>Fecha</th><th>Descripción</th><th>Marca</th><th>Cant</th><th>P.Unit S/.</th><th>Total S/.</th></tr></thead>
+                  <thead><tr><th>N° Comprobante</th><th>Proveedor</th><th>Fecha</th><th>Descripción</th><th>Marca</th><th>Cant</th><th>P.Unit S/.</th><th>Total S/.</th></tr></thead>
                   <tbody id="tbl-inv-inicial-det-body"></tbody>
                 </table>
               </div>
@@ -1876,7 +1876,7 @@
                   </select>
                 </div>
                 <table id="tbl-inv-repos-det">
-                  <thead><tr><th>Proveedor</th><th>Fecha</th><th>Descripción</th><th>Marca</th><th>Cant</th><th>P.Unit S/.</th><th>Total S/.</th></tr></thead>
+                  <thead><tr><th>N° Comprobante</th><th>Proveedor</th><th>Fecha</th><th>Descripción</th><th>Marca</th><th>Cant</th><th>P.Unit S/.</th><th>Total S/.</th></tr></thead>
                   <tbody id="tbl-inv-repos-det-body"></tbody>
                 </table>
               </div>
@@ -2366,6 +2366,15 @@
                     id="g-desc"
                     placeholder="Ej: Taxi visita cliente CERVEP"
                   />
+                </div>
+                <div class="form-group">
+                  <label>Comentarios</label>
+                  <textarea
+                    id="g-comentarios"
+                    rows="2"
+                    placeholder="Notas adicionales (opcional)"
+                    style="width:100%;padding:8px 10px;border:1.5px solid var(--c-border);border-radius:7px;font-size:13px;outline:none;box-sizing:border-box;font-family:inherit"
+                  ></textarea>
                 </div>
                 <div class="form-row">
                   <div class="form-group">
@@ -15914,6 +15923,7 @@
               ],
             },
             { k: "desc", lbl: "Descripción", type: "text" },
+            { k: "comentarios", lbl: "Comentarios", type: "text" },
             { k: "resp", lbl: "Responsable", type: "text" },
             { k: "monto", lbl: "Monto S/.", type: "number" },
           ];
@@ -15957,6 +15967,13 @@
           rec = COMPRAS_DATA[idx];
           if (!rec) return;
           fields = [
+            {
+              k: "destino",
+              lbl: "Destino (dónde se agrega)",
+              type: "select",
+              opts: ["Inversión inicial", "Stock reposición"],
+            },
+            { k: "numero_comprobante", lbl: "N° Comprobante (varios ítems pueden compartirlo)", type: "text" },
             { k: "prov", lbl: "Proveedor", type: "text" },
             { k: "fecha", lbl: "Fecha (YYYY-MM)", type: "text" },
             { k: "desc", lbl: "Descripción", type: "text" },
@@ -16919,10 +16936,11 @@
       const STOCK_REPOS_PROVS = ["Pacific","QueTal","Sego"];
 
       function getInvInicialRows() {
-        return COMPRAS_DATA.filter(r => STOCK_INICIAL_PROVS.includes(r.prov));
+        // Si la compra tiene destino explícito, se usa ese; si no (datos antiguos), se clasifica por proveedor.
+        return COMPRAS_DATA.filter(r => r.destino ? r.destino === "Inversión inicial" : STOCK_INICIAL_PROVS.includes(r.prov));
       }
       function getInvReposRows() {
-        return COMPRAS_DATA.filter(r => STOCK_REPOS_PROVS.includes(r.prov));
+        return COMPRAS_DATA.filter(r => r.destino ? r.destino === "Stock reposición" : STOCK_REPOS_PROVS.includes(r.prov));
       }
       // Helper: get S/. value of a COMPRAS_DATA row (handles USD rows)
       function rowSoles(r) {
@@ -16974,6 +16992,7 @@
           const bg = i%2===0?"":"background:var(--c-bg)";
           const monLabel = r.mon==="USD"?`<span style="font-size:9px;color:var(--c-blue2);display:block">USD ${(r.usd||0).toFixed(2)}</span>`:"";
           return `<tr style="${bg}">
+            <td style="font-size:11px;color:var(--c-blue2);font-weight:600">${r.numero_comprobante||"—"}</td>
             <td style="font-size:11px"><strong>${r.prov}</strong></td>
             <td style="font-size:11px;color:var(--c-gray)">${r.fecha||"—"}</td>
             <td style="font-size:12px">${r.desc}</td>
@@ -17043,6 +17062,7 @@
           const bg = i%2===0?"":"background:var(--c-bg)";
           const monLabel = r.mon==="USD"?`<span style="font-size:9px;color:var(--c-blue2);display:block">USD ${(r.usd||0).toFixed(2)}</span>`:"";
           return `<tr style="${bg}">
+            <td style="font-size:11px;color:var(--c-blue2);font-weight:600">${r.numero_comprobante||"—"}</td>
             <td style="font-size:11px"><strong>${r.prov}</strong></td>
             <td style="font-size:11px;color:var(--c-gray)">${r.fecha||"—"}</td>
             <td style="font-size:12px">${r.desc}</td>
@@ -17840,6 +17860,7 @@
         const tipo_doc = document.getElementById("g-tipo")?.value || "";
         const serie = document.getElementById("g-serie")?.value || "";
         const numero = document.getElementById("g-numero")?.value || "";
+        const comentarios = document.getElementById("g-comentarios")?.value.trim() || "";
         gastosLocal.push({
           id: Date.now(),
           fecha,
@@ -17851,11 +17872,13 @@
           tipo_doc,
           serie,
           numero,
+          comentarios,
         });
         localStorage.setItem("rv_gastos", JSON.stringify(gastosLocal));
         renderGastos();
-        ["g-fecha", "g-desc", "g-monto", "g-resp"].forEach((id) => {
-          document.getElementById(id).value = "";
+        ["g-fecha", "g-desc", "g-monto", "g-resp", "g-comentarios"].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.value = "";
         });
         document.getElementById("g-cat").value = "";
         showToast("Gasto registrado: S/. " + monto.toFixed(2));
@@ -17935,7 +17958,7 @@
     <td style="font-size:11px;color:var(--c-gray)">${g.numero || "—"}</td>
     <td><span class="pill pill-gray" style="background:${CAT_COLORS[g.cat] || "#90A4AE"}20;color:${CAT_COLORS[g.cat] || "#455A64"}">${g.cat}</span></td>
     <td>${g.canal}</td>
-    <td>${g.desc}</td>
+    <td>${g.desc}${g.comentarios ? `<div style="font-size:10px;color:var(--c-gray);font-style:italic;margin-top:2px">💬 ${g.comentarios}</div>` : ""}</td>
     <td>${g.resp || "—"}</td>
     <td><strong>${fmt(g.monto)}</strong></td>
     <td style="white-space:nowrap">
@@ -18749,15 +18772,18 @@
       }
 
       function addNewCompra() {
+        const hoyC = new Date();
         const newC = {
           prov: "",
-          fecha: "2026-05",
+          fecha: hoyC.getFullYear() + "-" + String(hoyC.getMonth() + 1).padStart(2, "0"),
           desc: "Nueva compra",
           marca: "EZVIZ",
           cant: 1,
           usd: 0,
           sol: 0,
           mon: "USD",
+          numero_comprobante: "",
+          destino: "Inversión inicial",
         };
         COMPRAS_DATA.push(newC);
         _editIdx = COMPRAS_DATA.length - 1;
@@ -20112,7 +20138,7 @@
     </div>
 
   <!-- Indicador de versión: si NO ves este número, tu navegador tiene caché viejo -->
-  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v12 · 03-Jul</div>
-  <script src="app.js?v=12"></script>
+  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v13 · 03-Jul</div>
+  <script src="app.js?v=13"></script>
   </body>
 </html>
