@@ -921,6 +921,72 @@ function rvAplicarOverridesCostos() {
     }
   });
 }
+
+// ═══════════════════════════════════════════════════════════════
+// RECUPERACIÓN DE INVERSIÓN + GASTOS FIJOS NO CUBIERTOS
+// Monto a recuperar = Inversión + Σ (gastos fijos del mes NO cubiertos).
+// "No cubierto" = parte del gasto fijo que lo disponible del mes
+// (ventas − costos − gastos variables) no alcanzó a pagar. Solo meses pasados.
+// ═══════════════════════════════════════════════════════════════
+function rvTotalFijosMensual() {
+  const tc = (typeof TC_FIJO !== 'undefined') ? TC_FIJO : 3.5;
+  let alq = 0, plan = 0;
+  try { if (typeof ALQUILERES_DATA !== 'undefined') alq = ALQUILERES_DATA.reduce((s, r) => s + (r.moneda === 'USD' ? rvNum(r.monto_mensual) * tc : rvNum(r.monto_mensual)), 0); } catch (e) {}
+  try { if (typeof PLANILLA_DATA !== 'undefined') plan = PLANILLA_DATA.reduce((s, r) => s + rvNum(r.remuneracion), 0); } catch (e) {}
+  return alq + plan;
+}
+function rvGastosVarMes(periodo) {
+  const seed = (typeof GASTOS_DATA !== 'undefined') ? GASTOS_DATA : [];
+  let local = []; try { local = JSON.parse(localStorage.getItem('rv_gastos') || '[]'); } catch (e) {}
+  return seed.concat(local)
+    .filter(g => g.mes === periodo || String(g.fecha || '').slice(0, 7) === periodo)
+    .reduce((s, g) => s + rvNum(g.monto), 0);
+}
+function rvGastosFijosNoCubiertos(conDetalle) {
+  const vacio = conDetalle ? { total: 0, meses: [], fijos: 0 } : 0;
+  if (typeof SEED === 'undefined' || !Array.isArray(SEED.meses)) return vacio;
+  const fijos = rvTotalFijosMensual();
+  const hoy = new Date();
+  const curP = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0');
+  let acum = 0; const det = [];
+  SEED.meses.forEach(m => {
+    if (!(rvNum(m.v) > 0)) return;      // solo meses con actividad
+    if (m.p >= curP) return;            // solo meses pasados (cerrados)
+    const disponible = rvNum(m.v) - rvNum(m.c) - rvGastosVarMes(m.p);
+    const noCub = Math.max(0, fijos - Math.max(0, disponible)); // parte del fijo no cubierta
+    if (noCub > 0) det.push({ mes: m.m, noCub: noCub });
+    acum += noCub;
+  });
+  return conDetalle ? { total: acum, meses: det, fijos: fijos } : acum;
+}
+// Actualiza el % de avance con el nuevo monto a recuperar y muestra el desglose
+function rvActualizarRecuperacion() {
+  try {
+    if (typeof SEED === 'undefined') return;
+    const inv = rvNum(SEED.inv_tot);
+    const info = rvGastosFijosNoCubiertos(true);
+    const noCub = info.total;
+    const target = inv + noCub;
+    const tot_v = (typeof computeTotals === 'function') ? rvNum(computeTotals().tot_v) : rvNum(SEED.tot_v);
+    const pct = target > 0 ? (tot_v / target * 100) : 0;
+    const avEl = document.getElementById('avance-pct');
+    if (avEl) avEl.textContent = pct.toFixed(1) + '%';
+    const alerta = document.querySelector('#page-dashboard .alert.alert-info');
+    if (alerta) {
+      let box = document.getElementById('rv-recuperacion');
+      if (!box) {
+        box = document.createElement('div');
+        box.id = 'rv-recuperacion';
+        box.style.cssText = 'font-size:12px;margin-top:8px;background:#eef6ff;border:1px solid #bdd7f3;color:#0a3060;padding:10px;border-radius:8px;line-height:1.6';
+        alerta.insertAdjacentElement('afterend', box);
+      }
+      box.innerHTML = `<b>Monto a recuperar: ${rvMoney(target)}</b> = Inversión ${rvMoney(inv)} + Gastos fijos no cubiertos ${rvMoney(noCub)}` +
+        ` · Recuperado ${rvMoney(tot_v)} · <b>Avance real: ${pct.toFixed(1)}%</b>` +
+        (info.meses.length ? `<br><span style="font-size:11px;color:#455a64">Meses con gasto fijo no cubierto: ${info.meses.map(x => x.mes + ' (' + rvMoney(x.noCub) + ')').join(' · ')}</span>` : '');
+    }
+  } catch (e) { console.error('[RECUP]', e); }
+}
+
 // Conecta el auto-costo al modal de venta individual (v-modelo/v-marca → v-costo)
 function rvWireAutoCosto() {
   const modelo = document.getElementById('v-modelo');
@@ -1914,6 +1980,8 @@ function rvDecorarPP() {
   envolver('saveVenta', () => setTimeout(() => { rvRebuildTxns(); rvFlushVentas(); }, 50));
   envolver('confirmImport', () => setTimeout(() => { rvRebuildTxns(); rvFlushVentas(); }, 50));
 
+  // Recuperación de inversión con gastos fijos no cubiertos
+  envolver('renderKPIs', () => rvActualizarRecuperacion());
   // Stock: decorar tras render
   envolver('renderInvInicial', () => rvDecorarStock());
   envolver('renderInvRepos', () => rvDecorarStock());
