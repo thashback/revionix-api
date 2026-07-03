@@ -460,20 +460,36 @@ async function saveProyecto() {
   formData.append('cliente', document.getElementById('proy-cliente').value);
   formData.append('descripcion', document.getElementById('proy-desc').value);
   formData.append('monto_total', document.getElementById('proy-monto').value);
-  formData.append('ruta_oc', document.getElementById('proy-file').files[0]);
+
+  const fileInput = document.getElementById('proy-file');
+  const file = fileInput?.files?.[0];
+
+  if (!file) {
+    alert('❌ Por favor selecciona un archivo PDF');
+    return;
+  }
+
+  formData.append('ruta_oc', file);
 
   try {
     const response = await fetch(`${API_BASE}/proyectos`, {
       method: 'POST',
       body: formData
     });
+
+    const data = await response.json();
+
     if (response.ok) {
       alert('✅ Proyecto creado');
       document.querySelector('.modal-overlay').remove();
       loadProyectos();
+    } else {
+      alert('❌ Error: ' + (data.error || data.message || 'Error desconocido'));
+      console.error('Server error:', data);
     }
   } catch (err) {
-    alert('Error: ' + err.message);
+    alert('❌ Error: ' + err.message);
+    console.error('Fetch error:', err);
   }
 }
 
