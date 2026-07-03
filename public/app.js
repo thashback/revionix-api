@@ -842,27 +842,59 @@ function rvCostoUnitCompra(c) {
   const tc = (typeof TC_FIJO !== 'undefined') ? TC_FIJO : 3.5;
   return sol > 0 ? sol : (usd > 0 ? usd * tc : 0);
 }
+// Normaliza texto (minúsculas, sin acentos ni signos)
+function rvNorm(s) {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+// Similitud de dos palabras por bigramas de caracteres (coeficiente de Dice, 0..1)
+function rvSimBigram(a, b) {
+  a = rvNorm(a); b = rvNorm(b);
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.length < 2 || b.length < 2) return a === b ? 1 : 0;
+  const bg = s => { const m = {}; for (let i = 0; i < s.length - 1; i++) { const g = s.substr(i, 2); m[g] = (m[g] || 0) + 1; } return m; };
+  const A = bg(a), B = bg(b); let inter = 0, tA = 0, tB = 0;
+  for (const g in A) { tA += A[g]; if (B[g]) inter += Math.min(A[g], B[g]); }
+  for (const g in B) tB += B[g];
+  return (tA + tB) ? (2 * inter) / (tA + tB) : 0;
+}
+// Similitud producto→compra: fracción de palabras del modelo halladas en la
+// descripción de la compra (exactas o con ≥80% de parecido). Maneja que la
+// descripción sea más larga que el modelo.
+function rvSimTokens(modelo, desc) {
+  const mt = rvNorm(modelo).split(' ').filter(t => t.length >= 2);
+  const dt = rvNorm(desc).split(' ').filter(t => t.length >= 2);
+  if (!mt.length || !dt.length) return 0;
+  const dset = new Set(dt);
+  let hit = 0;
+  mt.forEach(t => {
+    if (dset.has(t)) { hit++; return; }
+    for (const d of dt) { if (rvSimBigram(t, d) >= 0.8) { hit++; break; } }
+  });
+  return hit / mt.length;
+}
+// Busca el costo (precio de compra unitario) del producto con ≥80% de similitud
 function rvBuscarCostoCompra(modelo, marca) {
   if (typeof COMPRAS_DATA === 'undefined' || !modelo) return null;
-  const m = String(modelo).trim().toLowerCase();
-  const mk = String(marca || '').trim().toLowerCase();
+  const mk = rvNorm(marca);
   const codeM = (typeof extractModelCode === 'function') ? extractModelCode(modelo) : '';
-  let best = null, bestScore = 0;
+  let best = null, bestSim = 0;
   COMPRAS_DATA.forEach(c => {
     const unit = rvCostoUnitCompra(c);
     if (unit <= 0) return;
-    const desc = String(c.desc || '').toLowerCase();
-    const cMarca = String(c.marca || '').toLowerCase();
-    let score = 0;
-    if (mk && cMarca === mk) score += 2;
-    if (m.length >= 3 && desc.includes(m)) score += 3;
+    let sim = rvSimTokens(modelo, c.desc);
+    // Código de modelo idéntico = coincidencia total
     if (codeM) {
       const codeD = (typeof extractModelCode === 'function') ? extractModelCode(c.desc) : '';
-      if (codeD && codeD.toUpperCase() === codeM.toUpperCase()) score += 4;
+      if (codeD && codeD.toUpperCase() === codeM.toUpperCase()) sim = Math.max(sim, 1);
     }
-    if (score > bestScore) { bestScore = score; best = unit; }
+    // Penaliza si las marcas están presentes y son distintas (evita cruzar marcas)
+    const cMarca = rvNorm(c.marca);
+    if (mk && cMarca && mk !== cMarca) sim *= 0.5;
+    if (sim > bestSim) { bestSim = sim; best = unit; }
   });
-  return bestScore >= 3 ? best : null; // requiere al menos coincidencia de modelo/código
+  return bestSim >= 0.8 ? best : null; // umbral de 80% de similitud
 }
 // Conecta el auto-costo al modal de venta individual (v-modelo/v-marca → v-costo)
 function rvWireAutoCosto() {
