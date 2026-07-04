@@ -562,8 +562,9 @@ async function deletePlanilla(id) {
   function programar(clave, valor) {
     pendientes[clave] = valor;
     clearTimeout(timer);
-    timer = setTimeout(empujar, 1000);
+    timer = setTimeout(empujar, 350); // guardado casi inmediato → multi-dispositivo confiable
   }
+  window.rvEmpujarAhora = empujar; // permite forzar el guardado inmediato
 
   // Interceptar escrituras (vía prototype: asignar directo a localStorage
   // guardaría la función como item — pitfall clásico de Storage)
@@ -669,6 +670,7 @@ function rvGuardarPdfGasto(clave, ruta) {
   const m = rvPdfsGastos();
   m[clave] = ruta;
   localStorage.setItem('rv_gastos_pdfs', JSON.stringify(m));
+  if (window.rvEmpujarAhora) window.rvEmpujarAhora(); // guardar en servidor de inmediato
 }
 // Réplica exacta del orden de filas de renderGastos: [seed, ...locales] invertido
 function rvGastosConClave() {
@@ -1808,7 +1810,7 @@ async function rvCargarVentasDesdeBD() {
     const rows = await fetch(`${RV_API}/reg/ventas`).then(r => r.json());
     if (!Array.isArray(rows)) return;
     let local = []; try { local = JSON.parse(localStorage.getItem('rv_ventas') || '[]'); } catch (e) {}
-    if (local.length > rows.length) { rvFlushVentas(); return; } // local tiene más → no perder
+    if (rows.length === 0 && local.length > 0) { rvFlushVentas(); return; }
     const mapped = rvDesdeRaw(rows);
     localStorage.setItem('rv_ventas', JSON.stringify(mapped));
     if (typeof extraVentas !== 'undefined' && Array.isArray(extraVentas)) { extraVentas.length = 0; mapped.forEach(m => extraVentas.push(m)); }
@@ -1822,7 +1824,7 @@ async function rvCargarGastosDesdeBD() {
     const rows = await fetch(`${RV_API}/reg/gastos`).then(r => r.json());
     if (!Array.isArray(rows)) return;
     let local = []; try { local = JSON.parse(localStorage.getItem('rv_gastos') || '[]'); } catch (e) {}
-    if (local.length > rows.length) { rvFlushGastos(); return; } // local tiene más → no perder
+    if (rows.length === 0 && local.length > 0) { rvFlushGastos(); return; }
     const mapped = rvDesdeRaw(rows);
     localStorage.setItem('rv_gastos', JSON.stringify(mapped));
     if (typeof gastosLocal !== 'undefined' && Array.isArray(gastosLocal)) { gastosLocal.length = 0; mapped.forEach(m => gastosLocal.push(m)); }
@@ -1837,7 +1839,7 @@ async function rvCargarComprasDesdeBD() {
     const rows = await fetch(`${RV_API}/reg/compras`).then(r => r.json());
     if (!Array.isArray(rows)) return;
     let local = []; try { local = JSON.parse(localStorage.getItem('rv_compras') || '[]'); } catch (e) {}
-    if (local.length > rows.length) { rvFlushCompras(); return; } // local tiene más → no perder
+    if (rows.length === 0 && local.length > 0) { rvFlushCompras(); return; }
     const mapped = rvDesdeRaw(rows);
     localStorage.setItem('rv_compras', JSON.stringify(mapped));
     if (typeof COMPRAS_DATA !== 'undefined') {
@@ -1972,6 +1974,7 @@ function rvGuardarPdfStock(clave, ruta) {
   const m = rvStockPdfs();
   m[clave] = ruta;
   localStorage.setItem('rv_stock_pdfs', JSON.stringify(m));
+  if (window.rvEmpujarAhora) window.rvEmpujarAhora();
 }
 async function rvSubirPdfStock(clave, recargar) {
   const input = document.createElement('input');
@@ -2094,6 +2097,7 @@ async function rvSubirPdfPP(clave) {
       const m = rvPpPdfs();
       m[clave] = ruta;
       localStorage.setItem('rv_pp_pdfs', JSON.stringify(m));
+      if (window.rvEmpujarAhora) window.rvEmpujarAhora();
       if (typeof window.renderPPAlq === 'function') window.renderPPAlq();
       if (typeof showToast === 'function') showToast('✅ Comprobante de pago guardado');
     }
