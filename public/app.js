@@ -749,6 +749,7 @@ function rvDesgloseMes(periodo, etiqueta) {
   try {
     rows = (typeof getDetalleData === 'function' ? getDetalleData() : []).filter(r => r.mes === periodo);
   } catch (e) { console.error('[DESGLOSE]', e); }
+  window.__rvDesglose = { rows: rows, etiqueta: etiqueta, periodo: periodo };
   const totV = rows.reduce((s, r) => s + (r.venta || 0), 0);
   const totC = rows.reduce((s, r) => s + (r.costo || 0), 0);
   const totM = totV - totC;
@@ -768,9 +769,12 @@ function rvDesgloseMes(periodo, etiqueta) {
       }).join('')
     : '<tr><td colspan="8" style="text-align:center;color:#999;padding:16px">Sin ventas registradas este mes</td></tr>';
   rvModal(`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid #eee;padding-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid #eee;padding-bottom:10px;gap:10px">
       <h3 style="margin:0;color:#333">📅 Desglose de Ventas — ${rvEsc(etiqueta)}</h3>
-      <button onclick="closeRvModal()" style="background:none;border:none;font-size:24px;cursor:pointer">×</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button onclick="rvDescargarDesgloseMes()" style="background:#198c35;color:#fff;border:none;border-radius:5px;padding:7px 12px;cursor:pointer;font-size:12px;font-weight:600">⬇ Descargar Excel</button>
+        <button onclick="closeRvModal()" style="background:none;border:none;font-size:24px;cursor:pointer">×</button>
+      </div>
     </div>
     <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">
       <div style="flex:1;min-width:120px;background:#e3f0fb;padding:10px;border-radius:6px;text-align:center"><div style="font-size:11px;color:#455a64">VENTAS</div><strong style="color:#1565c0">${rvMoney(totV)}</strong></div>
@@ -785,6 +789,32 @@ function rvDesgloseMes(periodo, etiqueta) {
       </table>
     </div>
   `, 920);
+}
+
+// Descarga a Excel el desglose completo del mes mostrado
+function rvDescargarDesgloseMes() {
+  if (typeof XLSX === 'undefined') { alert('❌ Librería XLSX no disponible'); return; }
+  const d = window.__rvDesglose;
+  if (!d || !d.rows || !d.rows.length) { alert('No hay ventas para descargar en este mes'); return; }
+  const aoa = [['Fecha', 'Canal', 'Cliente', 'Comprobante', 'Serie', 'Correlativo', 'N° Operación', 'Modelo', 'Marca', 'Qty', 'Venta S/.', 'Costo S/.', 'Margen S/.', 'Medio Pago']];
+  let tV = 0, tC = 0;
+  d.rows.forEach(r => {
+    const venta = rvNum(r.venta), costo = rvNum(r.costo);
+    tV += venta; tC += costo;
+    aoa.push([
+      r.fecha || '', r.canal || '', r.cliente || '', r.tipo_doc || '', r.serie || '', r.correlativo || '',
+      r.n_operacion || '', r.modelo || '', r.marca || '', r.qty || 1,
+      venta, costo, venta - costo, r.medio_pago || ''
+    ]);
+  });
+  aoa.push([]);
+  aoa.push(['', '', '', '', '', '', '', '', 'TOTALES', d.rows.length, tV, tC, tV - tC, '']);
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{ wch: 12 }, { wch: 12 }, { wch: 22 }, { wch: 12 }, { wch: 8 }, { wch: 11 }, { wch: 13 }, { wch: 26 }, { wch: 12 }, { wch: 6 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }];
+  const wb = XLSX.utils.book_new();
+  const nombreHoja = String(d.etiqueta || 'Mes').replace(/[^\w-]/g, '_').slice(0, 28);
+  XLSX.utils.book_append_sheet(wb, ws, nombreHoja);
+  XLSX.writeFile(wb, 'desglose_ventas_' + (d.periodo || 'mes') + '.xlsx');
 }
 
 // ══ CORPORATIVO / ECOMMERCE: registrar ventas manualmente ══
@@ -1350,7 +1380,7 @@ function rvImportarCorp() {
           const cliente = String(get(r, ['Cliente', 'cliente', 'CLIENTE']) || '').trim();
           const modelo = String(get(r, ['Modelo', 'modelo', 'MODELO', 'Producto', 'producto']) || '').trim();
           if (!cliente || !modelo || cliente.toLowerCase().includes('ejemplo')) return;
-          const fecha = String(get(r, ['Fecha', 'fecha', 'FECHA']) || new Date().toISOString().slice(0, 10)).slice(0, 10);
+          const fecha = rvParseFecha(get(r, ['Fecha', 'fecha', 'FECHA'])) || new Date().toISOString().slice(0, 10);
           const cond = String(get(r, ['Condicion', 'Condición', 'condicion']) || 'Contado').toLowerCase().includes('cred') ? 'Crédito' : 'Contado';
           const nop = String(get(r, ['N_Operacion', 'N Operacion', 'NOperacion', 'Operacion', 'operacion']) || '').trim();
           const key = cliente + '|' + fecha + '|' + cond + '|' + nop;
@@ -1385,6 +1415,27 @@ function rvImportarCorp() {
   input.click();
 }
 
+// Parser de fechas robusto: acepta Date, número de serie de Excel, dd/mm/yyyy,
+// yyyy-mm-dd, yyyy/mm/dd. Devuelve 'YYYY-MM-DD' (o '' si no se puede).
+function rvParseFecha(raw) {
+  if (raw == null || raw === '') return '';
+  if (raw instanceof Date) return isNaN(raw) ? '' : raw.toISOString().slice(0, 10);
+  if (typeof raw === 'number') {
+    const d = new Date(Math.round((raw - 25569) * 86400000));
+    return isNaN(d) ? '' : d.toISOString().slice(0, 10);
+  }
+  const s = String(raw).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  if (s.includes('/')) {
+    const p = s.split('/');
+    if (p.length === 3) {
+      if (p[2].length === 4) return p[2] + '-' + String(p[1]).padStart(2, '0') + '-' + String(p[0]).padStart(2, '0'); // dd/mm/yyyy
+      if (p[0].length === 4) return p[0] + '-' + String(p[1]).padStart(2, '0') + '-' + String(p[2]).padStart(2, '0'); // yyyy/mm/dd
+    }
+  }
+  return s.slice(0, 10);
+}
+
 // ══ CARGAR VENTAS: plantilla + importación COMPLETAS ══
 // Reemplaza downloadTemplate/showImportPreview del sistema para incluir todos
 // los campos: comprobante, serie, correlativo, N° operación, canal, qty, medio de pago.
@@ -1404,7 +1455,7 @@ function rvImportarCorp() {
   window.showImportPreview = function (rows) {
     const g = (r, names) => { for (const n of names) { if (r[n] !== undefined && r[n] !== '') return r[n]; } return undefined; };
     const list = (rows || []).map(r => {
-      const fecha = String(g(r, ['Fecha', 'fecha', 'FECHA']) || '').slice(0, 10);
+      const fecha = rvParseFecha(g(r, ['Fecha', 'fecha', 'FECHA']));
       const modelo = String(g(r, ['Modelo', 'modelo', 'MODELO', 'Producto', 'producto']) || '');
       const marca = String(g(r, ['Marca', 'marca', 'MARCA']) || 'Otros');
       const venta = rvNum(g(r, ['Venta_S/.', 'Venta', 'venta', 'Precio', 'Precio_Venta', 'PrecioVenta', 'Total', 'total']));
