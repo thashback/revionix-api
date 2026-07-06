@@ -251,6 +251,20 @@ app.get('/api/seed', async (req, res) => {
   }
 });
 
+// Devuelve TODOS los datos precargados ya parseados (para que el front los cargue)
+app.get('/api/seed-all', async (req, res) => {
+  try {
+    const conn = await pool.getConnection();
+    const [rows] = await conn.execute('SELECT clave, datos FROM seed_snapshot');
+    conn.release();
+    const out = {};
+    rows.forEach(r => { try { out[r.clave] = JSON.parse(r.datos); } catch (e) { out[r.clave] = null; } });
+    res.json(out);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/seed/:clave', async (req, res) => {
   try {
     const conn = await pool.getConnection();
