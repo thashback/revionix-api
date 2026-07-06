@@ -5800,7 +5800,37 @@
         return _detalleData;
       }
 
+      // Llena el filtro de meses dinámicamente desde los datos reales
+      // (antes estaba fijo hasta Mayo 2026; ahora refleja lo que exista)
+      function poblarMesesDetalle() {
+        const sel = document.getElementById("det-mes");
+        if (!sel) return;
+        const actual = sel.value;
+        const meses = [
+          ...new Set(
+            getDetalleData()
+              .filter((r) => r.venta > 0)
+              .map((r) => String(r.mes || r.fecha || "").slice(0, 7))
+              .filter((m) => /^\d{4}-\d{2}$/.test(m)),
+          ),
+        ].sort();
+        const ABBR = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+        const label = (m) => {
+          const p = m.split("-");
+          return `${ABBR[parseInt(p[1], 10) - 1]} ${p[0]}`;
+        };
+        sel.innerHTML =
+          '<option value="">Todos los meses</option>' +
+          meses
+            .map(
+              (m) =>
+                `<option value="${m}" ${m === actual ? "selected" : ""}>${label(m)}</option>`,
+            )
+            .join("");
+      }
+
       function filterDetalle() {
+        poblarMesesDetalle();
         const search = (
           document.getElementById("det-search")?.value || ""
         ).toLowerCase();
@@ -5820,7 +5850,10 @@
           );
         if (canal) rows = rows.filter((r) => r.canal === canal);
         if (marca) rows = rows.filter((r) => r.marca === marca);
-        if (mes) rows = rows.filter((r) => (r.mes || "").startsWith(mes));
+        if (mes)
+          rows = rows.filter((r) =>
+            String(r.mes || r.fecha || "").startsWith(mes),
+          );
         if (fechaDesde) rows = rows.filter((r) => (r.fecha || r.mes || "") >= fechaDesde);
         if (fechaHasta) rows = rows.filter((r) => (r.fecha || r.mes || "") <= fechaHasta);
         const [field, dir] = sort.split("-");
@@ -7931,7 +7964,7 @@
     </div>
 
   <!-- Indicador de versión: si NO ves este número, tu navegador tiene caché viejo -->
-  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v43 · 06-Jul</div>
-  <script src="app.js?v=43"></script>
+  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v44 · 06-Jul</div>
+  <script src="app.js?v=44"></script>
   </body>
 </html>
