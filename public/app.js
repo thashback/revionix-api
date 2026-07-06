@@ -1925,6 +1925,36 @@ window.rvGastoEliminado = function (id) {
   try { return !!rvEliminados().gasto[String(id)]; } catch (e) { return false; }
 };
 
+// ── EDICIONES persistentes de transacciones (detalle) ──
+// Se guardan por FIRMA original (rv_ediciones_txn) y se re-aplican en cada
+// reconstrucción de TXNS_DATA, así la modificación sobrevive recargas y
+// sincroniza entre dispositivos. Real + auditoría oculta.
+function rvEdicionesTxn() {
+  try {
+    const o = JSON.parse(localStorage.getItem('rv_ediciones_txn') || '{}');
+    return o && typeof o === 'object' ? o : {};
+  } catch (e) { return {}; }
+}
+function rvCamposEditablesTxn(rec) {
+  return {
+    tipo_doc: rec.tipo_doc, serie: rec.serie, correlativo: rec.correlativo,
+    canal: rec.canal, cliente: rec.cliente, mes: rec.mes, modelo: rec.modelo,
+    marca: rec.marca, qty: rvNum(rec.qty), venta: rvNum(rec.venta),
+    costo: rvNum(rec.costo), medio_pago: rec.medio_pago
+  };
+}
+function rvMarcarEdicionTxn(sigAntes, rec) {
+  if (!sigAntes || !rec) return;
+  try {
+    const o = rvEdicionesTxn();
+    o[sigAntes] = rvCamposEditablesTxn(rec);
+    localStorage.setItem('rv_ediciones_txn', JSON.stringify(o));
+    if (window.rvEmpujarAhora) window.rvEmpujarAhora();
+    rvAuditar('editar', 'detalle/ventas', 'Venta editada: ' + (rec.modelo || '') + ' | ' + (rec.fecha || '') + ' | S/. ' + rvNum(rec.venta));
+  } catch (e) {}
+}
+window.rvMarcarEdicionTxn = rvMarcarEdicionTxn;
+
 // Override: borrado REAL de transacciones (detalle) con lápida + auditoría
 (function () {
   if (typeof window.deleteTxn === 'function') {
@@ -2009,6 +2039,23 @@ async function rvRebuildTxns() {
           qty: 1, venta, costo, margen: venta - costo, medio_pago: cond, condicion: cond,
           margen_pct: venta > 0 ? ((venta - costo) / venta * 100) : 0, __proy: p.id
         });
+      });
+    }
+
+    // Aplicar EDICIONES persistentes (por firma original). Se procesan en el
+    // orden en que se guardaron: ediciones encadenadas convergen al último valor.
+    const _edic = rvEdicionesTxn();
+    const _edicKeys = Object.keys(_edic);
+    if (_edicKeys.length) {
+      _edicKeys.forEach(sig => {
+        const campos = _edic[sig];
+        const i = TXNS_DATA.findIndex(t => rvSigTxn(t) === sig);
+        if (i >= 0) {
+          Object.assign(TXNS_DATA[i], campos);
+          const v = rvNum(TXNS_DATA[i].venta), c = rvNum(TXNS_DATA[i].costo);
+          TXNS_DATA[i].margen = v - c;
+          TXNS_DATA[i].margen_pct = v > 0 ? ((v - c) / v * 100) : 0;
+        }
       });
     }
 

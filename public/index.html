@@ -3582,6 +3582,7 @@
       }
 
       let _editIdx = -1;
+      let _editRec = null; // referencia directa al objeto editado (evita TOCTOU por reordenamiento)
       let _editSource = "txns"; // 'txns' | 'gastos' | 'prov'
 
       function openEdit(idx, source) {
@@ -3844,12 +3845,14 @@
           })
           .join("");
 
+        _editRec = rec; // referencia estable al objeto que se está editando
         modal.style.display = "flex";
       }
 
       function closeEdit() {
         document.getElementById("edit-modal").style.display = "none";
         _editIdx = -1;
+        _editRec = null;
       }
 
       function saveEdit() {
@@ -3860,11 +3863,16 @@
 
         if (_editSource === "txns") {
           const det_rows = _lastDetalleRows || getDetalleData();
-          const rec = det_rows[idx];
+          // Preferir la referencia capturada al abrir el modal: si la tabla
+          // se reordenó/reconstruyó mientras editabas, det_rows[idx] apuntaría
+          // a otra fila y la modificación no se reflejaría.
+          const rec = _editRec || det_rows[idx];
           if (!rec) {
             closeEdit();
             return;
           }
+          const _sigAntes =
+            typeof rvSigTxn === "function" ? rvSigTxn(rec) : null;
           inputs.forEach((el) => {
             const k = el.dataset.key;
             rec[k] =
@@ -3874,6 +3882,10 @@
           rec.margen_pct = rec.venta
             ? round2((rec.margen / rec.venta) * 100)
             : 0;
+          // Persistir la edición (real + auditoría oculta) para que sobreviva
+          // recargas y reconstrucciones de TXNS_DATA.
+          if (typeof rvMarcarEdicionTxn === "function")
+            rvMarcarEdicionTxn(_sigAntes, rec);
           recomputeSeedTotals();
           renderAll();
           setTimeout(() => initCharts(), 100);
@@ -5865,6 +5877,10 @@
 
       function renderDetalleTable(rows) {
         _lastDetalleRows = rows;
+        // Exponer en window: el override de borrado (app.js) lo lee como
+        // window._lastDetalleRows. Sin esto tomaba la lista sin filtrar y
+        // borraba/mostraba un registro distinto al de la fila.
+        window._lastDetalleRows = rows;
         const totV = rows.reduce((s, r) => s + r.venta, 0);
         const totC = rows.reduce((s, r) => s + r.costo, 0);
         const totM = totV - totC;
@@ -7964,7 +7980,7 @@
     </div>
 
   <!-- Indicador de versión: si NO ves este número, tu navegador tiene caché viejo -->
-  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v44 · 06-Jul</div>
-  <script src="app.js?v=44"></script>
+  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v45 · 06-Jul</div>
+  <script src="app.js?v=45"></script>
   </body>
 </html>
