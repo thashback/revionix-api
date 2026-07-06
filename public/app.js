@@ -1435,6 +1435,14 @@ function rvParseFecha(raw) {
   }
   const s = String(raw).trim();
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  // Número de serie de Excel guardado como texto (ej. "46199")
+  if (/^\d{4,6}$/.test(s)) {
+    const n = parseInt(s, 10);
+    if (n > 20000 && n < 90000) {
+      const d = new Date(Math.round((n - 25569) * 86400000));
+      if (!isNaN(d)) return d.toISOString().slice(0, 10);
+    }
+  }
   if (s.includes('/')) {
     const p = s.split('/');
     if (p.length === 3) {
@@ -1443,6 +1451,47 @@ function rvParseFecha(raw) {
     }
   }
   return s.slice(0, 10);
+}
+// Quita duplicados EXACTOS de ventas y corrige fechas mal importadas (serial Excel)
+function rvQuitarDuplicadosVentas() {
+  let v = []; try { v = JSON.parse(localStorage.getItem('rv_ventas') || '[]'); } catch (e) { return; }
+  let fechasCorr = 0;
+  v.forEach(x => {
+    const nf = rvParseFecha(x.fecha);
+    if (nf && nf !== x.fecha) { x.fecha = nf; fechasCorr++; }
+    if (x.fecha) x.mes = String(x.fecha).slice(0, 7);
+  });
+  const vistos = {}; const unicos = [];
+  v.forEach(x => {
+    const k = [x.fecha, x.canal, x.modelo, x.marca, rvNum(x.venta), rvNum(x.costo), x.grupo || ''].join('||');
+    if (!vistos[k]) { vistos[k] = 1; unicos.push(x); }
+  });
+  const quitar = v.length - unicos.length;
+  if (quitar <= 0 && fechasCorr === 0) { alert('No hay ventas duplicadas ni fechas por corregir.'); return; }
+  let msg = '';
+  if (quitar > 0) msg += 'Ventas duplicadas exactas: ' + quitar + ' (de ' + v.length + ' totales)\n';
+  if (fechasCorr > 0) msg += 'Fechas mal importadas a corregir: ' + fechasCorr + '\n';
+  msg += '\n¿Aplicar? Quedarán ' + unicos.length + ' ventas.';
+  if (!confirm(msg)) return;
+  localStorage.setItem('rv_ventas', JSON.stringify(unicos));
+  if (typeof extraVentas !== 'undefined' && Array.isArray(extraVentas)) { extraVentas.length = 0; unicos.forEach(x => extraVentas.push(x)); }
+  if (window.rvEmpujarAhora) window.rvEmpujarAhora();
+  if (typeof rvFlushVentas === 'function') rvFlushVentas();
+  rvAuditar('limpiar', 'ventas/detalle', 'Quitó ' + quitar + ' duplicados, corrigió ' + fechasCorr + ' fechas');
+  if (typeof rvRebuildTxns === 'function') rvRebuildTxns();
+  alert('✅ Listo. Duplicados quitados: ' + quitar + (fechasCorr ? ' · fechas corregidas: ' + fechasCorr : '') + '. Quedan ' + unicos.length + ' ventas.');
+}
+function rvInyectarBotonDuplicadosVentas() {
+  const page = document.getElementById('page-detalle');
+  if (!page || document.getElementById('rv-btn-dup-ventas')) return;
+  const b = document.createElement('button');
+  b.id = 'rv-btn-dup-ventas';
+  b.className = 'btn btn-outline';
+  b.style.cssText = 'margin:10px 0 10px 8px;font-size:12px';
+  b.textContent = '🧹 Quitar duplicados / corregir fechas';
+  b.onclick = rvQuitarDuplicadosVentas;
+  const a = page.querySelector('.page-sub') || page.querySelector('.page-title');
+  if (a) a.insertAdjacentElement('afterend', b);
 }
 
 // ══ CARGAR VENTAS: plantilla + importación COMPLETAS ══
@@ -1743,6 +1792,7 @@ function rvPersistirCompras() {
         rvDecorarEcommerce();
         rvInyectarBotonAgregar('page-detalle', 'rv-btn-det-add', '➕ Nueva Venta', '');
         rvInyectarBotonCostos();
+        rvInyectarBotonDuplicadosVentas();
         rvInyectarBotonRecalc();
         rvRestaurarCompras();
         rvWireAutoCosto();
@@ -2428,7 +2478,7 @@ function rvDecorarPP() {
   // Pagos pendientes: comprobante por fila
   envolver('renderPPAlq', () => rvDecorarPP());
   // Detalle por Producto: botones (agregar venta + completar costos)
-  envolver('filterDetalle', () => { rvInyectarBotonAgregar('page-detalle', 'rv-btn-det-add', '➕ Nueva Venta', ''); rvInyectarBotonCostos(); });
+  envolver('filterDetalle', () => { rvInyectarBotonAgregar('page-detalle', 'rv-btn-det-add', '➕ Nueva Venta', ''); rvInyectarBotonCostos(); rvInyectarBotonDuplicadosVentas(); });
 
   console.log('[RV-EXT2] ✓ Extensiones v7 activas');
 })();
