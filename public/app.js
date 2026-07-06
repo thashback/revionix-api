@@ -632,6 +632,7 @@ async function deletePlanilla(id) {
       if (id === 'proyectos') loadProyectos();
       if (id === 'planilla') loadPlanilla();
       if (id === 'usuarios' && typeof rvCargarUsuariosBD === 'function') rvCargarUsuariosBD();
+      if (id === 'gastos' && typeof rvInyectarBotonDuplicados === 'function') rvInyectarBotonDuplicados();
       if (id === 'dashboard' && typeof rvInyectarBotonRecalc === 'function') rvInyectarBotonRecalc();
     };
     console.log('[RV-API] ✓ Navegación integrada (proyectos, planilla)');
@@ -1733,6 +1734,8 @@ function rvPersistirCompras() {
   window.addEventListener('load', () => {
     setTimeout(() => {
       try {
+        rvUnicidadGastos();
+        rvInyectarBotonDuplicados();
         rvInyectarInputPdfGasto();
         rvDecorarGastos();
         rvDecorarMeses();
@@ -1983,9 +1986,62 @@ async function rvCargarGastosDesdeBD() {
     const mapped = rvDesdeRaw(rows);
     localStorage.setItem('rv_gastos', JSON.stringify(mapped));
     if (typeof gastosLocal !== 'undefined' && Array.isArray(gastosLocal)) { gastosLocal.length = 0; mapped.forEach(m => gastosLocal.push(m)); }
+    rvUnicidadGastos();  // garantiza id único por gasto → borrado granular
     if (typeof renderGastos === 'function') try { renderGastos(); } catch (e) {}
     console.log('[GASTOS-BD] ✓', mapped.length, 'gastos desde la BD');
   } catch (e) { console.warn('[GASTOS-BD]', e.message); }
+}
+
+// Garantiza que cada gasto tenga un id ÚNICO (repara ids duplicados de datos
+// antiguos), para que borrar uno no borre todos los que comparten id.
+let rvContadorId = Date.now();
+function rvUnicidadGastos() {
+  let g = []; try { g = JSON.parse(localStorage.getItem('rv_gastos') || '[]'); } catch (e) { return; }
+  const vistos = {}; let cambio = false;
+  g.forEach(x => {
+    const k = String(x.id);
+    if (x.id == null || vistos[k]) { x.id = ++rvContadorId; cambio = true; }
+    vistos[String(x.id)] = 1;
+  });
+  if (cambio) {
+    localStorage.setItem('rv_gastos', JSON.stringify(g));
+    if (typeof gastosLocal !== 'undefined' && Array.isArray(gastosLocal)) { gastosLocal.length = 0; g.forEach(x => gastosLocal.push(x)); }
+    if (window.rvEmpujarAhora) window.rvEmpujarAhora();
+    console.log('[GASTOS] ids únicos reparados');
+  }
+}
+
+// Quita duplicados EXACTOS de gastos (mismo fecha+cat+desc+monto+canal+resp),
+// dejando uno. Con confirmación (el usuario decide).
+function rvQuitarDuplicadosGastos() {
+  let g = []; try { g = JSON.parse(localStorage.getItem('rv_gastos') || '[]'); } catch (e) { return; }
+  const vistos = {}; const unicos = [];
+  g.forEach(x => {
+    const k = [x.fecha, x.cat, x.desc, rvNum(x.monto), x.canal, x.resp].join('||');
+    if (!vistos[k]) { vistos[k] = 1; unicos.push(x); }
+  });
+  const quitar = g.length - unicos.length;
+  if (quitar <= 0) { alert('No hay gastos duplicados exactos.'); return; }
+  if (!confirm('Se encontraron ' + quitar + ' gastos duplicados exactos (de ' + g.length + ' totales).\n\n¿Quitar los duplicados y dejar solo ' + unicos.length + ' únicos?')) return;
+  localStorage.setItem('rv_gastos', JSON.stringify(unicos));
+  if (typeof gastosLocal !== 'undefined' && Array.isArray(gastosLocal)) { gastosLocal.length = 0; unicos.forEach(x => gastosLocal.push(x)); }
+  if (window.rvEmpujarAhora) window.rvEmpujarAhora();
+  if (typeof rvFlushGastos === 'function') rvFlushGastos();
+  rvAuditar('limpiar', 'gastos', 'Quitó ' + quitar + ' duplicados exactos');
+  if (typeof renderGastos === 'function') renderGastos();
+  alert('✅ Se quitaron ' + quitar + ' duplicados. Quedan ' + unicos.length + ' gastos.');
+}
+// Botón "Quitar duplicados" en la página de Gastos
+function rvInyectarBotonDuplicados() {
+  const cont = document.querySelector('#page-gastos .btn-group');
+  if (!cont || document.getElementById('rv-btn-dup-gastos')) return;
+  const b = document.createElement('button');
+  b.id = 'rv-btn-dup-gastos';
+  b.className = 'btn btn-outline btn-sm';
+  b.style.cssText = 'font-size:11px';
+  b.textContent = '🧹 Quitar duplicados';
+  b.onclick = rvQuitarDuplicadosGastos;
+  cont.appendChild(b);
 }
 
 // COMPRAS: BD como fuente de verdad (reconstruye COMPRAS_DATA = base + BD)
