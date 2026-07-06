@@ -17932,7 +17932,7 @@
         tbody.innerHTML = [...gastos]
           .reverse()
           .map(
-            (g) => `<tr>
+            (g) => `<tr data-clave="${g.__clave || (g.id != null ? "g" + g.id : "")}">
     <td style="white-space:nowrap;font-size:12px">${g.fecha}</td>
     <td style="font-size:11px;color:var(--c-gray)">${g.tipo_doc || "—"}</td>
     <td style="font-size:11px;color:var(--c-gray)">${g.serie || "—"}</td>
@@ -20128,7 +20128,7 @@
     </div>
 
   <!-- Indicador de versión: si NO ves este número, tu navegador tiene caché viejo -->
-  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v36 · 03-Jul</div>
-  <script src="app.js?v=36"></script>
+  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v37 · 03-Jul</div>
+  <script src="app.js?v=37"></script>
   </body>
 </html>

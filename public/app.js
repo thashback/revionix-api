@@ -683,23 +683,31 @@ function rvGastosConClave() {
   ];
   return todos.reverse();
 }
+// Asigna una clave ESTABLE a cada gasto precargado (para el mapa de PDFs)
+(function rvTagGastos() {
+  try {
+    if (typeof GASTOS_DATA !== 'undefined') {
+      GASTOS_DATA.forEach((g, i) => { if (!g.__clave) g.__clave = (g.id != null ? 'g' + g.id : 's' + i); });
+    }
+  } catch (e) {}
+})();
+// Decora usando la clave incrustada en cada fila (data-clave) → sin depender del
+// orden/índice; así los PDFs no se desalinean con filtros ni eliminados.
 function rvDecorarGastos() {
   const tbody = document.getElementById('tbl-gastos-body');
   if (!tbody) return;
-  const lista = rvGastosConClave();
   const pdfs = rvPdfsGastos();
-  const filas = tbody.querySelectorAll('tr');
-  filas.forEach((tr, i) => {
-    const item = lista[i];
-    if (!item) return;
+  tbody.querySelectorAll('tr').forEach(tr => {
     const celda = tr.lastElementChild;
     if (!celda || celda.querySelector('.rv-pdf-btn')) return;
-    const ruta = pdfs[item.clave];
+    const clave = tr.getAttribute('data-clave');
+    if (!clave) return;
+    const ruta = pdfs[clave];
     const cont = document.createElement('span');
     cont.style.whiteSpace = 'nowrap';
     cont.innerHTML =
       (ruta ? `<button class="rv-pdf-btn" onclick="viewFile('${ruta}')" title="Ver comprobante" style="background:#e3f0fb;border:1.5px solid #bdd7f3;border-radius:5px;cursor:pointer;padding:1px 6px;font-size:11px;margin-left:3px">📄</button>` : '') +
-      `<button class="rv-pdf-btn" onclick="rvSubirPdfGasto('${item.clave}')" title="${ruta ? 'Reemplazar' : 'Subir'} comprobante" style="background:none;border:1.5px solid var(--c-border,#d8dde3);border-radius:5px;cursor:pointer;padding:1px 6px;font-size:11px;margin-left:3px">📤</button>`;
+      `<button class="rv-pdf-btn" onclick="rvSubirPdfGasto('${clave}')" title="${ruta ? 'Reemplazar' : 'Subir'} comprobante" style="background:none;border:1.5px solid var(--c-border,#d8dde3);border-radius:5px;cursor:pointer;padding:1px 6px;font-size:11px;margin-left:3px">📤</button>`;
     celda.appendChild(cont);
   });
 }
