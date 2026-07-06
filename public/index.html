@@ -2332,6 +2332,8 @@
                       <option value="">Seleccionar...</option>
                       <option value="Movilidad">🚗 Movilidad</option>
                       <option value="Combustible">⛽ Combustible</option>
+                      <option value="Operación">⚙️ Operación</option>
+                      <option value="Materiales">🧱 Materiales</option>
                       <option value="Almacén">📦 Almacén</option>
                       <option value="Oficina">🏢 Oficina</option>
                       <option value="Marketing">📣 Marketing</option>
@@ -2467,6 +2469,8 @@
                     <option value="">Todas las categorías</option>
                     <option>Movilidad</option>
                     <option>Combustible</option>
+                    <option>Operación</option>
+                    <option>Materiales</option>
                     <option>Almacén</option>
                     <option>Oficina</option>
                     <option>Marketing</option>
@@ -2474,6 +2478,20 @@
                     <option>Envío</option>
                     <option>Banco</option>
                     <option>Otro</option>
+                  </select>
+                  <select
+                    id="gastos-filtro-mes"
+                    onchange="renderGastos()"
+                    style="
+                      padding: 5px 10px;
+                      border: 1.5px solid var(--c-border);
+                      border-radius: 6px;
+                      font-size: 12px;
+                      outline: none;
+                      background: #fff;
+                    "
+                  >
+                    <option value="">Todos los meses</option>
                   </select>
                   <input
                     type="file"
@@ -3671,6 +3689,8 @@
               opts: [
                 "Movilidad",
                 "Combustible",
+                "Operación",
+                "Materiales",
                 "Almacén",
                 "Oficina",
                 "Marketing",
@@ -5634,8 +5654,11 @@
         const seed_g = typeof GASTOS_DATA !== "undefined" ? GASTOS_DATA : [];
         const filtro_cat =
           document.getElementById("gastos-filtro-cat")?.value || "";
+        const filtro_mes =
+          document.getElementById("gastos-filtro-mes")?.value || "";
         const local_g = JSON.parse(localStorage.getItem("rv_gastos") || "[]");
-        const gastos = [...seed_g, ...local_g].filter(
+        const allG = [...seed_g, ...local_g];
+        const gastos = allG.filter(
           (g) => !(window.rvGastoEliminado && window.rvGastoEliminado(g.id)),
         );
         const tot = gastos.reduce((s, g) => s + g.monto, 0);
@@ -5672,17 +5695,44 @@
         document.getElementById("g-mes-label").textContent =
           meses[now.getMonth()] + " " + now.getFullYear();
 
+        // Poblar el filtro de meses con los meses disponibles
+        const selMes = document.getElementById("gastos-filtro-mes");
+        if (selMes) {
+          const mesesDisp = [
+            ...new Set(
+              gastos
+                .map((g) => g.mes || String(g.fecha || "").slice(0, 7))
+                .filter((m) => /^\d{4}-\d{2}$/.test(m)),
+            ),
+          ].sort().reverse();
+          selMes.innerHTML =
+            '<option value="">Todos los meses</option>' +
+            mesesDisp
+              .map(
+                (m) =>
+                  `<option value="${m}" ${m === filtro_mes ? "selected" : ""}>${m}</option>`,
+              )
+              .join("");
+        }
+        // Aplicar filtros a la tabla (categoría + mes)
+        let tabla = gastos;
+        if (filtro_cat) tabla = tabla.filter((g) => g.cat === filtro_cat);
+        if (filtro_mes)
+          tabla = tabla.filter(
+            (g) => (g.mes || String(g.fecha || "").slice(0, 7)) === filtro_mes,
+          );
+
         const empty = document.getElementById("gastos-empty");
         const tbl = document.getElementById("tbl-gastos");
         const tbody = document.getElementById("tbl-gastos-body");
-        if (!gastos.length) {
+        if (!tabla.length) {
           empty.style.display = "block";
           tbl.style.display = "none";
           return;
         }
         empty.style.display = "none";
         tbl.style.display = "table";
-        tbody.innerHTML = [...gastos]
+        tbody.innerHTML = [...tabla]
           .reverse()
           .map(
             (g) => `<tr data-clave="${g.__clave || (g.id != null ? "g" + g.id : "")}">
@@ -5696,7 +5746,7 @@
     <td>${g.resp || "—"}</td>
     <td><strong>${fmt(g.monto)}</strong></td>
     <td style="white-space:nowrap">
-      ${CURRENT && CURRENT.role === "admin" ? `<button onclick="openEdit(${gastos.indexOf(g)},'gastos')" style="background:none;border:1.5px solid var(--c-border);border-radius:5px;cursor:pointer;padding:1px 6px;font-size:11px;margin-right:3px">✏️</button>` : ""}
+      ${CURRENT && CURRENT.role === "admin" ? `<button onclick="openEdit(${allG.indexOf(g)},'gastos')" style="background:none;border:1.5px solid var(--c-border);border-radius:5px;cursor:pointer;padding:1px 6px;font-size:11px;margin-right:3px">✏️</button>` : ""}
       <button onclick="deleteGasto(${g.id})" style="background:none;border:none;cursor:pointer;color:var(--c-red2);font-size:16px;padding:0 4px" title="Eliminar">×</button>
     </td>
   </tr>`,
@@ -7881,7 +7931,7 @@
     </div>
 
   <!-- Indicador de versión: si NO ves este número, tu navegador tiene caché viejo -->
-  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v42 · 06-Jul</div>
-  <script src="app.js?v=42"></script>
+  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v43 · 06-Jul</div>
+  <script src="app.js?v=43"></script>
   </body>
 </html>

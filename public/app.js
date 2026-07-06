@@ -1494,6 +1494,67 @@ function rvInyectarBotonDuplicadosVentas() {
   if (a) a.insertAdjacentElement('afterend', b);
 }
 
+// ══ GASTOS: plantilla + importación COMPLETAS (con comprobante, serie, N°) ══
+window.__rvGid = window.__rvGid || Date.now();
+(function rvOverrideGastosImport() {
+  window.downloadGastosTemplate = function () {
+    if (typeof XLSX === 'undefined') { alert('❌ Librería XLSX no disponible'); return; }
+    const hoy = new Date().toISOString().slice(0, 10);
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['Fecha', 'Categoria', 'Canal', 'Tipo_Comprobante', 'Serie', 'Numero', 'Descripcion', 'Responsable', 'Monto S/.', 'Comentarios'],
+      [hoy, 'Movilidad', 'General', '', '', '', 'Taxi visita cliente', 'Cesar Yaipen', 30, ''],
+      [hoy, 'Operación', 'General', 'FACTURA', 'F001', '123', 'Servicio de mantenimiento', '', 150, ''],
+      [hoy, 'Materiales', 'Almacén', 'BOLETA', 'B002', '45', 'Compra de cables y conectores', '', 80, '']
+    ]);
+    ws['!cols'] = [{ wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 8 }, { wch: 10 }, { wch: 36 }, { wch: 18 }, { wch: 11 }, { wch: 20 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Gastos');
+    XLSX.writeFile(wb, 'Plantilla_Gastos_REVIONIX.xlsx');
+    if (typeof showToast === 'function') showToast('Plantilla descargada · incluye Comprobante, Serie y N°');
+  };
+  window.handleGastosImport = function (event) {
+    const file = event.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+        const g = (r, names) => { for (const n of names) { if (r[n] !== undefined && r[n] !== '') return r[n]; } return undefined; };
+        let imported = 0, skipped = 0;
+        let local = []; try { local = JSON.parse(localStorage.getItem('rv_gastos') || '[]'); } catch (e) {}
+        rows.forEach(r => {
+          const cat = String(g(r, ['Categoria', 'Categoría', 'categoria', 'CATEGORIA']) || '').trim();
+          const desc = String(g(r, ['Descripcion', 'Descripción', 'descripcion', 'DESCRIPCION']) || '').trim();
+          const monto = rvNum(g(r, ['Monto S/.', 'Monto', 'monto', 'MONTO', 'Monto S/']));
+          if (!cat || !desc || monto <= 0) { skipped++; return; }
+          const fecha = rvParseFecha(g(r, ['Fecha', 'fecha', 'FECHA']));
+          if (!fecha) { skipped++; return; }
+          local.push({
+            id: (++window.__rvGid),
+            fecha, mes: fecha.slice(0, 7),
+            cat, canal: String(g(r, ['Canal', 'canal', 'CANAL']) || 'General').trim() || 'General',
+            desc, resp: String(g(r, ['Responsable', 'responsable', 'RESPONSABLE']) || '').trim(),
+            monto: Math.round(monto * 100) / 100,
+            tipo_doc: String(g(r, ['Tipo_Comprobante', 'Tipo Comprobante', 'TipoComprobante', 'Comprobante', 'tipo_doc', 'Tipo']) || '').trim(),
+            serie: String(g(r, ['Serie', 'serie', 'SERIE']) || '').trim(),
+            numero: String(g(r, ['Numero', 'Número', 'numero', 'N', 'N°', 'Nro']) || '').trim(),
+            comentarios: String(g(r, ['Comentarios', 'comentarios']) || '').trim()
+          });
+          imported++;
+        });
+        localStorage.setItem('rv_gastos', JSON.stringify(local));
+        if (typeof gastosLocal !== 'undefined' && Array.isArray(gastosLocal)) { gastosLocal.length = 0; local.forEach(x => gastosLocal.push(x)); }
+        if (typeof renderGastos === 'function') renderGastos();
+        if (window.rvEmpujarAhora) window.rvEmpujarAhora();
+        if (typeof rvFlushGastos === 'function') rvFlushGastos();
+        alert('✅ Importación completa\n\n• ' + imported + ' gastos importados\n• ' + skipped + ' filas omitidas (sin categoría, descripción o monto válido)');
+        event.target.value = '';
+      } catch (err) { alert('Error al leer archivo: ' + err.message); }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+})();
+
 // ══ CARGAR VENTAS: plantilla + importación COMPLETAS ══
 // Reemplaza downloadTemplate/showImportPreview del sistema para incluir todos
 // los campos: comprobante, serie, correlativo, N° operación, canal, qty, medio de pago.
