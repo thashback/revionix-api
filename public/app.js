@@ -1455,33 +1455,46 @@ function rvParseFecha(raw) {
   return s.slice(0, 10);
 }
 // Quita duplicados EXACTOS de ventas y corrige fechas mal importadas (serial Excel)
-function rvQuitarDuplicadosVentas() {
-  let v = []; try { v = JSON.parse(localStorage.getItem('rv_ventas') || '[]'); } catch (e) { return; }
+async function rvQuitarDuplicadosVentas() {
+  // 1) Corregir fechas mal importadas (Excel serial → ISO) en rv_ventas
+  let v = []; try { v = JSON.parse(localStorage.getItem('rv_ventas') || '[]'); } catch (e) { v = []; }
   let fechasCorr = 0;
   v.forEach(x => {
     const nf = rvParseFecha(x.fecha);
     if (nf && nf !== x.fecha) { x.fecha = nf; fechasCorr++; }
     if (x.fecha) x.mes = String(x.fecha).slice(0, 7);
   });
-  const vistos = {}; const unicos = [];
-  v.forEach(x => {
-    const k = [x.fecha, x.canal, x.modelo, x.marca, rvNum(x.venta), rvNum(x.costo), x.grupo || ''].join('||');
-    if (!vistos[k]) { vistos[k] = 1; unicos.push(x); }
-  });
-  const quitar = v.length - unicos.length;
+  if (fechasCorr > 0) {
+    localStorage.setItem('rv_ventas', JSON.stringify(v));
+    if (typeof extraVentas !== 'undefined' && Array.isArray(extraVentas)) { extraVentas.length = 0; v.forEach(x => extraVentas.push(x)); }
+    if (typeof rvRebuildTxns === 'function') await rvRebuildTxns(); // refleja las fechas corregidas
+  }
+  // 2) Duplicados sobre el TOTAL visible (base histórica + extras). Se marcan
+  //    con LÁPIDAS por firma (rv_eliminados.txn, conteo) → borrado REAL que
+  //    sobrevive recargas y reconstrucciones. Antes solo se depuraba rv_ventas,
+  //    por eso los duplicados de la data base reaparecían al actualizar.
+  const rows = (typeof getDetalleData === 'function') ? getDetalleData().filter(t => !t.__proy) : [];
+  const conteo = {};
+  rows.forEach(t => { const s = rvSigTxn(t); conteo[s] = (conteo[s] || 0) + 1; });
+  const el = rvEliminados();
+  let quitar = 0;
+  for (const s in conteo) {
+    if (conteo[s] > 1) { const ex = conteo[s] - 1; el.txn[s] = (parseInt(el.txn[s]) || 0) + ex; quitar += ex; }
+  }
   if (quitar <= 0 && fechasCorr === 0) { alert('No hay ventas duplicadas ni fechas por corregir.'); return; }
   let msg = '';
-  if (quitar > 0) msg += 'Ventas duplicadas exactas: ' + quitar + ' (de ' + v.length + ' totales)\n';
-  if (fechasCorr > 0) msg += 'Fechas mal importadas a corregir: ' + fechasCorr + '\n';
-  msg += '\n¿Aplicar? Quedarán ' + unicos.length + ' ventas.';
-  if (!confirm(msg)) return;
-  localStorage.setItem('rv_ventas', JSON.stringify(unicos));
-  if (typeof extraVentas !== 'undefined' && Array.isArray(extraVentas)) { extraVentas.length = 0; unicos.forEach(x => extraVentas.push(x)); }
-  if (window.rvEmpujarAhora) window.rvEmpujarAhora();
+  if (quitar > 0) msg += 'Ventas duplicadas exactas: ' + quitar + '\n';
+  if (fechasCorr > 0) msg += 'Fechas mal importadas corregidas: ' + fechasCorr + '\n';
+  msg += '\n¿Aplicar? (los duplicados se eliminan de forma permanente)';
+  if (quitar > 0 && !confirm(msg)) return;
+  if (quitar > 0) {
+    localStorage.setItem('rv_eliminados', JSON.stringify(el));
+    if (window.rvEmpujarAhora) window.rvEmpujarAhora();
+    rvAuditar('limpiar', 'ventas/detalle', 'Quitó ' + quitar + ' duplicados (lápidas), corrigió ' + fechasCorr + ' fechas');
+  }
   if (typeof rvFlushVentas === 'function') rvFlushVentas();
-  rvAuditar('limpiar', 'ventas/detalle', 'Quitó ' + quitar + ' duplicados, corrigió ' + fechasCorr + ' fechas');
-  if (typeof rvRebuildTxns === 'function') rvRebuildTxns();
-  alert('✅ Listo. Duplicados quitados: ' + quitar + (fechasCorr ? ' · fechas corregidas: ' + fechasCorr : '') + '. Quedan ' + unicos.length + ' ventas.');
+  if (typeof rvRebuildTxns === 'function') await rvRebuildTxns();
+  alert('✅ Listo. Duplicados eliminados: ' + quitar + (fechasCorr ? ' · fechas corregidas: ' + fechasCorr : '') + '.');
 }
 function rvInyectarBotonDuplicadosVentas() {
   const page = document.getElementById('page-detalle');
@@ -2172,25 +2185,54 @@ function rvUnicidadGastos() {
   }
 }
 
-// Quita duplicados EXACTOS de gastos (mismo fecha+cat+desc+monto+canal+resp),
-// dejando uno. Con confirmación (el usuario decide).
-function rvQuitarDuplicadosGastos() {
-  let g = []; try { g = JSON.parse(localStorage.getItem('rv_gastos') || '[]'); } catch (e) { return; }
-  const vistos = {}; const unicos = [];
-  g.forEach(x => {
-    const k = [x.fecha, x.cat, x.desc, rvNum(x.monto), x.canal, x.resp].join('||');
-    if (!vistos[k]) { vistos[k] = 1; unicos.push(x); }
+// Firma de un gasto para detectar duplicados exactos
+function rvSigGasto(g) {
+  return [g.fecha || '', g.cat || '', g.desc || '', rvNum(g.monto), g.canal || '', g.resp || ''].join('||');
+}
+// Lápidas de duplicados de gastos por firma (conteo). Persisten en rv_gastos_dup
+// (se respaldan en la BD) y ocultan las copias sobrantes en cada render.
+function rvGastosDup() {
+  try { const o = JSON.parse(localStorage.getItem('rv_gastos_dup') || '{}'); return (o && typeof o === 'object') ? o : {}; }
+  catch (e) { return {}; }
+}
+// Aplica el ocultamiento de duplicados por firma a una lista de gastos.
+// Devuelve la lista sin las copias marcadas (deja 1 por firma marcada).
+window.rvGastosDupOcultar = function (list) {
+  const dup = rvGastosDup();
+  if (!Object.keys(dup).length) return list;
+  const restante = {}; for (const k in dup) restante[k] = parseInt(dup[k]) || 0;
+  const out = [];
+  list.forEach(g => {
+    const s = rvSigGasto(g);
+    if (restante[s] > 0) { restante[s]--; return; } // ocultar esta copia duplicada
+    out.push(g);
   });
-  const quitar = g.length - unicos.length;
+  return out;
+};
+
+// Quita duplicados EXACTOS de gastos (mismo fecha+cat+desc+monto+canal+resp),
+// dejando uno. Marca lápidas persistentes → NO reaparecen al actualizar.
+// Funciona también sobre los gastos base (seed/BD), no solo los del usuario.
+function rvQuitarDuplicadosGastos() {
+  const seed = (typeof GASTOS_DATA !== 'undefined') ? GASTOS_DATA : [];
+  let local = []; try { local = JSON.parse(localStorage.getItem('rv_gastos') || '[]'); } catch (e) { local = []; }
+  // Lista visible actual: respeta borrados por id y duplicados ya ocultos
+  let all = seed.concat(local).filter(g => !(window.rvGastoEliminado && window.rvGastoEliminado(g.id)));
+  all = window.rvGastosDupOcultar(all);
+  const conteo = {};
+  all.forEach(g => { const s = rvSigGasto(g); conteo[s] = (conteo[s] || 0) + 1; });
+  const dup = rvGastosDup();
+  let quitar = 0;
+  for (const s in conteo) {
+    if (conteo[s] > 1) { const ex = conteo[s] - 1; dup[s] = (parseInt(dup[s]) || 0) + ex; quitar += ex; }
+  }
   if (quitar <= 0) { alert('No hay gastos duplicados exactos.'); return; }
-  if (!confirm('Se encontraron ' + quitar + ' gastos duplicados exactos (de ' + g.length + ' totales).\n\n¿Quitar los duplicados y dejar solo ' + unicos.length + ' únicos?')) return;
-  localStorage.setItem('rv_gastos', JSON.stringify(unicos));
-  if (typeof gastosLocal !== 'undefined' && Array.isArray(gastosLocal)) { gastosLocal.length = 0; unicos.forEach(x => gastosLocal.push(x)); }
+  if (!confirm('Se encontraron ' + quitar + ' gastos duplicados exactos.\n\n¿Quitar los duplicados de forma permanente y dejar solo los únicos?')) return;
+  localStorage.setItem('rv_gastos_dup', JSON.stringify(dup)); // rv_ → se respalda en la BD
   if (window.rvEmpujarAhora) window.rvEmpujarAhora();
-  if (typeof rvFlushGastos === 'function') rvFlushGastos();
-  rvAuditar('limpiar', 'gastos', 'Quitó ' + quitar + ' duplicados exactos');
+  rvAuditar('limpiar', 'gastos', 'Quitó ' + quitar + ' duplicados exactos (lápidas persistentes)');
   if (typeof renderGastos === 'function') renderGastos();
-  alert('✅ Se quitaron ' + quitar + ' duplicados. Quedan ' + unicos.length + ' gastos.');
+  alert('✅ Se quitaron ' + quitar + ' duplicados (permanente).');
 }
 // Botón "Quitar duplicados" en la página de Gastos
 function rvInyectarBotonDuplicados() {
