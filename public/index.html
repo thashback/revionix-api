@@ -19849,7 +19849,8 @@
 
         mesesActivos.forEach(m => {
           const gMes = gasData.filter(g => (g.mes || String(g.fecha || "").slice(0, 7)) === m.p);
-          const esMovil = (g) => g.cat === "Movilidad" || g.cat === "Combustible";
+          // Solo "Movilidad" va a la columna Movilidad; TODO lo demás a Variables
+          const esMovil = (g) => g.cat === "Movilidad";
           const gMovil  = gMes.filter(g => esMovil(g)).reduce((s,g) => s + (g.monto||0), 0);
           const gVars   = gMes.filter(g => !esMovil(g)).reduce((s,g) => s + (g.monto||0), 0);
           const margen  = m.v - m.c;
@@ -20124,7 +20125,7 @@
     </div>
 
   <!-- Indicador de versión: si NO ves este número, tu navegador tiene caché viejo -->
-  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v34 · 03-Jul</div>
-  <script src="app.js?v=34"></script>
+  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v35 · 03-Jul</div>
+  <script src="app.js?v=35"></script>
   </body>
 </html>
