@@ -183,6 +183,53 @@ async function initArchivosTable() {
 }
 initArchivosTable();
 
+// Registro de auditoría (oculto para el usuario): quién modificó/eliminó qué
+async function initAuditoriaTable() {
+  try {
+    const conn = await pool.getConnection();
+    await conn.query(`CREATE TABLE IF NOT EXISTS auditoria (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      usuario VARCHAR(80),
+      accion VARCHAR(30),
+      modulo VARCHAR(40),
+      detalle TEXT,
+      ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+    conn.release();
+    console.log('✓ Tabla auditoria lista');
+  } catch (err) {
+    console.error('✗ initAuditoriaTable:', err.message);
+  }
+}
+initAuditoriaTable();
+
+app.post('/api/audit', async (req, res) => {
+  try {
+    const { usuario, accion, modulo, detalle } = req.body || {};
+    const conn = await pool.getConnection();
+    await conn.execute(
+      'INSERT INTO auditoria (usuario, accion, modulo, detalle) VALUES (?, ?, ?, ?)',
+      [String(usuario || 'desconocido').slice(0, 80), String(accion || '').slice(0, 30), String(modulo || '').slice(0, 40), String(detalle || '').slice(0, 2000)]
+    );
+    conn.release();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Consulta del registro (para respaldo/administración; no se muestra en la app)
+app.get('/api/audit', async (req, res) => {
+  try {
+    const conn = await pool.getConnection();
+    const [rows] = await conn.execute('SELECT * FROM auditoria ORDER BY id DESC LIMIT 1000');
+    conn.release();
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════
 // AUTENTICACIÓN REAL (usuarios en MySQL, contraseñas con hash scrypt)
 // ═══════════════════════════════════════════════════════════════

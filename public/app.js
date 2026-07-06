@@ -1687,7 +1687,7 @@ function rvPersistirCompras() {
     } catch (e) { console.error('[RV-EXT] pp', e); }
   })) activadas.push('pagos→fijos');
   // Persistir compras mayoristas / inversión al guardar (saveEdit maneja compras)
-  if (envolver('saveEdit', () => { rvPersistirCompras(); rvFlushCompras(); })) activadas.push('compras-persist');
+  if (envolver('saveEdit', () => { rvPersistirCompras(); rvFlushCompras(); rvAuditar('editar', (typeof _editSource !== 'undefined' ? _editSource : ''), 'Edición de registro'); })) activadas.push('compras-persist');
   if (envolver('deleteTxn', () => { rvPersistirCompras(); rvFlushCompras(); })) { /* por si borran filas */ }
 
   // saveGasto: adjuntar comprobante al nuevo registro
@@ -1753,6 +1753,89 @@ function rvPersistirCompras() {
 // entren ventas manuales/importadas/proyectos.
 const RV_BASE_TXNS = (typeof TXNS_DATA !== 'undefined') ? TXNS_DATA.slice() : [];
 
+// ═══════════════════════════════════════════════════════════════
+// BORRADO REAL (lápidas persistentes) + AUDITORÍA OCULTA
+// Lo eliminado se registra en rv_eliminados (se respalda en la BD y se
+// filtra SIEMPRE al reconstruir), así no reaparece al recargar. Cada
+// modificación/borrado se registra en la tabla auditoria (no visible).
+// ═══════════════════════════════════════════════════════════════
+function rvEliminados() {
+  try {
+    const o = JSON.parse(localStorage.getItem('rv_eliminados') || '{}');
+    if (!o.txn) o.txn = {};
+    if (!o.gasto) o.gasto = {};
+    return o;
+  } catch (e) { return { txn: {}, gasto: {} }; }
+}
+function rvUsuarioActual() {
+  try { if (typeof CURRENT !== 'undefined' && CURRENT && CURRENT.username) return CURRENT.username; } catch (e) {}
+  return 'desconocido';
+}
+function rvAuditar(accion, modulo, detalle) {
+  try {
+    fetch(`${RV_API}/audit`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ usuario: rvUsuarioActual(), accion: accion, modulo: modulo, detalle: detalle })
+    }).catch(() => {});
+  } catch (e) {}
+}
+function rvSigTxn(t) {
+  return [t.fecha || '', t.canal || '', t.modelo || '', t.marca || '', rvNum(t.venta), rvNum(t.costo), t.serie || '', t.correlativo || ''].join('|');
+}
+function rvMarcarEliminadoTxn(t) {
+  const el = rvEliminados();
+  el.txn[rvSigTxn(t)] = 1;
+  localStorage.setItem('rv_eliminados', JSON.stringify(el));
+  if (window.rvEmpujarAhora) window.rvEmpujarAhora();
+  rvAuditar('eliminar', 'detalle/ventas', 'Venta: ' + (t.modelo || '') + ' | ' + (t.fecha || '') + ' | S/. ' + rvNum(t.venta));
+}
+function rvMarcarEliminadoGasto(id, g) {
+  const el = rvEliminados();
+  el.gasto[String(id)] = 1;
+  localStorage.setItem('rv_eliminados', JSON.stringify(el));
+  if (window.rvEmpujarAhora) window.rvEmpujarAhora();
+  rvAuditar('eliminar', 'gastos/movilidad', 'Gasto id ' + id + (g ? ' | ' + (g.cat || '') + ' | ' + (g.desc || '') + ' | S/. ' + rvNum(g.monto) : ''));
+}
+// Expuesto para el filtro de renderGastos (inline)
+window.rvGastoEliminado = function (id) {
+  try { return !!rvEliminados().gasto[String(id)]; } catch (e) { return false; }
+};
+
+// Override: borrado REAL de transacciones (detalle) con lápida + auditoría
+(function () {
+  if (typeof window.deleteTxn === 'function') {
+    window.deleteTxn = function (idx) {
+      try {
+        if (typeof CURRENT !== 'undefined' && CURRENT && CURRENT.role !== 'admin') return;
+        const rows = window._lastDetalleRows || (typeof getDetalleData === 'function' ? getDetalleData() : []);
+        const rec = rows && rows[idx];
+        if (!rec) return;
+        if (!confirm('¿Eliminar este registro?\n\n' + (rec.modelo || '') + ' — S/. ' + rec.venta)) return;
+        rvMarcarEliminadoTxn(rec);
+        if (typeof rvRebuildTxns === 'function') rvRebuildTxns();
+      } catch (e) { console.error('[DEL-TXN]', e); }
+    };
+  }
+})();
+
+// Override: borrado REAL de gastos/movilidad con lápida + auditoría
+(function () {
+  if (typeof window.deleteGasto === 'function') {
+    const orig = window.deleteGasto;
+    window.deleteGasto = function (id) {
+      let g = null;
+      try {
+        const seed = (typeof GASTOS_DATA !== 'undefined') ? GASTOS_DATA : [];
+        let local = []; try { local = JSON.parse(localStorage.getItem('rv_gastos') || '[]'); } catch (e) {}
+        g = seed.concat(local).find(x => x.id === id) || null;
+      } catch (e) {}
+      rvMarcarEliminadoGasto(id, g);
+      try { orig(id); } catch (e) { if (typeof renderGastos === 'function') renderGastos(); }
+      setTimeout(rvFlushGastos, 60);
+    };
+  }
+})();
+
 let rvSyncEnCurso = false;
 // Reconstruye TXNS_DATA = base + ventas extra (corporativo/ecommerce/importadas)
 // + proyectos (monto ejecutado). Así TODO suma una sola vez a dashboard,
@@ -1805,6 +1888,13 @@ async function rvRebuildTxns() {
       });
     }
 
+    // Filtrar transacciones ELIMINADAS (lápidas) → borrado real persistente
+    const _elimTxn = rvEliminados().txn;
+    if (Object.keys(_elimTxn).length) {
+      for (let i = TXNS_DATA.length - 1; i >= 0; i--) {
+        if (_elimTxn[rvSigTxn(TXNS_DATA[i])]) TXNS_DATA.splice(i, 1);
+      }
+    }
     const nProy = TXNS_DATA.filter(t => t.__proy).length;
     rvAplicarOverridesCostos();  // re-aplica costos completados a datos históricos
     if (typeof SEED !== 'undefined') SEED.transacciones = TXNS_DATA;
@@ -2259,7 +2349,7 @@ function rvDecorarPP() {
   }
 
   // Tras registrar/importar ventas → reconstruir + guardar en BD de inmediato
-  envolver('saveVenta', () => setTimeout(() => { rvRebuildTxns(); rvFlushVentas(); }, 50));
+  envolver('saveVenta', () => { setTimeout(() => { rvRebuildTxns(); rvFlushVentas(); }, 50); rvAuditar('agregar', 'ventas', 'Nueva venta registrada'); });
   envolver('confirmImport', () => setTimeout(() => { rvRebuildTxns(); rvFlushVentas(); }, 50));
 
   // Stock: decorar tras render
