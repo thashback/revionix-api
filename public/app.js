@@ -1792,7 +1792,9 @@ function rvSigTxn(t) {
 }
 function rvMarcarEliminadoTxn(t) {
   const el = rvEliminados();
-  el.txn[rvSigTxn(t)] = 1;
+  const sig = rvSigTxn(t);
+  // Cuenta CUÁNTOS eliminar por firma (no todos) → respeta duplicados idénticos
+  el.txn[sig] = (parseInt(el.txn[sig]) || 0) + 1;
   localStorage.setItem('rv_eliminados', JSON.stringify(el));
   if (window.rvEmpujarAhora) window.rvEmpujarAhora();
   rvAuditar('eliminar', 'detalle/ventas', 'Venta: ' + (t.modelo || '') + ' | ' + (t.fecha || '') + ' | S/. ' + rvNum(t.venta));
@@ -1896,11 +1898,15 @@ async function rvRebuildTxns() {
       });
     }
 
-    // Filtrar transacciones ELIMINADAS (lápidas) → borrado real persistente
+    // Filtrar transacciones ELIMINADAS (lápidas) → borrado real persistente.
+    // Se elimina SOLO la cantidad marcada por firma (respeta duplicados idénticos).
     const _elimTxn = rvEliminados().txn;
     if (Object.keys(_elimTxn).length) {
+      const _restante = {};
+      for (const k in _elimTxn) _restante[k] = parseInt(_elimTxn[k]) || 0;
       for (let i = TXNS_DATA.length - 1; i >= 0; i--) {
-        if (_elimTxn[rvSigTxn(TXNS_DATA[i])]) TXNS_DATA.splice(i, 1);
+        const sig = rvSigTxn(TXNS_DATA[i]);
+        if (_restante[sig] > 0) { TXNS_DATA.splice(i, 1); _restante[sig]--; }
       }
     }
     const nProy = TXNS_DATA.filter(t => t.__proy).length;
