@@ -19839,15 +19839,19 @@
         const totalFijos = ALQUILERES_DATA.reduce((s,r) => s + (r.moneda==="USD" ? r.monto_mensual*TC : r.monto_mensual), 0)
                           + PLANILLA_DATA.reduce((s,r) => s + r.remuneracion, 0);
 
-        const gasData = [...(typeof GASTOS_DATA !== "undefined" ? GASTOS_DATA : [])];
+        let _userGastos = [];
+        try { _userGastos = JSON.parse(localStorage.getItem("rv_gastos") || "[]"); } catch (e) { _userGastos = []; }
+        // Incluye gastos precargados + los que tú agregas/importas (rv_gastos)
+        const gasData = [...(typeof GASTOS_DATA !== "undefined" ? GASTOS_DATA : []), ..._userGastos];
 
         const mesesActivos = SEED.meses.filter(m => m.v > 0);
         const rows = [];
 
         mesesActivos.forEach(m => {
-          const gMes = gasData.filter(g => g.mes === m.p);
-          const gMovil  = gMes.filter(g => g.cat === "Movilidad").reduce((s,g) => s + (g.monto||0), 0);
-          const gVars   = gMes.filter(g => g.cat !== "Movilidad").reduce((s,g) => s + (g.monto||0), 0);
+          const gMes = gasData.filter(g => (g.mes || String(g.fecha || "").slice(0, 7)) === m.p);
+          const esMovil = (g) => g.cat === "Movilidad" || g.cat === "Combustible";
+          const gMovil  = gMes.filter(g => esMovil(g)).reduce((s,g) => s + (g.monto||0), 0);
+          const gVars   = gMes.filter(g => !esMovil(g)).reduce((s,g) => s + (g.monto||0), 0);
           const margen  = m.v - m.c;
           const ebitda  = margen - totalFijos - gVars - gMovil;
           const ebitdaPct = m.v > 0 ? (ebitda/m.v*100) : 0;
@@ -20120,7 +20124,7 @@
     </div>
 
   <!-- Indicador de versión: si NO ves este número, tu navegador tiene caché viejo -->
-  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v33 · 03-Jul</div>
-  <script src="app.js?v=33"></script>
+  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v34 · 03-Jul</div>
+  <script src="app.js?v=34"></script>
   </body>
 </html>
