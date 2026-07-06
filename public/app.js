@@ -997,7 +997,8 @@ function rvAplicarOverridesCostos() {
   TXNS_DATA.forEach(t => {
     const sig = rvSigVenta(t);
     if (ov[sig] != null && !(rvNum(t.costo) > 0)) {
-      t.costo = rvNum(ov[sig]);
+      const q = rvNum(t.qty) || 1;
+      t.costo = rvNum(ov[sig]) * q;   // ov guarda costo UNITARIO → costo total = unit × qty
       t.margen = rvNum(t.venta) - t.costo;
       t.margen_pct = t.venta ? (t.margen / t.venta * 100) : 0;
     }
@@ -1167,10 +1168,11 @@ function rvAplicarCostos() {
   const cands = window.__rvCandCostos || [];
   const ov = rvCostosOverride();
   cands.forEach(({ r, m }) => {
-    r.costo = m.costo;
+    const q = rvNum(r.qty) || 1;
+    r.costo = m.costo * q;          // m.costo es UNITARIO → costo total = unit × qty
     r.margen = rvNum(r.venta) - r.costo;
     r.margen_pct = r.venta ? (r.margen / r.venta * 100) : 0;
-    ov[rvSigVenta(r)] = m.costo;
+    ov[rvSigVenta(r)] = m.costo;    // se guarda el UNITARIO; se multiplica por qty al re-aplicar
   });
   localStorage.setItem('rv_costos_override', JSON.stringify(ov)); // se respalda en la BD
   closeRvModal();
@@ -1578,9 +1580,10 @@ window.__rvGid = window.__rvGid || Date.now();
       const modelo = String(g(r, ['Modelo', 'modelo', 'MODELO', 'Producto', 'producto']) || '');
       const marca = String(g(r, ['Marca', 'marca', 'MARCA']) || 'Otros');
       const venta = rvNum(g(r, ['Venta_S/.', 'Venta', 'venta', 'Precio', 'Precio_Venta', 'PrecioVenta', 'Total', 'total']));
-      let costo = rvNum(g(r, ['Costo_S/.', 'Costo', 'costo', 'Costo_Unit', 'CostoUnit']));
-      if (costo <= 0) { const c = rvBuscarCostoCompra(modelo, marca); if (c != null) costo = c; }
       const qty = Math.max(1, Math.round(rvNum(g(r, ['Qty', 'Cantidad', 'qty', 'cantidad', 'CANT']) || 1)));
+      let costo = rvNum(g(r, ['Costo_S/.', 'Costo', 'costo', 'Costo_Unit', 'CostoUnit']));
+      // El costo hallado en compras es UNITARIO → multiplicar por qty (la venta es total)
+      if (costo <= 0) { const c = rvBuscarCostoCompra(modelo, marca); if (c != null) costo = c * qty; }
       return {
         fecha, canal: String(g(r, ['Canal', 'canal', 'CANAL']) || ''), modelo, marca,
         cliente: String(g(r, ['Cliente', 'cliente', 'CLIENTE']) || ''),
