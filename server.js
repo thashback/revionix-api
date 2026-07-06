@@ -203,6 +203,66 @@ async function initAuditoriaTable() {
 }
 initAuditoriaTable();
 
+// Snapshot de los datos PRECARGADOS (respaldo en BD). No se auto-carga en el
+// navegador (a diferencia de app_storage); es solo respaldo/consulta.
+async function initSeedSnapshotTable() {
+  try {
+    const conn = await pool.getConnection();
+    await conn.query(`CREATE TABLE IF NOT EXISTS seed_snapshot (
+      clave VARCHAR(60) PRIMARY KEY,
+      datos LONGTEXT,
+      registros INT DEFAULT 0,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+    conn.release();
+    console.log('✓ Tabla seed_snapshot lista');
+  } catch (err) {
+    console.error('✗ initSeedSnapshotTable:', err.message);
+  }
+}
+initSeedSnapshotTable();
+
+app.post('/api/seed', async (req, res) => {
+  try {
+    const { clave, datos } = req.body || {};
+    if (!clave || datos == null) return res.status(400).json({ error: 'Falta clave o datos' });
+    let n = 0; try { const a = JSON.parse(datos); n = Array.isArray(a) ? a.length : 1; } catch (e) {}
+    const conn = await pool.getConnection();
+    await conn.execute(
+      'INSERT INTO seed_snapshot (clave, datos, registros) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE datos=VALUES(datos), registros=VALUES(registros)',
+      [String(clave).slice(0, 60), String(datos), n]
+    );
+    conn.release();
+    res.json({ ok: true, clave, registros: n });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Lista las claves + cuántos registros (para verificar). Sin los datos completos.
+app.get('/api/seed', async (req, res) => {
+  try {
+    const conn = await pool.getConnection();
+    const [rows] = await conn.execute('SELECT clave, registros, updated_at, CHAR_LENGTH(datos) AS bytes FROM seed_snapshot ORDER BY clave');
+    conn.release();
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/seed/:clave', async (req, res) => {
+  try {
+    const conn = await pool.getConnection();
+    const [rows] = await conn.execute('SELECT datos FROM seed_snapshot WHERE clave = ?', [req.params.clave]);
+    conn.release();
+    if (!rows.length) return res.status(404).json({ error: 'No existe' });
+    res.type('application/json').send(rows[0].datos);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/audit', async (req, res) => {
   try {
     const { usuario, accion, modulo, detalle } = req.body || {};
