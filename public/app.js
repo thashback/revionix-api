@@ -2920,4 +2920,252 @@ window.rvPipeEliminar = rvPipeEliminar;
   }
 })();
 
+// ═══════════════════════════════════════════════════════════════
+// PLANILLA DETALLADA (carga por Excel + registro automático)
+// Campos completos (trabajador, cargo, ingreso, días, remuneración, bono,
+// adelantos, vacaciones, liquidación, total, AFP/ONP, EsSalud, gratif, desc,
+// cuenta). Se guarda en rv_planilla (respaldo automático en la BD). Calcula
+// automáticamente descuentos de pensión, EsSalud, totales y neto. Additivo.
+// ═══════════════════════════════════════════════════════════════
+window.__rvPlnId = window.__rvPlnId || Date.now();
+const RV_PLN_R2 = (x) => Math.round(rvNum(x) * 100) / 100;
+const RV_PLAN_FIELDS = [
+  { k: 'ano', lbl: 'Año', type: 'number', al: ['Año', 'Ano', 'ANO', 'AÑO', 'año', 'ano'] },
+  { k: 'mes', lbl: 'Mes', type: 'number', al: ['Mes', 'mes', 'MES'] },
+  { k: 'trabajador', lbl: 'Trabajador', type: 'text', al: ['Trabajador', 'trabajador', 'Empleado', 'empleado', 'Nombre', 'nombre'] },
+  { k: 'cargo', lbl: 'Cargo', type: 'text', al: ['Cargo', 'cargo', 'Puesto', 'puesto'] },
+  { k: 'fecha_ingreso', lbl: 'Fecha de ingreso', type: 'date', al: ['Fecha Ingreso', 'Fecha de Ingreso', 'fecha_ingreso', 'Ingreso', 'FechaIngreso'] },
+  { k: 'dias', lbl: 'Días laborados', type: 'number', al: ['Dias Laborados', 'Días Laborados', 'dias', 'Dias', 'Días', 'DiasLaborados'] },
+  { k: 'remuneracion', lbl: 'Remuneración', type: 'number', al: ['Remuneracion', 'Remuneración', 'remuneracion', 'Sueldo', 'sueldo'] },
+  { k: 'bono', lbl: 'Bono', type: 'number', al: ['Bono', 'bono', 'Bonificacion', 'Bonificación'] },
+  { k: 'adelantos', lbl: 'Adelantos', type: 'number', al: ['Adelantos', 'adelantos', 'Adelanto'] },
+  { k: 'vacaciones', lbl: 'Vacaciones', type: 'number', al: ['Vacaciones', 'vacaciones'] },
+  { k: 'liquidacion', lbl: 'Liquidación de servicio', type: 'number', al: ['Liquidacion Servicio', 'Liquidación de servicio', 'Liquidacion', 'Liquidación', 'liquidacion'] },
+  { k: 'total', lbl: 'Total', type: 'number', al: ['Total', 'total'] },
+  { k: 'sistema', lbl: 'Sistema pensión (AFP/ONP)', type: 'text', al: ['Sistema (AFP/ONP)', 'Sistema', 'sistema', 'AFP/ONP', 'Pension', 'Pensión'] },
+  { k: 'desc_pension', lbl: 'Descuento AFP/ONP', type: 'number', al: ['Descuento AFP/ONP', 'Descuentos al trabajador', 'Desc AFP/ONP', 'Descuento Pension', 'desc_pension'] },
+  { k: 'total_descuentos', lbl: 'Total de descuentos', type: 'number', al: ['Total Descuentos', 'Total de descuentos', 'total_descuentos'] },
+  { k: 'neto', lbl: 'Neto a pagar', type: 'number', al: ['Neto a Pagar', 'Neto', 'neto', 'NetoAPagar'] },
+  { k: 'essalud', lbl: 'EsSalud 9%', type: 'number', al: ['Essalud 9%', 'EsSalud 9%', 'Essalud', 'EsSalud', 'essalud'] },
+  { k: 'gratif', lbl: 'Gratificación', type: 'number', al: ['Gratif', 'Gratif.', 'Gratificacion', 'Gratificación', 'gratif'] },
+  { k: 'desc_otros', lbl: 'Otros descuentos (Desc)', type: 'number', al: ['Desc', 'desc', 'Otros Descuentos', 'OtrosDesc'] },
+  { k: 'n_cuenta', lbl: 'N° de Cuenta', type: 'text', al: ['N Cuenta', 'N° Cuenta', '# de Cuentas', 'Cuenta', 'cuenta', 'NroCuenta', 'Nro Cuenta', 'Numero de Cuenta'] }
+];
+function rvPlanillaFull() {
+  try { const o = JSON.parse(localStorage.getItem('rv_planilla') || '[]'); return Array.isArray(o) ? o : []; }
+  catch (e) { return []; }
+}
+function rvPlanillaGuardar(list) {
+  localStorage.setItem('rv_planilla', JSON.stringify(list));
+  if (window.rvEmpujarAhora) window.rvEmpujarAhora();
+}
+function rvPlanKey(r) { return String(r.trabajador || '').toLowerCase().trim() + '|' + rvNum(r.mes) + '|' + rvNum(r.ano); }
+// Calcula los campos derivados (respeta los que ya vengan con valor)
+function rvPlanillaCalc(r) {
+  const rem = rvNum(r.remuneracion), bono = rvNum(r.bono), grat = rvNum(r.gratif),
+    vac = rvNum(r.vacaciones), liq = rvNum(r.liquidacion), adel = rvNum(r.adelantos);
+  const total = rvNum(r.total) > 0 ? rvNum(r.total) : RV_PLN_R2(rem + bono + grat + vac + liq);
+  const sisRaw = String(r.sistema || '').toUpperCase();
+  const sistema = sisRaw.indexOf('ONP') >= 0 ? 'ONP' : (sisRaw.indexOf('AFP') >= 0 ? 'AFP' : (r.sistema || ''));
+  const rate = sistema === 'ONP' ? 0.13 : (sistema === 'AFP' ? 0.1256 : 0);
+  const desc_pension = rvNum(r.desc_pension) > 0 ? rvNum(r.desc_pension) : RV_PLN_R2(rem * rate);
+  const desc_otros = rvNum(r.desc_otros);
+  const total_descuentos = rvNum(r.total_descuentos) > 0 ? rvNum(r.total_descuentos) : RV_PLN_R2(desc_pension + adel + desc_otros);
+  const neto = rvNum(r.neto) > 0 ? rvNum(r.neto) : RV_PLN_R2(total - total_descuentos);
+  const essalud = rvNum(r.essalud) > 0 ? rvNum(r.essalud) : RV_PLN_R2(rem * 0.09);
+  return Object.assign({}, r, {
+    ano: rvNum(r.ano), mes: rvNum(r.mes), dias: rvNum(r.dias),
+    remuneracion: rem, bono, gratif: grat, vacaciones: vac, liquidacion: liq, adelantos: adel,
+    total, sistema, desc_pension, desc_otros, total_descuentos, neto, essalud
+  });
+}
+// ── Plantilla Excel (rica) ──
+window.rvDescargarPlantillaPlanilla = function () {
+  if (typeof XLSX === 'undefined') { alert('❌ Librería XLSX no disponible'); return; }
+  const hoy = new Date();
+  const headers = ['Año', 'Mes', 'Trabajador', 'Cargo', 'Fecha Ingreso', 'Dias Laborados', 'Remuneracion', 'Bono', 'Adelantos', 'Vacaciones', 'Liquidacion Servicio', 'Total', 'Sistema (AFP/ONP)', 'Descuento AFP/ONP', 'Total Descuentos', 'Neto a Pagar', 'Essalud 9%', 'Gratif', 'Desc', 'N Cuenta'];
+  const ejemplo = [hoy.getFullYear(), hoy.getMonth() + 1, 'Juan Pérez (ejemplo, borrar)', 'Vendedor', '2024-01-15', 30, 2500, 300, 0, 0, 0, '', 'AFP', '', '', '', '', 0, 0, '191-1234567890'];
+  const ws = XLSX.utils.aoa_to_sheet([headers, ejemplo]);
+  ws['!cols'] = headers.map(h => ({ wch: Math.max(9, h.length + 2) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Planilla');
+  XLSX.writeFile(wb, 'plantilla_planilla_revionix.xlsx');
+  if (typeof showToast === 'function') showToast('Plantilla descargada · las columnas de cálculo (Total, AFP/ONP, Neto, EsSalud) se completan solas');
+};
+// ── Importar Excel (rica) → registra trabajadores automáticamente ──
+window.rvImportarPlanilla = function () {
+  if (typeof XLSX === 'undefined') { alert('❌ Librería XLSX no disponible'); return; }
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = '.xlsx,.xls,.csv';
+  input.onchange = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: 'binary' });
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+        const data = rvPlanillaFull();
+        const idx = {}; data.forEach((r, i) => { idx[rvPlanKey(r)] = i; });
+        let ok = 0, skip = 0;
+        rows.forEach(row => {
+          const g = (al) => { for (const n of al) { if (row[n] !== undefined && row[n] !== '') return row[n]; } return ''; };
+          const rec = {};
+          RV_PLAN_FIELDS.forEach(f => { rec[f.k] = f.type === 'number' ? rvNum(g(f.al)) : String(g(f.al)).trim(); });
+          if (!rec.trabajador || rec.trabajador.toLowerCase().includes('ejemplo')) { skip++; return; }
+          if (!rec.ano) rec.ano = new Date().getFullYear();
+          if (!rec.mes) rec.mes = new Date().getMonth() + 1;
+          const calc = rvPlanillaCalc(rec);
+          const key = rvPlanKey(calc);
+          if (idx[key] !== undefined) { calc.id = data[idx[key]].id; data[idx[key]] = calc; }
+          else { calc.id = 'pln_' + (++window.__rvPlnId); data.push(calc); idx[key] = data.length - 1; }
+          ok++;
+        });
+        rvPlanillaGuardar(data);
+        rvRenderPlanillaTabla();
+        rvAuditar('importar', 'planilla', 'Importó/actualizó ' + ok + ' trabajadores');
+        alert('✅ Planilla importada: ' + ok + ' trabajador(es) registrado(s)/actualizado(s)' + (skip ? ' · ' + skip + ' fila(s) omitidas' : ''));
+      } catch (err) { alert('❌ Error al leer el archivo: ' + err.message); }
+    };
+    reader.readAsBinaryString(file);
+  };
+  input.click();
+};
+// ── Render de la tabla rica ──
+function rvRenderPlanillaTabla() {
+  const tabla = document.getElementById('tbl-planilla');
+  if (!tabla) return;
+  const editable = (typeof CURRENT !== 'undefined' && CURRENT && CURRENT.role === 'admin');
+  const data = rvPlanillaFull().map(rvPlanillaCalc);
+  data.sort((a, b) => (b.ano - a.ano) || (b.mes - a.mes) || String(a.trabajador || '').localeCompare(String(b.trabajador || '')));
+  const M = (v) => rvNum(v) ? rvMoney(v) : '<span style="color:#c3ccd4">—</span>';
+  const th = (t, extra) => `<th style="padding:7px 8px;white-space:nowrap;${extra || ''}">${t}</th>`;
+  const cabecera = `<tr style="background:#0f2540;color:#fff;font-size:10.5px;text-align:left">
+    ${th('Año')}${th('Mes')}${th('Trabajador')}${th('Cargo')}${th('Ingreso')}${th('Días')}${th('Remun.', 'text-align:right')}${th('Bono', 'text-align:right')}${th('Adel.', 'text-align:right')}${th('Vacac.', 'text-align:right')}${th('Liquid.', 'text-align:right')}${th('Gratif.', 'text-align:right')}${th('Total', 'text-align:right')}${th('Sist.')}${th('Desc.AFP/ONP', 'text-align:right')}${th('Otros', 'text-align:right')}${th('Tot.Desc', 'text-align:right')}${th('Neto', 'text-align:right')}${th('EsSalud', 'text-align:right')}${th('N° Cuenta')}${editable ? th('') : ''}
+  </tr>`;
+  const meses = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Set', 'Oct', 'Nov', 'Dic'];
+  const cuerpo = data.map(r => {
+    const sisCol = r.sistema === 'ONP' ? '#455A64' : (r.sistema === 'AFP' ? '#1565C0' : '#90A4AE');
+    return `<tr style="font-size:11px;border-bottom:1px solid #eef2f6">
+      <td style="padding:5px 8px">${rvNum(r.ano) || '—'}</td>
+      <td style="padding:5px 8px">${meses[rvNum(r.mes)] || r.mes || '—'}</td>
+      <td style="padding:5px 8px;font-weight:600;color:#0f2540;white-space:nowrap">${rvEsc(r.trabajador)}</td>
+      <td style="padding:5px 8px;color:#607d8b">${rvEsc(r.cargo) || '—'}</td>
+      <td style="padding:5px 8px;white-space:nowrap">${rvEsc(r.fecha_ingreso) || '—'}</td>
+      <td style="padding:5px 8px;text-align:center">${rvNum(r.dias) || '—'}</td>
+      <td style="padding:5px 8px;text-align:right">${M(r.remuneracion)}</td>
+      <td style="padding:5px 8px;text-align:right">${M(r.bono)}</td>
+      <td style="padding:5px 8px;text-align:right;color:#c0392b">${M(r.adelantos)}</td>
+      <td style="padding:5px 8px;text-align:right">${M(r.vacaciones)}</td>
+      <td style="padding:5px 8px;text-align:right">${M(r.liquidacion)}</td>
+      <td style="padding:5px 8px;text-align:right">${M(r.gratif)}</td>
+      <td style="padding:5px 8px;text-align:right;font-weight:700">${M(r.total)}</td>
+      <td style="padding:5px 8px"><span style="font-size:10px;font-weight:700;color:${sisCol}">${rvEsc(r.sistema) || '—'}</span></td>
+      <td style="padding:5px 8px;text-align:right;color:#c0392b">${M(r.desc_pension)}</td>
+      <td style="padding:5px 8px;text-align:right;color:#c0392b">${M(r.desc_otros)}</td>
+      <td style="padding:5px 8px;text-align:right;color:#c0392b;font-weight:600">${M(r.total_descuentos)}</td>
+      <td style="padding:5px 8px;text-align:right;font-weight:800;color:#198c35">${M(r.neto)}</td>
+      <td style="padding:5px 8px;text-align:right;color:#7b1fa2">${M(r.essalud)}</td>
+      <td style="padding:5px 8px;white-space:nowrap;font-size:10px;color:#607d8b">${rvEsc(r.n_cuenta) || '—'}</td>
+      ${editable ? `<td style="padding:5px 8px;white-space:nowrap">
+        <button onclick="rvPlanillaForm('${r.id}')" title="Editar" style="background:none;border:1.5px solid #d8dde3;border-radius:5px;cursor:pointer;padding:1px 6px;font-size:11px;margin-right:2px">✏️</button>
+        <button onclick="rvPlanillaEliminar('${r.id}')" title="Eliminar" style="background:none;border:none;cursor:pointer;color:#c0392b;font-size:15px;padding:0 3px">×</button>
+      </td>` : ''}
+    </tr>`;
+  }).join('');
+  const sum = (k) => data.reduce((s, r) => s + rvNum(r[k]), 0);
+  const totRow = data.length ? `<tr style="background:#f4f7fa;font-weight:800;font-size:11px;border-top:2px solid #cfd8dc">
+    <td colspan="6" style="padding:7px 8px;text-align:right">TOTALES (${data.length}):</td>
+    <td style="padding:7px 8px;text-align:right">${rvMoney(sum('remuneracion'))}</td>
+    <td style="padding:7px 8px;text-align:right">${rvMoney(sum('bono'))}</td>
+    <td style="padding:7px 8px;text-align:right">${rvMoney(sum('adelantos'))}</td>
+    <td style="padding:7px 8px;text-align:right">${rvMoney(sum('vacaciones'))}</td>
+    <td style="padding:7px 8px;text-align:right">${rvMoney(sum('liquidacion'))}</td>
+    <td style="padding:7px 8px;text-align:right">${rvMoney(sum('gratif'))}</td>
+    <td style="padding:7px 8px;text-align:right">${rvMoney(sum('total'))}</td>
+    <td></td>
+    <td style="padding:7px 8px;text-align:right">${rvMoney(sum('desc_pension'))}</td>
+    <td style="padding:7px 8px;text-align:right">${rvMoney(sum('desc_otros'))}</td>
+    <td style="padding:7px 8px;text-align:right">${rvMoney(sum('total_descuentos'))}</td>
+    <td style="padding:7px 8px;text-align:right;color:#198c35">${rvMoney(sum('neto'))}</td>
+    <td style="padding:7px 8px;text-align:right;color:#7b1fa2">${rvMoney(sum('essalud'))}</td>
+    <td colspan="${editable ? 2 : 1}"></td>
+  </tr>` : '';
+  tabla.style.minWidth = '1100px';
+  tabla.innerHTML = `<thead>${cabecera}</thead><tbody>${cuerpo || `<tr><td colspan="21" style="padding:26px;text-align:center;color:#90a4ae">Sin registros. Usa <b>📥 Plantilla XLS</b>, llénala y súbela con <b>📂 Importar XLS</b>.</td></tr>`}</tbody><tfoot>${totRow}</tfoot>`;
+}
+// ── Alta/edición manual (modal rico) ──
+function rvPlanillaForm(id) {
+  if (!(typeof CURRENT !== 'undefined' && CURRENT && CURRENT.role === 'admin')) { alert('Solo administradores.'); return; }
+  const data = rvPlanillaFull();
+  const rec = id ? (data.find(o => String(o.id) === String(id)) || {}) : { ano: new Date().getFullYear(), mes: new Date().getMonth() + 1, sistema: 'AFP' };
+  const INP = 'width:100%;padding:8px 10px;border:1px solid #d8dde3;border-radius:6px;font-size:13px;box-sizing:border-box;outline:none';
+  const v = (k) => { const x = rec[k]; return x != null ? rvEsc(x) : ''; };
+  const campos = RV_PLAN_FIELDS.map(f => {
+    if (f.k === 'sistema') {
+      const opts = ['', 'AFP', 'ONP'].map(o => `<option value="${o}" ${o === (rec.sistema || '') ? 'selected' : ''}>${o || '—'}</option>`).join('');
+      return `<div><label style="display:block;font-size:11px;font-weight:700;color:#607d8b;margin-bottom:3px">${f.lbl}</label><select id="pln-${f.k}" style="${INP}">${opts}</select></div>`;
+    }
+    return `<div><label style="display:block;font-size:11px;font-weight:700;color:#607d8b;margin-bottom:3px">${f.lbl}</label><input id="pln-${f.k}" type="${f.type}" value="${v(f.k)}" style="${INP}"></div>`;
+  }).join('');
+  rvModal(`
+    <h3 style="margin:0 0 4px 0">${id ? '✏️ Editar' : '➕ Nuevo'} trabajador (planilla)</h3>
+    <div style="font-size:12px;color:#78909c;margin-bottom:8px">Total, descuento AFP/ONP, total de descuentos, neto y EsSalud se calculan solos si los dejas vacíos.</div>
+    <div style="max-height:60vh;overflow:auto;padding-right:6px;display:grid;grid-template-columns:1fr 1fr;gap:9px 11px">${campos}</div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button onclick="rvPlanillaGuardarForm('${id || ''}')" style="flex:2;padding:12px;background:#198c35;color:#fff;border:none;border-radius:7px;cursor:pointer;font-weight:800">💾 Guardar</button>
+      <button onclick="closeRvModal()" style="flex:1;padding:12px;background:#eceff1;color:#455a64;border:none;border-radius:7px;cursor:pointer;font-weight:600">Cancelar</button>
+    </div>
+  `, 620);
+}
+function rvPlanillaGuardarForm(id) {
+  const get = (k) => { const el = document.getElementById('pln-' + k); return el ? el.value : ''; };
+  const rec = {};
+  RV_PLAN_FIELDS.forEach(f => { rec[f.k] = f.type === 'number' ? rvNum(get(f.k)) : String(get(f.k)).trim(); });
+  if (!rec.trabajador) { alert('El nombre del trabajador es obligatorio.'); return; }
+  if (!rec.ano) rec.ano = new Date().getFullYear();
+  if (!rec.mes) rec.mes = new Date().getMonth() + 1;
+  const calc = rvPlanillaCalc(rec);
+  const data = rvPlanillaFull();
+  if (id) { const i = data.findIndex(o => String(o.id) === String(id)); if (i >= 0) { calc.id = data[i].id; data[i] = calc; } else { calc.id = 'pln_' + (++window.__rvPlnId); data.push(calc); } }
+  else {
+    const key = rvPlanKey(calc); const i = data.findIndex(o => rvPlanKey(o) === key);
+    if (i >= 0) { calc.id = data[i].id; data[i] = calc; } else { calc.id = 'pln_' + (++window.__rvPlnId); data.push(calc); }
+  }
+  rvPlanillaGuardar(data);
+  rvAuditar(id ? 'editar' : 'agregar', 'planilla', 'Trabajador: ' + rec.trabajador + ' | ' + rec.mes + '/' + rec.ano + ' | neto S/. ' + calc.neto);
+  closeRvModal();
+  rvRenderPlanillaTabla();
+}
+function rvPlanillaEliminar(id) {
+  if (!(typeof CURRENT !== 'undefined' && CURRENT && CURRENT.role === 'admin')) return;
+  const data = rvPlanillaFull();
+  const rec = data.find(o => String(o.id) === String(id));
+  if (!rec) return;
+  if (!confirm('¿Eliminar de la planilla a ' + (rec.trabajador || '') + '?')) return;
+  rvPlanillaGuardar(data.filter(o => String(o.id) !== String(id)));
+  rvAuditar('eliminar', 'planilla', 'Trabajador eliminado: ' + (rec.trabajador || ''));
+  rvRenderPlanillaTabla();
+}
+window.rvPlanillaForm = rvPlanillaForm;
+window.rvPlanillaGuardarForm = rvPlanillaGuardarForm;
+window.rvPlanillaEliminar = rvPlanillaEliminar;
+window.openAddPlanilla = function () { rvPlanillaForm(); };
+// Override de carga: migra registros básicos de la BD la 1ª vez y renderiza la tabla rica
+window.loadPlanilla = async function () {
+  try {
+    let full = rvPlanillaFull();
+    if (!full.length) {
+      try {
+        const db = await fetch(`${RV_API}/planilla`).then(r => r.json());
+        if (Array.isArray(db) && db.length) {
+          full = db.map(d => rvPlanillaCalc({ id: 'pln_' + (++window.__rvPlnId), ano: d.ano, mes: d.mes, trabajador: d.empleado, remuneracion: d.sueldo, bono: d.bonificacion, desc_otros: d.descuentos }));
+          rvPlanillaGuardar(full);
+          console.log('[PLANILLA] migrados', full.length, 'registros de la BD a la planilla detallada');
+        }
+      } catch (e) {}
+    }
+    rvRenderPlanillaTabla();
+  } catch (e) { console.error('[PLANILLA]', e); }
+};
+
 console.log('[RV-API] ✓ Módulos API cargados sin conflictos');
