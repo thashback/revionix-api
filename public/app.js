@@ -2758,7 +2758,7 @@ function rvRenderPipeline() {
   page.innerHTML = `
     <div class="page-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
       <span>📈 Pipeline de Visitas</span>
-      ${editable ? `<button onclick="rvPipeForm()" class="btn btn-success" style="font-size:13px">➕ Nueva oportunidad</button>` : ''}
+      ${editable ? `<button onclick="rvPipeForm()" style="background:#198c35;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;padding:10px 18px;font-size:13px;box-shadow:0 2px 8px rgba(25,140,53,.35);display:inline-flex;align-items:center;gap:6px">➕ Nueva oportunidad</button>` : ''}
     </div>
     <div class="page-sub" style="color:#607d8b;margin-bottom:14px">Registro de visitas de trabajadores híbridos y oportunidades comerciales conseguidas.</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
@@ -2787,27 +2787,57 @@ function rvPipeForm(id) {
   if (!rvPipePuedeEditar()) { alert('Solo usuarios con permiso pueden registrar oportunidades.'); return; }
   const data = rvPipeData();
   const rec = id ? (data.find(o => String(o.id) === String(id)) || {}) : {};
-  const campos = RV_PIPE_CAMPOS.map(f => {
-    const val = rec[f.k] != null ? rec[f.k] : '';
-    if (f.type === 'select') {
-      const opts = f.opts.map(o => `<option value="${o}" ${o == val ? 'selected' : ''}>${o}</option>`).join('');
-      return `<label style="${RV_LABEL}">${f.lbl}</label><select id="pipe-${f.k}" style="${RV_INPUT}">${opts}</select>`;
-    }
-    if (f.type === 'textarea') {
-      return `<label style="${RV_LABEL}">${f.lbl}</label><textarea id="pipe-${f.k}" rows="2" style="${RV_INPUT};resize:vertical">${rvEsc(val)}</textarea>`;
-    }
-    return `<label style="${RV_LABEL}">${f.lbl}</label><input id="pipe-${f.k}" type="${f.type}" value="${rvEsc(val)}" style="${RV_INPUT}">`;
+  const INP = 'width:100%;padding:9px 11px;border:1px solid #d8dde3;border-radius:7px;font-size:13px;box-sizing:border-box;outline:none;transition:border-color .12s,box-shadow .12s';
+  const v = (k) => { const x = rec[k]; return x != null ? rvEsc(x) : ''; };
+  const inp = (k, type, ph) => `<input id="pipe-${k}" type="${type || 'text'}" value="${v(k)}" placeholder="${ph || ''}" style="${INP}" onfocus="this.style.borderColor='#198c35';this.style.boxShadow='0 0 0 3px rgba(25,140,53,.12)'" onblur="this.style.borderColor='#d8dde3';this.style.boxShadow='none'">`;
+  const ta = (k, ph) => `<textarea id="pipe-${k}" rows="2" placeholder="${ph || ''}" style="${INP};resize:vertical" onfocus="this.style.borderColor='#198c35';this.style.boxShadow='0 0 0 3px rgba(25,140,53,.12)'" onblur="this.style.borderColor='#d8dde3';this.style.boxShadow='none'">${v(k)}</textarea>`;
+  const fld = (lbl, inner, full) => `<div style="${full ? 'grid-column:1/-1' : ''}"><label style="display:block;font-size:11px;font-weight:700;color:#607d8b;margin-bottom:3px">${lbl}</label>${inner}</div>`;
+  const sec = (icon, title, inner) => `<div style="margin-top:16px"><div style="font-size:12px;font-weight:800;color:#0f2540;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #eef2f6;padding-bottom:6px;margin-bottom:9px">${icon} ${title}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:9px 11px">${inner}</div></div>`;
+
+  const etapaSel = rec.etapa || 'Prospecto';
+  const chips = RV_PIPE_ETAPAS.map(e => {
+    const col = RV_PIPE_COLOR[e]; const s = etapaSel === e;
+    return `<div id="pipe-chip-${e}" onclick="rvPipeSetEtapa('${e}')" style="cursor:pointer;user-select:none;font-size:12px;font-weight:700;padding:6px 13px;border-radius:20px;border:2px solid ${col};color:${s ? '#fff' : col};background:${s ? col : 'transparent'};transition:all .12s">${e}</div>`;
   }).join('');
+  const prob = (rec.probabilidad != null && rec.probabilidad !== '') ? rvNum(rec.probabilidad) : RV_PIPE_PROB[etapaSel];
+
+  const cuerpo =
+    sec('📅', 'Visita', fld('Fecha de visita', inp('fecha_visita', 'date')) + fld('Trabajador que visitó', inp('trabajador', 'text', 'Nombre del vendedor'))) +
+    sec('🏢', 'Cliente', fld('Empresa / Cliente *', inp('empresa', 'text', 'Razón social o nombre'), true) + fld('Dirección', inp('direccion', 'text', 'Av. / Calle, número')) + fld('Distrito / Ciudad', inp('distrito', 'text', 'Ej. San Isidro'))) +
+    sec('👤', 'Contacto', fld('Nombre del contacto', inp('contacto_nombre', 'text', 'Persona de contacto')) + fld('Cargo', inp('contacto_cargo', 'text', 'Ej. Jefe de compras')) + fld('Teléfono / WhatsApp', inp('contacto_tel', 'text', '+51 9...')) + fld('Email', inp('contacto_email', 'email', 'correo@empresa.com'))) +
+    sec('💼', 'Oportunidad',
+      fld('¿Qué oportunidad se consiguió?', ta('oportunidad', 'Describe la oportunidad detectada en la visita...'), true) +
+      fld('Productos / servicios de interés', inp('productos', 'text', 'Cámaras, laptops, servicios...'), true) +
+      fld('Monto estimado (S/.)', inp('monto', 'number', '0.00')) +
+      fld('Etapa', `<input type="hidden" id="pipe-etapa" value="${etapaSel}"><div style="display:flex;flex-wrap:wrap;gap:6px;padding-top:2px">${chips}</div>`, true) +
+      fld('Probabilidad de cierre', `<div style="display:flex;align-items:center;gap:12px"><input type="range" id="pipe-probabilidad" min="0" max="100" step="5" value="${prob}" oninput="rvPipeProbLabel(this.value)" style="flex:1;accent-color:#198c35"><div id="pipe-prob-label" style="font-weight:800;font-size:16px;color:#0f2540;min-width:46px;text-align:right">${prob}%</div></div>`, true)
+    ) +
+    sec('📆', 'Seguimiento', fld('Fecha estimada de cierre', inp('fecha_cierre', 'date')) + fld('Fecha de próxima acción', inp('fecha_proxima', 'date')) + fld('Próxima acción', inp('proxima_accion', 'text', 'Ej. Enviar cotización'), true) + fld('Notas / observaciones', ta('notas', 'Cualquier detalle adicional...'), true));
+
   rvModal(`
-    <h3 style="margin:0 0 6px 0">${id ? '✏️ Editar' : '➕ Nueva'} oportunidad</h3>
-    <div style="font-size:12px;color:#78909c;margin-bottom:10px">Completa todos los datos posibles de la visita.</div>
-    <div style="max-height:60vh;overflow:auto;padding-right:4px">${campos}</div>
-    <div style="display:flex;gap:8px;margin-top:14px">
-      <button onclick="rvPipeGuardarForm('${id || ''}')" style="flex:1;padding:11px;background:#198c35;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700">💾 Guardar</button>
-      <button onclick="closeRvModal()" style="flex:1;padding:11px;background:#eceff1;color:#333;border:none;border-radius:6px;cursor:pointer">Cancelar</button>
+    <h3 style="margin:0 0 4px 0;font-size:18px">${id ? '✏️ Editar' : '➕ Nueva'} oportunidad</h3>
+    <div style="font-size:12px;color:#78909c;margin-bottom:4px">Completa todos los datos posibles de la visita. Solo la empresa es obligatoria.</div>
+    <div style="max-height:62vh;overflow:auto;padding-right:6px">${cuerpo}</div>
+    <div style="display:flex;gap:8px;margin-top:16px;position:sticky;bottom:0;background:#fff;padding-top:6px">
+      <button onclick="rvPipeGuardarForm('${id || ''}')" style="flex:2;padding:12px;background:#198c35;color:#fff;border:none;border-radius:7px;cursor:pointer;font-weight:800;font-size:14px;box-shadow:0 2px 8px rgba(25,140,53,.3)">💾 Guardar oportunidad</button>
+      <button onclick="closeRvModal()" style="flex:1;padding:12px;background:#eceff1;color:#455a64;border:none;border-radius:7px;cursor:pointer;font-weight:600">Cancelar</button>
     </div>
-  `, 560);
+  `, 620);
 }
+// Interactividad del formulario de pipeline (etapa por chips + slider de probabilidad)
+window.rvPipeSetEtapa = function (e) {
+  const h = document.getElementById('pipe-etapa'); if (h) h.value = e;
+  RV_PIPE_ETAPAS.forEach(x => {
+    const c = document.getElementById('pipe-chip-' + x); if (!c) return;
+    const col = RV_PIPE_COLOR[x]; const s = x === e;
+    c.style.color = s ? '#fff' : col; c.style.background = s ? col : 'transparent';
+  });
+  const sl = document.getElementById('pipe-probabilidad');
+  if (sl) { sl.value = RV_PIPE_PROB[e]; rvPipeProbLabel(sl.value); }
+};
+window.rvPipeProbLabel = function (val) {
+  const l = document.getElementById('pipe-prob-label'); if (l) l.textContent = val + '%';
+};
 function rvPipeGuardarForm(id) {
   const get = (k) => { const el = document.getElementById('pipe-' + k); return el ? el.value : ''; };
   const empresa = get('empresa').trim();
