@@ -7240,12 +7240,14 @@
         const ROLE_LABELS = {
           admin: "Administrador",
           operaciones: "Operaciones",
+          pipeline: "Pipeline",
           tienda: "Tienda",
           visor: "Solo Vista",
         };
         const ROLE_PILLS = {
           admin: "pill-blue",
           operaciones: "pill-yellow",
+          pipeline: "pill-purple",
           tienda: "pill-green",
           visor: "pill-gray",
         };
@@ -7377,6 +7379,7 @@
         const roleOpts = [
           { v: "admin", l: "Administrador" },
           { v: "operaciones", l: "Operaciones (todo menos planilla/gastos fijos)" },
+          { v: "pipeline", l: "Pipeline (solo llenar visitas)" },
           { v: "tienda", l: "Tienda (su canal)" },
           { v: "visor", l: "Solo Vista" },
         ]
@@ -7982,7 +7985,7 @@
     </div>
 
   <!-- Indicador de versión: si NO ves este número, tu navegador tiene caché viejo -->
-  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v49 · 06-Jul</div>
-  <script src="app.js?v=49"></script>
+  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v50 · 06-Jul</div>
+  <script src="app.js?v=50"></script>
   </body>
 </html>

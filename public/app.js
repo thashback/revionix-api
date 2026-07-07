@@ -2359,6 +2359,19 @@ function rvActualizarFechaReal() {
 window.RV_ROL_REAL = '';
 const RV_PAGINAS_BLOQUEADAS = ['planilla', 'gastos-fijos', 'pagos-pendientes', 'usuarios'];
 function rvAplicarRestriccionesRol() {
+  // Rol "pipeline": SOLO puede usar el módulo Pipeline de Visitas.
+  if (window.RV_ROL_REAL === 'pipeline') {
+    document.querySelectorAll('.nav-item').forEach(nav => {
+      if (nav.getAttribute('data-page') !== 'pipeline') { nav.classList.add('nav-disabled'); nav.style.display = 'none'; }
+    });
+    document.querySelectorAll('.nav-section').forEach(sec => {
+      if (!sec.querySelector('.nav-item[data-page="pipeline"]')) sec.style.display = 'none';
+    });
+    const nu = document.getElementById('nav-usuarios'); if (nu) nu.style.display = 'none';
+    const bd = document.getElementById('hdr-badge'); if (bd) { bd.textContent = 'Pipeline'; bd.className = 'header-badge badge-tienda'; }
+    if (typeof goPage === 'function') goPage('pipeline');
+    return;
+  }
   if (window.RV_ROL_REAL !== 'operaciones') return;
   RV_PAGINAS_BLOQUEADAS.forEach(pg => {
     const nav = document.querySelector('.nav-item[data-page="' + pg + '"]');
@@ -2593,7 +2606,9 @@ function rvDecorarPP() {
           // Inyectar el usuario ya verificado para que el flujo interno prosiga.
           // 'operaciones' edita como admin (para ver botones de editar/borrar).
           if (typeof USERS !== 'undefined') {
-            const rolInline = (data.user.role === 'operaciones') ? 'admin' : data.user.role;
+            // 'operaciones' y 'pipeline' entran como admin interno (para ver los
+            // botones de editar/guardar); la restricción real se aplica por RV_ROL_REAL.
+            const rolInline = (data.user.role === 'operaciones' || data.user.role === 'pipeline') ? 'admin' : data.user.role;
             USERS[u] = { pass: p, role: rolInline, canal: data.user.canal, name: data.user.nombre, email: '', activo: true };
           }
           inlineDoLogin();
@@ -2892,11 +2907,13 @@ window.rvPipeEliminar = rvPipeEliminar;
     el.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 9l-5 5-3-3-4 4"/></svg> Pipeline Visitas';
     navProy.insertAdjacentElement('afterend', el);
   }
-  // Envolver goPage para renderizar el pipeline al abrirlo
+  // Envolver goPage para renderizar el pipeline al abrirlo.
+  // El rol "pipeline" queda confinado a esta página (cualquier otra → pipeline).
   if (typeof window.goPage === 'function') {
     const _gp = window.goPage;
     window.goPage = function (id) {
-      const r = _gp.apply(this, arguments);
+      if (window.RV_ROL_REAL === 'pipeline' && id !== 'pipeline') id = 'pipeline';
+      const r = _gp.call(this, id);
       try { if (id === 'pipeline') rvRenderPipeline(); } catch (e) { console.error('[PIPELINE]', e); }
       return r;
     };
