@@ -2657,4 +2657,220 @@ function rvDecorarPP() {
   };
 })();
 
+// ═══════════════════════════════════════════════════════════════
+// MÓDULO PIPELINE DE VISITAS (CRM de trabajadores híbridos)
+// Registra cada visita/oportunidad con datos de contacto, dirección,
+// oportunidad conseguida, monto y fecha estimada de cierre. Se guarda en
+// rv_pipeline (respaldo automático en la BD, multi-dispositivo). Additivo.
+// ═══════════════════════════════════════════════════════════════
+window.__rvPid = window.__rvPid || Date.now();
+const RV_PIPE_ETAPAS = ['Prospecto', 'Contactado', 'Calificado', 'Propuesta', 'Negociación', 'Ganado', 'Perdido'];
+const RV_PIPE_COLOR = {
+  'Prospecto': '#90A4AE', 'Contactado': '#0277BD', 'Calificado': '#7B1FA2',
+  'Propuesta': '#E67E22', 'Negociación': '#F9A825', 'Ganado': '#198C35', 'Perdido': '#C0392B'
+};
+const RV_PIPE_PROB = { 'Prospecto': 10, 'Contactado': 25, 'Calificado': 40, 'Propuesta': 60, 'Negociación': 80, 'Ganado': 100, 'Perdido': 0 };
+const RV_PIPE_ABIERTAS = ['Prospecto', 'Contactado', 'Calificado', 'Propuesta', 'Negociación'];
+const RV_PIPE_CAMPOS = [
+  { k: 'fecha_visita', lbl: 'Fecha de visita', type: 'date' },
+  { k: 'trabajador', lbl: 'Trabajador (quien visitó)', type: 'text' },
+  { k: 'empresa', lbl: 'Empresa / Cliente', type: 'text' },
+  { k: 'contacto_nombre', lbl: 'Contacto (nombre)', type: 'text' },
+  { k: 'contacto_cargo', lbl: 'Cargo del contacto', type: 'text' },
+  { k: 'contacto_tel', lbl: 'Teléfono / WhatsApp', type: 'text' },
+  { k: 'contacto_email', lbl: 'Email', type: 'text' },
+  { k: 'direccion', lbl: 'Dirección', type: 'text' },
+  { k: 'distrito', lbl: 'Distrito / Ciudad', type: 'text' },
+  { k: 'oportunidad', lbl: 'Oportunidad conseguida', type: 'textarea' },
+  { k: 'productos', lbl: 'Productos / servicios de interés', type: 'text' },
+  { k: 'monto', lbl: 'Monto estimado de la oportunidad (S/.)', type: 'number' },
+  { k: 'probabilidad', lbl: 'Probabilidad de cierre (%)', type: 'number' },
+  { k: 'etapa', lbl: 'Etapa', type: 'select', opts: RV_PIPE_ETAPAS },
+  { k: 'fecha_cierre', lbl: 'Fecha estimada de cierre', type: 'date' },
+  { k: 'proxima_accion', lbl: 'Próxima acción', type: 'text' },
+  { k: 'fecha_proxima', lbl: 'Fecha de próxima acción', type: 'date' },
+  { k: 'notas', lbl: 'Notas / observaciones', type: 'textarea' }
+];
+function rvPipeData() {
+  try { const o = JSON.parse(localStorage.getItem('rv_pipeline') || '[]'); return Array.isArray(o) ? o : []; }
+  catch (e) { return []; }
+}
+function rvPipeGuardar(list) {
+  localStorage.setItem('rv_pipeline', JSON.stringify(list));
+  if (window.rvEmpujarAhora) window.rvEmpujarAhora();
+}
+function rvPipePuedeEditar() {
+  try { return (typeof CURRENT !== 'undefined' && CURRENT && CURRENT.role === 'admin'); } catch (e) { return false; }
+}
+function rvRenderPipeline() {
+  const page = document.getElementById('page-pipeline');
+  if (!page) return;
+  const data = rvPipeData();
+  const fEtapa = (document.getElementById('pipe-f-etapa') || {}).value || '';
+  const fTrab = (document.getElementById('pipe-f-trab') || {}).value || '';
+  const fBusca = ((document.getElementById('pipe-f-busca') || {}).value || '').toLowerCase();
+  const editable = rvPipePuedeEditar();
+
+  // KPIs (sobre todo el pipeline, no el filtrado)
+  const abiertas = data.filter(o => RV_PIPE_ABIERTAS.indexOf(o.etapa) !== -1);
+  const montoPipe = abiertas.reduce((s, o) => s + rvNum(o.monto), 0);
+  const ponderado = abiertas.reduce((s, o) => s + rvNum(o.monto) * (rvNum(o.probabilidad) / 100), 0);
+  const ganado = data.filter(o => o.etapa === 'Ganado').reduce((s, o) => s + rvNum(o.monto), 0);
+
+  // Lista de trabajadores para el filtro
+  const trabajadores = [...new Set(data.map(o => o.trabajador).filter(Boolean))].sort();
+
+  // Aplicar filtros a la tabla
+  let filas = data.slice();
+  if (fEtapa) filas = filas.filter(o => o.etapa === fEtapa);
+  if (fTrab) filas = filas.filter(o => o.trabajador === fTrab);
+  if (fBusca) filas = filas.filter(o => [o.empresa, o.contacto_nombre, o.oportunidad, o.productos, o.distrito, o.direccion].join(' ').toLowerCase().includes(fBusca));
+  filas.sort((a, b) => String(b.fecha_visita || '').localeCompare(String(a.fecha_visita || '')));
+
+  const kpi = (t, v, c) => `<div style="background:#fff;border:1px solid #e3e8ee;border-radius:10px;padding:12px 16px;flex:1;min-width:150px"><div style="font-size:11px;color:#78909c;font-weight:600;text-transform:uppercase;letter-spacing:.3px">${t}</div><div style="font-size:20px;font-weight:800;color:${c};margin-top:2px">${v}</div></div>`;
+
+  const optEtapa = '<option value="">Todas las etapas</option>' + RV_PIPE_ETAPAS.map(e => `<option value="${e}" ${e === fEtapa ? 'selected' : ''}>${e}</option>`).join('');
+  const optTrab = '<option value="">Todos los trabajadores</option>' + trabajadores.map(t => `<option value="${rvEsc(t)}" ${t === fTrab ? 'selected' : ''}>${rvEsc(t)}</option>`).join('');
+
+  const filasHTML = filas.map(o => {
+    const col = RV_PIPE_COLOR[o.etapa] || '#90A4AE';
+    const prob = rvNum(o.probabilidad);
+    let contacto = o.contacto_nombre ? rvEsc(o.contacto_nombre) : '';
+    if (o.contacto_tel) contacto += `${contacto ? '<br>' : ''}<span style="color:#78909c;font-size:10px">📞 ${rvEsc(o.contacto_tel)}</span>`;
+    if (o.contacto_email) contacto += `<br><span style="color:#78909c;font-size:10px">✉️ ${rvEsc(o.contacto_email)}</span>`;
+    return `<tr>
+      <td style="white-space:nowrap;font-size:12px">${rvEsc(o.fecha_visita || '—')}</td>
+      <td style="font-size:12px">${rvEsc(o.trabajador || '—')}</td>
+      <td><div style="font-weight:600;font-size:13px;color:#0f2540">${rvEsc(o.empresa || '—')}</div>${o.distrito ? `<div style="font-size:10px;color:#78909c">📍 ${rvEsc(o.distrito)}</div>` : ''}</td>
+      <td style="font-size:11px">${contacto || '—'}</td>
+      <td style="font-size:11px;max-width:220px">${rvEsc(o.oportunidad || '—')}${o.productos ? `<div style="font-size:10px;color:#78909c;margin-top:2px">🏷️ ${rvEsc(o.productos)}</div>` : ''}</td>
+      <td style="text-align:right;font-weight:700;color:#198c35;white-space:nowrap">${o.monto ? rvMoney(o.monto) : '—'}</td>
+      <td style="text-align:center;font-size:12px">${prob ? prob + '%' : '—'}</td>
+      <td><span style="display:inline-block;background:${col}22;color:${col};font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap">${rvEsc(o.etapa || '—')}</span></td>
+      <td style="white-space:nowrap;font-size:12px">${rvEsc(o.fecha_cierre || '—')}</td>
+      ${editable ? `<td style="white-space:nowrap">
+        <button onclick="rvPipeForm('${o.id}')" title="Editar" style="background:none;border:1.5px solid #d8dde3;border-radius:5px;cursor:pointer;padding:2px 7px;font-size:11px;margin-right:3px">✏️</button>
+        <button onclick="rvPipeEliminar('${o.id}')" title="Eliminar" style="background:none;border:none;cursor:pointer;color:#c0392b;font-size:16px;padding:0 4px">×</button>
+      </td>` : ''}
+    </tr>`;
+  }).join('');
+
+  page.innerHTML = `
+    <div class="page-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <span>📈 Pipeline de Visitas</span>
+      ${editable ? `<button onclick="rvPipeForm()" class="btn btn-success" style="font-size:13px">➕ Nueva oportunidad</button>` : ''}
+    </div>
+    <div class="page-sub" style="color:#607d8b;margin-bottom:14px">Registro de visitas de trabajadores híbridos y oportunidades comerciales conseguidas.</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      ${kpi('Oportunidades abiertas', abiertas.length, '#0f2540')}
+      ${kpi('Monto en pipeline', rvMoney(montoPipe), '#0277BD')}
+      ${kpi('Ponderado x prob.', rvMoney(ponderado), '#E67E22')}
+      ${kpi('Ganado', rvMoney(ganado), '#198C35')}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <select id="pipe-f-etapa" onchange="rvRenderPipeline()" style="padding:8px 10px;border:1.5px solid #d8dde3;border-radius:8px;font-size:13px">${optEtapa}</select>
+      <select id="pipe-f-trab" onchange="rvRenderPipeline()" style="padding:8px 10px;border:1.5px solid #d8dde3;border-radius:8px;font-size:13px">${optTrab}</select>
+      <input id="pipe-f-busca" oninput="rvRenderPipeline()" value="${rvEsc(fBusca)}" placeholder="Buscar empresa, contacto, oportunidad..." style="padding:8px 10px;border:1.5px solid #d8dde3;border-radius:8px;font-size:13px;flex:1;min-width:200px">
+    </div>
+    ${filas.length ? `<div class="card" style="padding:0;overflow:auto">
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:#0f2540;color:#fff;font-size:11px;text-align:left">
+          <th style="padding:9px">Visita</th><th>Trabajador</th><th>Empresa</th><th>Contacto</th><th>Oportunidad</th><th style="text-align:right">Monto est.</th><th style="text-align:center">Prob.</th><th>Etapa</th><th>Cierre est.</th>${editable ? '<th></th>' : ''}
+        </tr></thead>
+        <tbody>${filasHTML}</tbody>
+      </table></div>`
+      : `<div style="text-align:center;padding:40px;color:#90a4ae;background:#fff;border:1px dashed #cfd8dc;border-radius:10px">Aún no hay oportunidades registradas.${editable ? ' Usa <b>➕ Nueva oportunidad</b> para empezar.' : ''}</div>`}
+    <div style="font-size:11px;color:#90a4ae;margin-top:10px">${filas.length} de ${data.length} oportunidad(es)</div>
+  `;
+}
+function rvPipeForm(id) {
+  if (!rvPipePuedeEditar()) { alert('Solo usuarios con permiso pueden registrar oportunidades.'); return; }
+  const data = rvPipeData();
+  const rec = id ? (data.find(o => String(o.id) === String(id)) || {}) : {};
+  const campos = RV_PIPE_CAMPOS.map(f => {
+    const val = rec[f.k] != null ? rec[f.k] : '';
+    if (f.type === 'select') {
+      const opts = f.opts.map(o => `<option value="${o}" ${o == val ? 'selected' : ''}>${o}</option>`).join('');
+      return `<label style="${RV_LABEL}">${f.lbl}</label><select id="pipe-${f.k}" style="${RV_INPUT}">${opts}</select>`;
+    }
+    if (f.type === 'textarea') {
+      return `<label style="${RV_LABEL}">${f.lbl}</label><textarea id="pipe-${f.k}" rows="2" style="${RV_INPUT};resize:vertical">${rvEsc(val)}</textarea>`;
+    }
+    return `<label style="${RV_LABEL}">${f.lbl}</label><input id="pipe-${f.k}" type="${f.type}" value="${rvEsc(val)}" style="${RV_INPUT}">`;
+  }).join('');
+  rvModal(`
+    <h3 style="margin:0 0 6px 0">${id ? '✏️ Editar' : '➕ Nueva'} oportunidad</h3>
+    <div style="font-size:12px;color:#78909c;margin-bottom:10px">Completa todos los datos posibles de la visita.</div>
+    <div style="max-height:60vh;overflow:auto;padding-right:4px">${campos}</div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button onclick="rvPipeGuardarForm('${id || ''}')" style="flex:1;padding:11px;background:#198c35;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700">💾 Guardar</button>
+      <button onclick="closeRvModal()" style="flex:1;padding:11px;background:#eceff1;color:#333;border:none;border-radius:6px;cursor:pointer">Cancelar</button>
+    </div>
+  `, 560);
+}
+function rvPipeGuardarForm(id) {
+  const get = (k) => { const el = document.getElementById('pipe-' + k); return el ? el.value : ''; };
+  const empresa = get('empresa').trim();
+  if (!empresa) { alert('La empresa / cliente es obligatoria.'); return; }
+  const rec = {};
+  RV_PIPE_CAMPOS.forEach(f => { rec[f.k] = f.type === 'number' ? rvNum(get(f.k)) : get(f.k).trim ? get(f.k).trim() : get(f.k); });
+  if (!rec.etapa) rec.etapa = 'Prospecto';
+  if (!rvNum(rec.probabilidad)) rec.probabilidad = RV_PIPE_PROB[rec.etapa] != null ? RV_PIPE_PROB[rec.etapa] : 0;
+  const data = rvPipeData();
+  if (id) {
+    const i = data.findIndex(o => String(o.id) === String(id));
+    if (i >= 0) { rec.id = data[i].id; rec.created_at = data[i].created_at; rec.updated_at = new Date().toISOString(); data[i] = rec; }
+    else { rec.id = 'pl_' + (++window.__rvPid); rec.created_at = new Date().toISOString(); data.push(rec); }
+  } else {
+    rec.id = 'pl_' + (++window.__rvPid); rec.created_at = new Date().toISOString(); data.push(rec);
+  }
+  rvPipeGuardar(data);
+  rvAuditar(id ? 'editar' : 'agregar', 'pipeline', 'Oportunidad: ' + empresa + ' | ' + (rec.etapa || '') + ' | S/. ' + rvNum(rec.monto));
+  closeRvModal();
+  rvRenderPipeline();
+}
+function rvPipeEliminar(id) {
+  if (!rvPipePuedeEditar()) return;
+  const data = rvPipeData();
+  const rec = data.find(o => String(o.id) === String(id));
+  if (!rec) return;
+  if (!confirm('¿Eliminar esta oportunidad?\n\n' + (rec.empresa || '') + (rec.oportunidad ? '\n' + rec.oportunidad : ''))) return;
+  const nueva = data.filter(o => String(o.id) !== String(id));
+  rvPipeGuardar(nueva);
+  rvAuditar('eliminar', 'pipeline', 'Oportunidad eliminada: ' + (rec.empresa || '') + ' | S/. ' + rvNum(rec.monto));
+  rvRenderPipeline();
+}
+window.rvRenderPipeline = rvRenderPipeline;
+window.rvPipeForm = rvPipeForm;
+window.rvPipeGuardarForm = rvPipeGuardarForm;
+window.rvPipeEliminar = rvPipeEliminar;
+
+// Inyección del módulo en el sidebar + página + navegación (additivo)
+(function rvInitPipeline() {
+  // Página contenedora (hermana de page-proyectos)
+  const pProy = document.getElementById('page-proyectos');
+  if (pProy && !document.getElementById('page-pipeline')) {
+    pProy.insertAdjacentHTML('afterend', '<div class="page" id="page-pipeline"></div>');
+  }
+  // Ítem de navegación debajo de "Proyectos / OC"
+  const navProy = document.querySelector('.nav-item[data-page="proyectos"]');
+  if (navProy && !document.querySelector('.nav-item[data-page="pipeline"]')) {
+    const el = document.createElement('div');
+    el.className = 'nav-item';
+    el.setAttribute('data-page', 'pipeline');
+    el.setAttribute('onclick', "goPage('pipeline')");
+    el.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 9l-5 5-3-3-4 4"/></svg> Pipeline Visitas';
+    navProy.insertAdjacentElement('afterend', el);
+  }
+  // Envolver goPage para renderizar el pipeline al abrirlo
+  if (typeof window.goPage === 'function') {
+    const _gp = window.goPage;
+    window.goPage = function (id) {
+      const r = _gp.apply(this, arguments);
+      try { if (id === 'pipeline') rvRenderPipeline(); } catch (e) { console.error('[PIPELINE]', e); }
+      return r;
+    };
+  }
+})();
+
 console.log('[RV-API] ✓ Módulos API cargados sin conflictos');
