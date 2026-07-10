@@ -2854,7 +2854,7 @@
           <!-- GASTOS FIJOS -->
           <div class="page" id="page-gastos-fijos">
             <div class="page-title">Gastos Fijos Mensuales</div>
-            <div class="page-sub">Alquileres, servicios y planilla · Estimado mensual recurrente</div>
+            <div class="page-sub">Alquileres y servicios · Estimado mensual recurrente</div>
 
             <div class="kpi-grid" style="margin-bottom:18px">
               <div class="kpi kpi-red">
@@ -2862,7 +2862,7 @@
                 <div class="kpi-value" id="kpi-fijos-alq">S/. 0</div>
                 <div class="kpi-sub">Locales + servicios mensuales</div>
               </div>
-              <div class="kpi kpi-blue">
+              <div class="kpi kpi-blue" id="kpi-card-fijos-plan" style="display:none">
                 <div class="kpi-label">Planilla</div>
                 <div class="kpi-value" id="kpi-fijos-plan">S/. 0</div>
                 <div class="kpi-sub">Sueldos + Essalud estimado</div>
@@ -2882,7 +2882,7 @@
             <!-- Sub-tabs -->
             <div style="display:flex;gap:8px;margin-bottom:18px;border-bottom:2px solid var(--c-border);padding-bottom:0">
               <button id="fijos-tab-alq" onclick="switchFijosTab('alq')" style="padding:8px 20px;border:none;background:none;font-size:14px;font-weight:600;color:var(--c-navy);border-bottom:3px solid var(--c-blue2);margin-bottom:-2px;cursor:pointer">🏢 Alquileres y Servicios</button>
-              <button id="fijos-tab-plan" onclick="switchFijosTab('plan')" style="padding:8px 20px;border:none;background:none;font-size:14px;font-weight:600;color:var(--c-gray);border-bottom:3px solid transparent;margin-bottom:-2px;cursor:pointer">👥 Planilla</button>
+              <button id="fijos-tab-plan" onclick="switchFijosTab('plan')" style="display:none;padding:8px 20px;border:none;background:none;font-size:14px;font-weight:600;color:var(--c-gray);border-bottom:3px solid transparent;margin-bottom:-2px;cursor:pointer">👥 Planilla</button>
             </div>
 
             <!-- Panel Alquileres -->
@@ -4921,7 +4921,8 @@
         const totalNeto = PLANILLA_DATA.reduce((s,r)=>s+(r.neto||r.remuneracion),0);
         const totalAdelantos = PLANILLA_DATA.reduce((s,r)=>s+(r.adelanto||0),0);
         const totalEss = totalPlan * 0.09;
-        const totalFijos = totalAlq + totalPlan;
+        // Gastos fijos = alquileres + servicios (la planilla es un módulo aparte)
+        const totalFijos = totalAlq;
 
         const kpiAlq = document.getElementById("kpi-fijos-alq");
         if (kpiAlq) kpiAlq.textContent = "S/. " + totalAlq.toLocaleString("es-PE",{minimumFractionDigits:0,maximumFractionDigits:0});
@@ -7985,7 +7986,7 @@
     </div>
 
   <!-- Indicador de versión: si NO ves este número, tu navegador tiene caché viejo -->
-  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v52 · 06-Jul</div>
-  <script src="app.js?v=52"></script>
+  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v53 · 06-Jul</div>
+  <script src="app.js?v=53"></script>
   </body>
 </html>

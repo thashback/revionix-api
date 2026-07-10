@@ -2378,7 +2378,7 @@ function rvActualizarFechaReal() {
 // ── Rol "operaciones": edita compras/ventas/ecommerce/stock, pero SIN acceso a
 // planilla, gastos fijos ni usuarios. (Edita como admin en lo demás.) ──
 window.RV_ROL_REAL = '';
-const RV_PAGINAS_BLOQUEADAS = ['planilla', 'gastos-fijos', 'pagos-pendientes', 'usuarios'];
+const RV_PAGINAS_BLOQUEADAS = ['planilla', 'pagos-pendientes', 'usuarios'];
 function rvAplicarRestriccionesRol() {
   // Rol "pipeline": SOLO puede usar el módulo Pipeline de Visitas.
   if (window.RV_ROL_REAL === 'pipeline') {
@@ -3188,5 +3188,20 @@ window.loadPlanilla = async function () {
     rvRenderPlanillaTabla();
   } catch (e) { console.error('[PLANILLA]', e); }
 };
+
+// Privacidad: el rol "operaciones" ya tiene acceso a Gastos Fijos, pero NO debe
+// ver la planilla (sueldos). Su panel de planilla queda vacío incluso en el DOM.
+(function rvOcultarPlanillaOperaciones() {
+  if (typeof window.renderGastosFijosPlanilla === 'function') {
+    const _orig = window.renderGastosFijosPlanilla;
+    window.renderGastosFijosPlanilla = function () {
+      if (window.RV_ROL_REAL === 'operaciones') {
+        const p = document.getElementById('fijos-panel-plan'); if (p) p.innerHTML = '';
+        return;
+      }
+      return _orig.apply(this, arguments);
+    };
+  }
+})();
 
 console.log('[RV-API] ✓ Módulos API cargados sin conflictos');
