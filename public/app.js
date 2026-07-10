@@ -1714,7 +1714,97 @@ async function rvBorrarFijo(id) {
   if (!confirm('¿Eliminar este registro mensual?')) return;
   await fetch(`${RV_API}/gastos-fijos/${id}`, { method: 'DELETE' });
   rvRenderHistorialFijos();
+  rvRenderMatrizFijos();
 }
+
+// ── MATRIZ MENSUAL DE COMPROBANTES DE GASTOS FIJOS ──
+// Cada gasto fijo (alquileres/servicios) × cada mes desde el inicio de la
+// operación (Sep-2025) hasta Julio-2026, con su comprobante de pago en PDF.
+// Se guardan en la tabla gastos_fijos (upsert por mes+año+descripción) y el
+// PDF persiste en MySQL (sobrevive redeploys).
+function rvMesesFijos() {
+  const out = []; let y = 2025, m = 9;
+  const NOM = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Set', 'Oct', 'Nov', 'Dic'];
+  while (!(y === 2026 && m === 8)) { // hasta Julio 2026 inclusive
+    out.push({ mes: m, ano: y, label: NOM[m] + ' ' + String(y).slice(2) });
+    m++; if (m > 12) { m = 1; y++; }
+  }
+  return out;
+}
+window.rvSubirComprobanteMatriz = function (concepto, soles, mes, ano) {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = '.pdf,.xml,.jpg,.jpeg,.png';
+  input.onchange = async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const fd = new FormData();
+    fd.append('mes', mes); fd.append('ano', ano);
+    fd.append('descripcion', concepto); fd.append('monto', soles);
+    fd.append('ruta_comprobante', file);
+    try {
+      const r = await fetch(`${RV_API}/gastos-fijos`, { method: 'POST', body: fd });
+      if (r.ok) { if (typeof showToast === 'function') showToast('✅ Comprobante guardado'); rvRenderMatrizFijos(); rvRenderHistorialFijos(); }
+      else alert('❌ Error al subir el comprobante');
+    } catch (err) { alert('❌ ' + err.message); }
+  };
+  input.click();
+};
+async function rvRenderMatrizFijos() {
+  const panel = document.getElementById('fijos-panel-alq') || document.getElementById('page-gastos-fijos');
+  if (!panel) return;
+  let card = document.getElementById('rv-fijos-matriz');
+  if (!card) {
+    card = document.createElement('div');
+    card.id = 'rv-fijos-matriz';
+    card.className = 'card';
+    card.style.cssText = 'margin-top:14px;padding:16px';
+    panel.appendChild(card);
+  }
+  const conceptos = (typeof ALQUILERES_DATA !== 'undefined' && Array.isArray(ALQUILERES_DATA)) ? ALQUILERES_DATA : [];
+  const meses = rvMesesFijos();
+  const TC = (typeof TC_FIJO !== 'undefined') ? TC_FIJO : 3.5;
+  let datos = [];
+  try { datos = await fetch(`${RV_API}/gastos-fijos`).then(r => r.json()); } catch (e) { datos = []; }
+  const idx = {};
+  if (Array.isArray(datos)) datos.forEach(g => { idx[String(g.descripcion).trim() + '|' + g.mes + '|' + g.ano] = g; });
+
+  const esc = (s) => String(s == null ? '' : s).replace(/'/g, "\\'");
+  const th = (t, st) => `<th style="padding:6px 7px;position:sticky;top:0;background:#0f2540;color:#fff;font-size:10.5px;white-space:nowrap;${st || ''}">${t}</th>`;
+  const cab = th('Concepto', 'text-align:left;left:0;z-index:3') + meses.map(mm => th(mm.label, 'text-align:center')).join('');
+
+  const filas = conceptos.map(c => {
+    const soles = Math.round(((c.moneda === 'USD' ? rvNum(c.monto_mensual) * TC : rvNum(c.monto_mensual))) * 100) / 100;
+    const cel = meses.map(mm => {
+      const g = idx[String(c.concepto).trim() + '|' + mm.mes + '|' + mm.ano];
+      const args = `'${esc(c.concepto)}',${soles},${mm.mes},${mm.ano}`;
+      if (g && g.ruta_comprobante) {
+        return `<td style="text-align:center;padding:3px;background:#eaf7ee">
+          <button onclick="viewFile('${esc(g.ruta_comprobante)}')" title="Ver comprobante" style="background:#198c35;color:#fff;border:none;border-radius:4px;cursor:pointer;padding:2px 6px;font-size:11px">📄</button>
+          <button onclick="rvSubirComprobanteMatriz(${args})" title="Reemplazar" style="background:none;border:none;cursor:pointer;font-size:11px;opacity:.6">🔁</button>
+        </td>`;
+      }
+      return `<td style="text-align:center;padding:3px">
+        <button onclick="rvSubirComprobanteMatriz(${args})" title="Subir comprobante" style="background:#eef2f6;border:1px solid #d8dde3;border-radius:4px;cursor:pointer;padding:2px 7px;font-size:11px;color:#607d8b">📤</button>
+      </td>`;
+    }).join('');
+    return `<tr style="border-bottom:1px solid #eef2f6">
+      <td style="padding:5px 8px;position:sticky;left:0;background:#fff;font-weight:600;font-size:11px;white-space:nowrap;z-index:1">${rvEsc(c.concepto)}<div style="font-size:9px;color:#90a4ae;font-weight:400">${rvEsc(c.tipo)} · ${rvMoney(soles)}</div></td>
+      ${cel}
+    </tr>`;
+  }).join('');
+
+  const totalCeldas = conceptos.length * meses.length;
+  const conComprob = Array.isArray(datos) ? datos.filter(g => g.ruta_comprobante).length : 0;
+  card.innerHTML = `
+    <div class="card-title">📎 Comprobantes de Pago Mensuales</div>
+    <div style="font-size:12px;color:#455a64;margin-bottom:10px">Adjunta el PDF del pago de cada gasto fijo, mes por mes (desde el inicio de la operación hasta Julio 2026). <b>${conComprob}</b> de ${totalCeldas} comprobantes cargados. Verde 📄 = ver · 🔁 = reemplazar · 📤 = subir.</div>
+    <div style="overflow:auto;max-height:70vh;border:1px solid #eef2f6;border-radius:8px">
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr>${cab}</tr></thead>
+        <tbody>${filas || `<tr><td style="padding:16px;color:#90a4ae">Sin gastos fijos definidos.</td></tr>`}</tbody>
+      </table>
+    </div>`;
+}
+window.rvRenderMatrizFijos = rvRenderMatrizFijos;
 
 // ══ PLANILLA: plantilla XLS + importación masiva ══
 function rvDescargarPlantillaPlanilla() {
@@ -1815,7 +1905,7 @@ function rvPersistirCompras() {
   if (envolver('renderMesesTable', rvDecorarMeses)) activadas.push('meses-desglose');
   if (envolver('renderCorpTable', rvDecorarCorp)) activadas.push('corporativo');
   if (envolver('renderEcommerce', rvDecorarEcommerce)) activadas.push('ecommerce');
-  if (envolver('renderGastosFijos', () => rvRenderHistorialFijos())) activadas.push('fijos-historial');
+  if (envolver('renderGastosFijos', () => { rvRenderHistorialFijos(); rvRenderMatrizFijos(); })) activadas.push('fijos-historial');
   if (envolver('togglePPEstado', (key) => {
     try {
       if (typeof PP_ESTADOS !== 'undefined' && PP_ESTADOS[key] === 'Pagado') rvRegistrarPagoFijo(key);
