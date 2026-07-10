@@ -2157,10 +2157,18 @@ async function rvCargarGastosDesdeBD() {
     if (!Array.isArray(rows)) return;
     let local = []; try { local = JSON.parse(localStorage.getItem('rv_gastos') || '[]'); } catch (e) {}
     if (rows.length === 0 && local.length > 0) { rvFlushGastos(); return; }
-    const mapped = rvDesdeRaw(rows);
+    let mapped = rvDesdeRaw(rows);
+    // Red de seguridad SOLO ante bloat EXTREMO (bug de multiplicación): si hay
+    // muchísimas copias exactas, colapsa a únicas para no ralentizar la carga.
+    // El umbral alto evita tocar posibles duplicados legítimos (esos se limpian
+    // manualmente con el botón, con confirmación).
+    const col = (typeof rvColapsarGastos === 'function') ? rvColapsarGastos(mapped) : { unicos: mapped, quitados: 0 };
+    const bloatExtremo = col.quitados > 100;
+    if (bloatExtremo) mapped = col.unicos;
     localStorage.setItem('rv_gastos', JSON.stringify(mapped));
     if (typeof gastosLocal !== 'undefined' && Array.isArray(gastosLocal)) { gastosLocal.length = 0; mapped.forEach(m => gastosLocal.push(m)); }
     rvUnicidadGastos();  // garantiza id único por gasto → borrado granular
+    if (bloatExtremo) { rvFlushGastos(); console.warn('[GASTOS-BD] auto-colapsados', col.quitados, 'duplicados exactos (bloat)'); }
     if (typeof renderGastos === 'function') try { renderGastos(); } catch (e) {}
     console.log('[GASTOS-BD] ✓', mapped.length, 'gastos desde la BD');
   } catch (e) { console.warn('[GASTOS-BD]', e.message); }
@@ -2210,29 +2218,42 @@ window.rvGastosDupOcultar = function (list) {
   return out;
 };
 
-// Quita duplicados EXACTOS de gastos (mismo fecha+cat+desc+monto+canal+resp),
-// dejando uno. Marca lápidas persistentes → NO reaparecen al actualizar.
-// Funciona también sobre los gastos base (seed/BD), no solo los del usuario.
+// Colapsa duplicados EXACTOS dentro de una lista de gastos (deja la 1ª copia).
+// Devuelve { unicos, quitados }. BORRADO REAL (no oculta): reduce el tamaño.
+function rvColapsarGastos(list) {
+  const vistos = {}; const unicos = [];
+  list.forEach(x => { const s = rvSigGasto(x); if (!vistos[s]) { vistos[s] = 1; unicos.push(x); } });
+  return { unicos, quitados: list.length - unicos.length };
+}
+// Quita duplicados EXACTOS de gastos (mismo fecha+cat+desc+monto+canal+resp).
+// 1) COLAPSA de verdad rv_gastos (elimina las copias, no solo las oculta).
+// 2) Para duplicados del seed/BD base usa lápidas por firma (no se pueden borrar
+//    del array base). Todo persiste en la BD → no reaparecen al recargar.
 function rvQuitarDuplicadosGastos() {
   const seed = (typeof GASTOS_DATA !== 'undefined') ? GASTOS_DATA : [];
   let local = []; try { local = JSON.parse(localStorage.getItem('rv_gastos') || '[]'); } catch (e) { local = []; }
-  // Lista visible actual: respeta borrados por id y duplicados ya ocultos
-  let all = seed.concat(local).filter(g => !(window.rvGastoEliminado && window.rvGastoEliminado(g.id)));
-  all = window.rvGastosDupOcultar(all);
-  const conteo = {};
-  all.forEach(g => { const s = rvSigGasto(g); conteo[s] = (conteo[s] || 0) + 1; });
+  // 1) Colapsar rv_gastos (borrado real de las copias)
+  const col = rvColapsarGastos(local);
+  // 2) Duplicados restantes entre seed↔local o dentro del seed → lápidas por firma
   const dup = rvGastosDup();
-  let quitar = 0;
-  for (const s in conteo) {
-    if (conteo[s] > 1) { const ex = conteo[s] - 1; dup[s] = (parseInt(dup[s]) || 0) + ex; quitar += ex; }
+  let visibles = seed.filter(g => !(window.rvGastoEliminado && window.rvGastoEliminado(g.id))).concat(col.unicos);
+  visibles = window.rvGastosDupOcultar(visibles);
+  const conteo = {}; visibles.forEach(g => { const s = rvSigGasto(g); conteo[s] = (conteo[s] || 0) + 1; });
+  let porLapida = 0;
+  for (const s in conteo) { if (conteo[s] > 1) { const ex = conteo[s] - 1; dup[s] = (parseInt(dup[s]) || 0) + ex; porLapida += ex; } }
+  const total = col.quitados + porLapida;
+  if (total <= 0) { alert('No hay gastos duplicados exactos.'); return; }
+  if (!confirm('Se encontraron ' + total + ' gastos duplicados exactos.\n\n¿Quitarlos de forma permanente y dejar solo los únicos?')) return;
+  if (col.quitados > 0) {
+    localStorage.setItem('rv_gastos', JSON.stringify(col.unicos));
+    if (typeof gastosLocal !== 'undefined' && Array.isArray(gastosLocal)) { gastosLocal.length = 0; col.unicos.forEach(x => gastosLocal.push(x)); }
   }
-  if (quitar <= 0) { alert('No hay gastos duplicados exactos.'); return; }
-  if (!confirm('Se encontraron ' + quitar + ' gastos duplicados exactos.\n\n¿Quitar los duplicados de forma permanente y dejar solo los únicos?')) return;
-  localStorage.setItem('rv_gastos_dup', JSON.stringify(dup)); // rv_ → se respalda en la BD
+  if (porLapida > 0) localStorage.setItem('rv_gastos_dup', JSON.stringify(dup));
   if (window.rvEmpujarAhora) window.rvEmpujarAhora();
-  rvAuditar('limpiar', 'gastos', 'Quitó ' + quitar + ' duplicados exactos (lápidas persistentes)');
+  if (typeof rvFlushGastos === 'function') rvFlushGastos();
+  rvAuditar('limpiar', 'gastos', 'Colapsó ' + col.quitados + ' + ocultó ' + porLapida + ' duplicados exactos');
   if (typeof renderGastos === 'function') renderGastos();
-  alert('✅ Se quitaron ' + quitar + ' duplicados (permanente).');
+  alert('✅ Se quitaron ' + total + ' duplicados de forma permanente.');
 }
 // Botón "Quitar duplicados" en la página de Gastos
 function rvInyectarBotonDuplicados() {
