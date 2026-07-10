@@ -1722,15 +1722,37 @@ async function rvBorrarFijo(id) {
 // operación (Sep-2025) hasta Julio-2026, con su comprobante de pago en PDF.
 // Se guardan en la tabla gastos_fijos (upsert por mes+año+descripción) y el
 // PDF persiste en MySQL (sobrevive redeploys).
+// Último mes a mostrar (YYYY-MM). Es el MAYOR entre: el guardado por el usuario
+// (rv_fijos_hasta), el mínimo por defecto (2026-07) y el mes real actual (así
+// cuando llega agosto la columna aparece sola, sin tener que agregarla a mano).
+function rvFijosHastaKey() {
+  let stored = ''; try { stored = localStorage.getItem('rv_fijos_hasta') || ''; } catch (e) {}
+  const hoy = new Date();
+  const cur = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0');
+  const cand = ['2026-07', cur];
+  if (/^\d{4}-\d{2}$/.test(stored)) cand.push(stored);
+  return cand.sort().reverse()[0];
+}
 function rvMesesFijos() {
+  const end = rvFijosHastaKey();
+  const ey = parseInt(end.slice(0, 4), 10), em = parseInt(end.slice(5, 7), 10);
   const out = []; let y = 2025, m = 9;
   const NOM = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Set', 'Oct', 'Nov', 'Dic'];
-  while (!(y === 2026 && m === 8)) { // hasta Julio 2026 inclusive
+  while (y < ey || (y === ey && m <= em)) { // desde Sep-2025 hasta el mes tope
     out.push({ mes: m, ano: y, label: NOM[m] + ' ' + String(y).slice(2) });
     m++; if (m > 12) { m = 1; y++; }
   }
   return out;
 }
+// Extiende la matriz un mes más (persistente + multi-dispositivo)
+window.rvAgregarMesFijos = function () {
+  const meses = rvMesesFijos(); const last = meses[meses.length - 1];
+  let m = last.mes + 1, y = last.ano; if (m > 12) { m = 1; y++; }
+  const nuevo = y + '-' + String(m).padStart(2, '0');
+  localStorage.setItem('rv_fijos_hasta', nuevo); // rv_ → se respalda en la BD
+  if (window.rvEmpujarAhora) window.rvEmpujarAhora();
+  rvRenderMatrizFijos();
+};
 window.rvSubirComprobanteMatriz = function (concepto, soles, mes, ano) {
   const input = document.createElement('input');
   input.type = 'file'; input.accept = '.pdf,.xml,.jpg,.jpeg,.png';
@@ -1794,9 +1816,13 @@ async function rvRenderMatrizFijos() {
 
   const totalCeldas = conceptos.length * meses.length;
   const conComprob = Array.isArray(datos) ? datos.filter(g => g.ruta_comprobante).length : 0;
+  const ultimo = meses.length ? meses[meses.length - 1].label : '';
   card.innerHTML = `
-    <div class="card-title">📎 Comprobantes de Pago Mensuales</div>
-    <div style="font-size:12px;color:#455a64;margin-bottom:10px">Adjunta el PDF del pago de cada gasto fijo, mes por mes (desde el inicio de la operación hasta Julio 2026). <b>${conComprob}</b> de ${totalCeldas} comprobantes cargados. Verde 📄 = ver · 🔁 = reemplazar · 📤 = subir.</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <div class="card-title" style="margin:0">📎 Comprobantes de Pago Mensuales</div>
+      <button onclick="rvAgregarMesFijos()" title="Agrega la siguiente columna de mes" style="background:#198c35;color:#fff;border:none;border-radius:7px;cursor:pointer;font-weight:700;padding:8px 14px;font-size:12px">➕ Agregar mes</button>
+    </div>
+    <div style="font-size:12px;color:#455a64;margin:8px 0 10px 0">Adjunta el PDF del pago de cada gasto fijo, mes por mes (desde el inicio de la operación hasta <b>${ultimo}</b>). <b>${conComprob}</b> de ${totalCeldas} comprobantes cargados. Verde 📄 = ver · 🔁 = reemplazar · 📤 = subir. El mes en curso aparece solo.</div>
     <div style="overflow:auto;max-height:70vh;border:1px solid #eef2f6;border-radius:8px">
       <table style="width:100%;border-collapse:collapse">
         <thead><tr>${cab}</tr></thead>
