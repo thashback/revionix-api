@@ -2106,6 +2106,9 @@ async function rvRebuildTxns() {
     else alert('❌ Error al recalcular: ' + e.message);
   } finally {
     rvSyncEnCurso = false;
+    // Ya está el render definitivo (base + extras + proyectos): quitar el loader
+    // del login. Pequeño delay para que los gráficos alcancen a pintarse.
+    setTimeout(rvOcultarCargandoDashboard, 220);
   }
 }
 // Alias usado por el CRUD de proyectos
@@ -2633,6 +2636,7 @@ function rvDecorarPP() {
             USERS[u] = { pass: p, role: rolInline, canal: data.user.canal, name: data.user.nombre, email: '', activo: true };
           }
           inlineDoLogin();
+          rvMostrarCargandoDashboard(); // tapa el render parcial hasta que llegue la data de la BD
           rvAplicarRestriccionesRol();
           setTimeout(async () => { try { await rvCargarTodoDesdeBD(); rvRebuildTxns(); rvActualizarFechaReal(); rvAplicarRestriccionesRol(); rvCargarUsuariosBD(); } catch (e) {} }, 400);
         } else {
@@ -2642,6 +2646,7 @@ function rvDecorarPP() {
         // Servidor no disponible → login interno de respaldo (evita bloqueo total)
         console.warn('[AUTH] Servidor no disponible, usando login local:', e.message);
         inlineDoLogin();
+        rvMostrarCargandoDashboard();
         setTimeout(async () => { try { await rvCargarTodoDesdeBD(); rvRebuildTxns(); rvActualizarFechaReal(); } catch (e2) {} }, 400);
       }
     };
@@ -3203,5 +3208,35 @@ window.loadPlanilla = async function () {
     };
   }
 })();
+
+// ═══════════════════════════════════════════════════════════════
+// LOADER DE LOGIN: evita el "parpadeo" del dashboard. Al entrar se muestra
+// un overlay "Actualizando datos…" que tapa el render parcial (solo seed) y
+// se retira cuando rvRebuildTxns() ya integró ventas/proyectos de la BD.
+// Tope de seguridad: se auto-oculta a los 4.5 s por si la BD tarda.
+// ═══════════════════════════════════════════════════════════════
+function rvMostrarCargandoDashboard() {
+  if (document.getElementById('rv-dash-loading')) return;
+  const ov = document.createElement('div');
+  ov.id = 'rv-dash-loading';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:9998;background:#f4f7fa;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;transition:opacity .28s ease';
+  ov.innerHTML =
+    '<div style="width:44px;height:44px;border:4px solid #d8e2ec;border-top-color:#198c35;border-radius:50%;animation:rvspin .8s linear infinite"></div>' +
+    '<div style="font-size:14px;font-weight:600;color:#0f2540">Actualizando datos…</div>' +
+    '<div style="font-size:11px;color:#78909c">Integrando ventas y proyectos</div>' +
+    '<style>@keyframes rvspin{to{transform:rotate(360deg)}}</style>';
+  document.body.appendChild(ov);
+  clearTimeout(window.__rvDashLoadTimer);
+  window.__rvDashLoadTimer = setTimeout(rvOcultarCargandoDashboard, 4500); // tope de seguridad
+}
+function rvOcultarCargandoDashboard() {
+  clearTimeout(window.__rvDashLoadTimer);
+  const ov = document.getElementById('rv-dash-loading');
+  if (!ov) return;
+  ov.style.opacity = '0';
+  setTimeout(() => { const e = document.getElementById('rv-dash-loading'); if (e) e.remove(); }, 300);
+}
+window.rvMostrarCargandoDashboard = rvMostrarCargandoDashboard;
+window.rvOcultarCargandoDashboard = rvOcultarCargandoDashboard;
 
 console.log('[RV-API] ✓ Módulos API cargados sin conflictos');
