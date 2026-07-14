@@ -2377,6 +2377,45 @@ window.rvGastosDupOcultar = function (list) { return list; }; // no-op (compatib
   try { if (localStorage.getItem('rv_gastos_dup')) localStorage.removeItem('rv_gastos_dup'); } catch (e) {}
 })();
 
+// ── EDICIONES PERSISTENTES DE GASTOS BASE (histórico / seed) ──
+// BUG que corrige: al editar un gasto del histórico, el sistema lo cambiaba en
+// memoria pero NO lo guardaba (GASTOS_DATA se recarga del snapshot en cada
+// arranque) → la descripción escrita se perdía al recargar. Ahora la edición se
+// guarda por id en rv_ediciones_gasto (respaldo en la BD) y se re-aplica al cargar.
+function rvEdicionesGasto() {
+  try { const o = JSON.parse(localStorage.getItem('rv_ediciones_gasto') || '{}'); return (o && typeof o === 'object') ? o : {}; }
+  catch (e) { return {}; }
+}
+window.rvMarcarEdicionGasto = function (id, rec) {
+  if (id == null || !rec) return;
+  const o = rvEdicionesGasto();
+  o[String(id)] = {
+    fecha: rec.fecha, mes: rec.mes, cat: rec.cat, canal: rec.canal,
+    desc: rec.desc, resp: rec.resp, monto: rvNum(rec.monto),
+    tipo_doc: rec.tipo_doc, serie: rec.serie, numero: rec.numero, comentarios: rec.comentarios
+  };
+  localStorage.setItem('rv_ediciones_gasto', JSON.stringify(o)); // rv_ → se respalda en la BD
+  if (window.rvEmpujarAhora) window.rvEmpujarAhora();
+  rvAuditar('editar', 'gastos', 'Gasto histórico id ' + id + ' editado: ' + String(rec.desc || '').slice(0, 40));
+};
+// Re-aplica las ediciones guardadas sobre los gastos base
+function rvAplicarEdicionesGastos() {
+  if (typeof GASTOS_DATA === 'undefined' || !Array.isArray(GASTOS_DATA)) return;
+  const o = rvEdicionesGasto();
+  const n = Object.keys(o).length;
+  if (!n) return;
+  let aplicadas = 0;
+  GASTOS_DATA.forEach(g => {
+    const e = o[String(g.id)];
+    if (!e) return;
+    Object.keys(e).forEach(k => { if (e[k] !== undefined) g[k] = e[k]; });
+    aplicadas++;
+  });
+  console.log('[GASTOS] ✓', aplicadas, 'ediciones persistentes aplicadas a gastos históricos');
+}
+window.rvAplicarEdicionesGastos = rvAplicarEdicionesGastos;
+rvAplicarEdicionesGastos(); // al cargar app.js (GASTOS_DATA ya existe desde el <head>)
+
 // Colapsa duplicados EXACTOS dentro de una lista de gastos (deja la 1ª copia).
 // Devuelve { unicos, quitados }. BORRADO REAL (no oculta): reduce el tamaño.
 function rvColapsarGastos(list) {
