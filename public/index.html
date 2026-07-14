@@ -5671,11 +5671,11 @@
           document.getElementById("gastos-filtro-mes")?.value || "";
         const local_g = JSON.parse(localStorage.getItem("rv_gastos") || "[]");
         const allG = [...seed_g, ...local_g];
-        let gastos = allG.filter(
+        // Solo se ocultan los gastos borrados explícitamente (por id).
+        // NO se filtra por "firma": ese mecanismo ocultaba registros legítimos.
+        const gastos = allG.filter(
           (g) => !(window.rvGastoEliminado && window.rvGastoEliminado(g.id)),
         );
-        // Ocultar duplicados marcados como tal (lápidas persistentes por firma)
-        if (window.rvGastosDupOcultar) gastos = window.rvGastosDupOcultar(gastos);
         const tot = gastos.reduce((s, g) => s + g.monto, 0);
         const mov = gastos
           .filter((g) => ["Movilidad", "Combustible"].includes(g.cat))
@@ -7986,7 +7986,7 @@
     </div>
 
   <!-- Indicador de versión: si NO ves este número, tu navegador tiene caché viejo -->
-  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v56 · 06-Jul</div>
-  <script src="app.js?v=56"></script>
+  <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v57 · 06-Jul</div>
+  <script src="app.js?v=57"></script>
   </body>
 </html>
