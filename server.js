@@ -157,6 +157,15 @@ async function initStorageTable() {
       valor LONGTEXT,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+    // Columna de revisión: base del bloqueo optimista (evita que una pestaña
+    // desactualizada sobrescriba datos más nuevos guardados por otra sesión).
+    try {
+      await conn.query('ALTER TABLE app_storage ADD COLUMN rev BIGINT NOT NULL DEFAULT 0');
+      console.log('✓ Columna app_storage.rev agregada');
+    } catch (e) {
+      if (e.code === 'ER_DUP_FIELDNAME') console.log('✓ Columna app_storage.rev ya existe');
+      else console.error('migrar app_storage.rev:', e.message);
+    }
     conn.release();
     console.log('✓ Tabla app_storage lista');
   } catch (err) {
@@ -475,30 +484,72 @@ app.get('/api/storage', async (req, res) => {
   }
 });
 
+// Revisiones actuales de cada clave (para el bloqueo optimista del cliente)
+app.get('/api/storage/rev', async (req, res) => {
+  try {
+    const conn = await pool.getConnection();
+    const [rows] = await conn.execute('SELECT clave, rev FROM app_storage');
+    conn.release();
+    const out = {};
+    rows.forEach(r => { out[r.clave] = Number(r.rev) || 0; });
+    res.json(out);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 async function guardarStorage(req, res) {
   try {
-    const entries = Object.entries(req.body || {});
-    if (entries.length === 0) return res.json({ guardadas: 0 });
+    const body = Object.assign({}, req.body || {});
+    // __rev = { clave: revisión que el cliente vio al cargar/guardar por última vez }
+    const revsCliente = body.__rev && typeof body.__rev === 'object' ? body.__rev : null;
+    delete body.__rev;
+    const entries = Object.entries(body);
+    if (entries.length === 0) return res.json({ guardadas: 0, conflictos: [] });
+
     const conn = await pool.getConnection();
+    const [cur] = await conn.query('SELECT clave, rev FROM app_storage');
+    const revServidor = {};
+    cur.forEach(r => { revServidor[r.clave] = Number(r.rev) || 0; });
+
+    const conflictos = [];
+    const escritas = [];
+    const revsNuevas = {};
+
     for (const [clave, valor] of entries) {
+      const servRev = revServidor[clave] || 0;
+      // Protección: solo las claves rv_* que YA existen en el servidor.
+      // Un cliente sin __rev (pestaña con código viejo) se trata como desactualizado.
+      if (String(clave).startsWith('rv_') && servRev > 0) {
+        const cliRev = revsCliente ? (Number(revsCliente[clave]) || 0) : -1;
+        if (cliRev < servRev) { conflictos.push(clave); continue; } // NO sobrescribir
+      }
+      const nueva = servRev + 1;
       if (valor === null) {
         await conn.execute('DELETE FROM app_storage WHERE clave = ?', [clave]);
       } else {
         await conn.execute(
-          'INSERT INTO app_storage (clave, valor) VALUES (?, ?) ON DUPLICATE KEY UPDATE valor = VALUES(valor)',
-          [clave, String(valor)]
+          'INSERT INTO app_storage (clave, valor, rev) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE valor = VALUES(valor), rev = VALUES(rev)',
+          [clave, String(valor), nueva]
         );
+        revsNuevas[clave] = nueva;
       }
+      escritas.push([clave, valor]);
     }
     conn.release();
+
+    if (conflictos.length) {
+      console.warn('[STORAGE] escritura RECHAZADA (cliente desactualizado):', conflictos.join(', '));
+    }
+
     // Reflejar los datasets clave en tablas relacionales reales (consultables).
-    // Se espera a que termine para que una recarga inmediata ya vea los cambios.
-    for (const [clave, valor] of entries) {
+    // Solo los que SÍ se escribieron.
+    for (const [clave, valor] of escritas) {
       if (['rv_ventas', 'rv_gastos', 'rv_compras'].includes(clave)) {
         try { await espejarDataset(clave, valor); } catch (e) { console.error('espejarDataset', clave, e.message); }
       }
     }
-    res.json({ guardadas: entries.length });
+    res.json({ guardadas: escritas.length, conflictos, revs: revsNuevas });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

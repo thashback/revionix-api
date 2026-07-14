@@ -547,16 +547,63 @@ async function deletePlanilla(id) {
     pendientes = {};
     const claves = Object.keys(payload);
     if (claves.length === 0) return;
+    // Bloqueo optimista: se envía la revisión que ESTA pestaña conoce de cada
+    // clave. Si el servidor tiene una más nueva (otra sesión guardó después),
+    // rechaza la escritura en vez de dejar que la pisemos.
+    const cuerpo = Object.assign({}, payload);
+    cuerpo.__rev = {};
+    claves.forEach(k => { cuerpo.__rev[k] = (window.RV_REVS && window.RV_REVS[k]) || 0; });
     fetch(`${RV_API}/storage`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(cuerpo)
     })
-      .then(r => {
-        if (r.ok) console.log('[SYNC] ✓ Guardado en BD:', claves.join(', '));
-        else console.error('[SYNC] ✗ Error HTTP', r.status);
+      .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
+      .then(data => {
+        if (data && data.revs) { window.RV_REVS = window.RV_REVS || {}; Object.assign(window.RV_REVS, data.revs); }
+        const conf = (data && data.conflictos) || [];
+        if (conf.length) {
+          console.warn('[SYNC] ⚠ Escritura rechazada (pestaña desactualizada):', conf.join(', '));
+          resolverConflicto(conf);
+        } else {
+          console.log('[SYNC] ✓ Guardado en BD:', claves.join(', '));
+        }
       })
       .catch(err => console.error('[SYNC] ✗', err.message));
+  }
+
+  // Conflicto = esta pestaña tenía datos viejos. En vez de sobrescribir, se
+  // recarga lo más reciente del servidor y se avisa al usuario.
+  let avisando = false;
+  async function resolverConflicto(claves) {
+    try {
+      const [datos, revs] = await Promise.all([
+        fetch(`${RV_API}/storage`).then(r => r.json()),
+        fetch(`${RV_API}/storage/rev`).then(r => r.json())
+      ]);
+      // Escribir con el setItem ORIGINAL para no volver a disparar un push
+      claves.forEach(k => { if (datos[k] != null) setOriginal.call(localStorage, k, datos[k]); });
+      window.RV_REVS = revs || {};
+      // Refrescar los arreglos en memoria y repintar
+      try {
+        if (typeof gastosLocal !== 'undefined' && Array.isArray(gastosLocal)) {
+          const g = JSON.parse(localStorage.getItem('rv_gastos') || '[]');
+          gastosLocal.length = 0; g.forEach(x => gastosLocal.push(x));
+        }
+        if (typeof extraVentas !== 'undefined' && Array.isArray(extraVentas)) {
+          const v = JSON.parse(localStorage.getItem('rv_ventas') || '[]');
+          extraVentas.length = 0; v.forEach(x => extraVentas.push(x));
+        }
+      } catch (e) {}
+      if (typeof rvRebuildTxns === 'function') rvRebuildTxns();
+      if (typeof renderGastos === 'function') { try { renderGastos(); } catch (e) {} }
+      if (!avisando) {
+        avisando = true;
+        const msg = 'Otra sesión guardó cambios más recientes. Se recargaron los datos del servidor para no sobrescribirlos.';
+        if (typeof showToast === 'function') showToast('🔄 ' + msg); else alert(msg);
+        setTimeout(() => { avisando = false; }, 8000);
+      }
+    } catch (e) { console.error('[SYNC] resolverConflicto', e); }
   }
 
   function programar(clave, valor) {
@@ -583,13 +630,17 @@ async function deletePlanilla(id) {
     }
   };
 
-  // Al cerrar la pestaña, enviar lo pendiente sin esperar
+  // Al cerrar la pestaña, enviar lo pendiente sin esperar (con su revisión,
+  // para que el servidor pueda rechazarlo si esta pestaña ya estaba vieja)
   window.addEventListener('beforeunload', () => {
     const claves = Object.keys(pendientes);
     if (claves.length && navigator.sendBeacon) {
+      const cuerpo = Object.assign({}, pendientes);
+      cuerpo.__rev = {};
+      claves.forEach(k => { cuerpo.__rev[k] = (window.RV_REVS && window.RV_REVS[k]) || 0; });
       navigator.sendBeacon(
         `${RV_API}/storage`,
-        new Blob([JSON.stringify(pendientes)], { type: 'application/json' })
+        new Blob([JSON.stringify(cuerpo)], { type: 'application/json' })
       );
       pendientes = {};
     }
