@@ -3405,7 +3405,11 @@
       // ═══════════════════════════════════════════════════════════════
       // USERS / AUTH
       // ═══════════════════════════════════════════════════════════════
-      // USERS: loaded from localStorage or defaults (admin only)
+      // USERS: caché local en memoria de los usuarios ya verificados por el
+      // servidor en esta sesión (ver override de doLogin en app.js). Nunca
+      // contiene credenciales por defecto: la autenticación real vive en la
+      // BD (server.js, contraseñas con hash scrypt). No usar como fuente de
+      // verdad para permisos — el servidor es quien decide con cada request.
       function getUsers() {
         const stored = localStorage.getItem("rv_users");
         if (stored) {
@@ -3413,72 +3417,7 @@
             return JSON.parse(stored);
           } catch (e) {}
         }
-        return {
-          admin: {
-            pass: "R3v10n1x#2026",
-            role: "admin",
-            canal: "*",
-            name: "Administrador General",
-            email: "admin@revionix.pe",
-            activo: true,
-          },
-          compuplaza: {
-            pass: "Cpz2026#",
-            role: "tienda",
-            canal: "Compuplaza",
-            name: "Encargado Compuplaza",
-            email: "compuplaza@revionix.pe",
-            activo: true,
-          },
-          malvitec: {
-            pass: "Mlv2026#",
-            role: "tienda",
-            canal: "Malvitec",
-            name: "Encargado Malvitec",
-            email: "malvitec@revionix.pe",
-            activo: true,
-          },
-          compupalace: {
-            pass: "Cpl2026#",
-            role: "tienda",
-            canal: "Compupalace",
-            name: "Encargado Compupalace",
-            email: "compupalace@revionix.pe",
-            activo: true,
-          },
-          corporativo: {
-            pass: "Corp2026#",
-            role: "tienda",
-            canal: "Corporativo",
-            name: "Ejecutivo Corporativo",
-            email: "corporativo@revionix.pe",
-            activo: true,
-          },
-          sanisidro: {
-            pass: "Si2026#",
-            role: "tienda",
-            canal: "San Isidro",
-            name: "Encargado San Isidro",
-            email: "sanisidro@revionix.pe",
-            activo: true,
-          },
-          visor: {
-            pass: "V1s0r2026#",
-            role: "visor",
-            canal: "*",
-            name: "Solo Lectura",
-            email: "visor@revionix.pe",
-            activo: true,
-          },
-          ccervep: {
-            pass: "ccervep2026@",
-            role: "visor",
-            canal: "*",
-            name: "Cervep — Solo Lectura",
-            email: "ccervep@revionix.pe",
-            activo: true,
-          },
-        };
+        return {};
       }
       let USERS = getUsers();
       function saveUsers() {

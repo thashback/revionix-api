@@ -7,6 +7,22 @@
 const RV_API = `${window.location.protocol}//${window.location.host}/api`;
 console.log('[RV-API] Módulos API inicializando. Base:', RV_API);
 
+// Inyecta el token de sesión (JWT) en toda llamada a la API y desloguea si expiró
+let rvAuthToken = localStorage.getItem('rv_auth_token') || '';
+const _rvFetch = window.fetch;
+window.fetch = function (url, opts = {}) {
+  const isApiCall = typeof url === 'string' && url.startsWith(RV_API) && !url.includes('/auth/login');
+  if (isApiCall && rvAuthToken) {
+    opts.headers = { ...(opts.headers || {}), Authorization: `Bearer ${rvAuthToken}` };
+  }
+  return _rvFetch(url, opts).then((res) => {
+    if (isApiCall && res.status === 401 && typeof window.doLogout === 'function') {
+      window.doLogout();
+    }
+    return res;
+  });
+};
+
 // ── Helpers ──────────────────────────────────────────────────────
 // MySQL devuelve DECIMAL como string ("5000.00") — siempre parsear.
 function rvNum(v) {
@@ -2515,7 +2531,9 @@ function rvSyncUsuariosAPI() {
     fetch(`${RV_API}/auth/users`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: username, password: u.pass, nombre: u.name, role: u.role, canal: u.canal, activo: u.activo !== false })
-    }).catch(() => {});
+    })
+      .then(() => { delete u.pass; try { saveUsers(); } catch (e) {} })
+      .catch(() => {});
   });
 }
 // Trae los usuarios de la BD a la lista local (USERS) para que la pantalla de
@@ -2806,7 +2824,9 @@ function rvDecorarPP() {
           body: JSON.stringify({ username: u, password: p })
         });
         const data = await res.json();
-        if (data && data.ok) {
+        if (data && data.ok && data.token) {
+          rvAuthToken = data.token;
+          localStorage.setItem('rv_auth_token', rvAuthToken);
           window.RV_ROL_REAL = data.user.role;
           // Inyectar el usuario ya verificado para que el flujo interno prosiga.
           // 'operaciones' edita como admin (para ver botones de editar/borrar).
@@ -2814,9 +2834,13 @@ function rvDecorarPP() {
             // 'operaciones' y 'pipeline' entran como admin interno (para ver los
             // botones de editar/guardar); la restricción real se aplica por RV_ROL_REAL.
             const rolInline = (data.user.role === 'operaciones' || data.user.role === 'pipeline') ? 'admin' : data.user.role;
+            // 'pass' solo se setea para que la validación interna de inlineDoLogin
+            // pase (ya fue verificada contra el servidor); se borra apenas se usa,
+            // para que nunca quede persistida en localStorage vía saveUsers().
             USERS[u] = { pass: p, role: rolInline, canal: data.user.canal, name: data.user.nombre, email: '', activo: true };
           }
           inlineDoLogin();
+          if (typeof USERS !== 'undefined' && USERS[u]) delete USERS[u].pass;
           rvMostrarCargandoDashboard(); // tapa el render parcial hasta que llegue la data de la BD
           rvAplicarRestriccionesRol();
           setTimeout(async () => { try { await rvCargarTodoDesdeBD(); rvRebuildTxns(); rvActualizarFechaReal(); rvAplicarRestriccionesRol(); rvCargarUsuariosBD(); } catch (e) {} }, 400);
@@ -2824,12 +2848,20 @@ function rvDecorarPP() {
           if (errEl) errEl.textContent = (data && data.error) || 'Usuario o contraseña incorrectos';
         }
       } catch (e) {
-        // Servidor no disponible → login interno de respaldo (evita bloqueo total)
-        console.warn('[AUTH] Servidor no disponible, usando login local:', e.message);
-        inlineDoLogin();
-        rvMostrarCargandoDashboard();
-        setTimeout(async () => { try { await rvCargarTodoDesdeBD(); rvRebuildTxns(); rvActualizarFechaReal(); } catch (e2) {} }, 400);
+        // Servidor no disponible: no hay respaldo local (evita bypass de autenticación)
+        console.error('[AUTH] Servidor no disponible:', e.message);
+        if (errEl) errEl.textContent = 'No se pudo conectar con el servidor. Intenta de nuevo.';
       }
+    };
+  }
+
+  // Logout → limpia el token de sesión
+  if (typeof window.doLogout === 'function') {
+    const inlineDoLogout = window.doLogout;
+    window.doLogout = function () {
+      rvAuthToken = '';
+      localStorage.removeItem('rv_auth_token');
+      return inlineDoLogout();
     };
   }
 
