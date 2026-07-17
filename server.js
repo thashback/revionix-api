@@ -4,11 +4,28 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const NODE_ENV = process.env.NODE_ENV || 'production';
+
+// ═══════════════════════════════════════════════════════════════
+// AUTENTICACIÓN DE SESIÓN (JWT)
+// ═══════════════════════════════════════════════════════════════
+if (!process.env.JWT_SECRET && NODE_ENV === 'production') {
+  console.error('✗ Falta JWT_SECRET en .env — obligatorio en producción. Abortando.');
+  process.exit(1);
+}
+const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
+if (!process.env.JWT_SECRET) {
+  console.warn('⚠️  JWT_SECRET no definido: usando uno generado solo para esta sesión (dev).');
+}
+const TOKEN_TTL = '12h';
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000')
+  .split(',').map(s => s.trim()).filter(Boolean);
 
 // Parse DATABASE_URL or use individual env vars
 let dbConfig;
@@ -95,12 +112,60 @@ const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
+
+// ═══════════════════════════════════════════════════════════════
+// AUTENTICACIÓN: protege TODO /api/* salvo login y health check.
+// Registrado antes de cualquier ruta /api/* para que ninguna quede afuera.
+// ═══════════════════════════════════════════════════════════════
+function requireAuth(req, res, next) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) return res.status(401).json({ error: 'Token requerido' });
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch (e) {
+    return res.status(401).json({ error: 'Token inválido o expirado' });
+  }
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Requiere rol admin' });
+  }
+  next();
+}
+
+// 'visor' es de solo lectura; antes esto solo se ocultaba en la UI, no se
+// exigía en el servidor (con el token de un visor se podía escribir igual).
+function blockVisorWrites(req, res, next) {
+  if (req.user && req.user.role === 'visor' && req.method !== 'GET') {
+    return res.status(403).json({ error: 'Usuario de solo lectura' });
+  }
+  next();
+}
+
+app.use('/api', (req, res, next) => {
+  if (req.path === '/auth/login' || req.path === '/health') return next();
+  return requireAuth(req, res, next);
+}, blockVisorWrites);
+app.use('/api/auth/users', requireAdmin);
+
+// NOTA: /uploads/:nombre (comprobantes) queda sin requerir token a propósito.
+// viewFile() en app.js los abre con window.open()/<img>/<a href> directos,
+// que no pueden mandar el header Authorization; protegerlo rompería ver
+// PDFs/imágenes/XML. Para cerrar esto de verdad hace falta un esquema de URL
+// firmada con expiración (o pasar el token por query string), tocando cada
+// sitio que arma la ruta en app.js — requiere probarlo con datos reales.
 
 // no-store en html/js: el navegador NUNCA guarda copia, siempre pide la última
 app.use(express.static(path.join(__dirname, 'public'), {
@@ -385,7 +450,8 @@ app.post('/api/auth/login', async (req, res) => {
     const u = rows[0];
     if (u.activo === 0) return res.json({ ok: false, error: 'Usuario desactivado' });
     if (!verifyPass(password, u.salt, u.pass_hash)) return res.json({ ok: false, error: 'Usuario o contraseña incorrectos' });
-    res.json({ ok: true, user: { username: u.username, nombre: u.nombre, role: u.role, canal: u.canal } });
+    const token = jwt.sign({ sub: u.username, role: u.role, canal: u.canal }, JWT_SECRET, { expiresIn: TOKEN_TTL });
+    res.json({ ok: true, token, user: { username: u.username, nombre: u.nombre, role: u.role, canal: u.canal } });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
