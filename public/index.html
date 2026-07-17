@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>REVIONIX — Sistema de Gestión</title>
+    <link rel="icon" type="image/png" href="img/logo-revionix.png" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script>
@@ -124,16 +125,10 @@
         text-align: center;
         margin-bottom: 32px;
       }
-      .login-logo h1 {
-        font-size: 22px;
-        font-weight: 700;
-        color: var(--c-navy);
-        letter-spacing: 1px;
-      }
-      .login-logo p {
-        font-size: 12px;
-        color: var(--c-gray);
-        margin-top: 4px;
+      .login-logo img {
+        width: 100%;
+        max-width: 280px;
+        height: auto;
       }
       .login-form label {
         display: block;
@@ -234,6 +229,11 @@
         position: sticky;
         top: 0;
         z-index: 100;
+      }
+      .header-logo {
+        height: 30px;
+        width: auto;
+        filter: brightness(0) invert(1);
       }
       .header h1 {
         color: #fff;
@@ -1130,8 +1130,7 @@
     <div id="login-screen">
       <div class="login-card">
                 <div class="login-logo">
-          <h1>REVIONIX</h1>
-          <p>Sistema de Gestión Comercial</p>
+          <img src="img/logo-revionix.png" alt="REVIONIX — Conectamos tu mundo. Protegemos tu futuro." />
         </div>
         <div class="login-form">
           <label>Usuario</label>
@@ -1157,7 +1156,7 @@
     <!-- APP -->
     <div id="app">
       <div class="header">
-                <h1>REVIONIX S.A.C.</h1>
+                <img src="img/logo-revionix.png" alt="REVIONIX" class="header-logo" />
         <span class="header-user" id="hdr-user"></span>
         <span class="header-badge" id="hdr-badge"></span>
         <span
