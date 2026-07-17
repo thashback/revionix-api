@@ -2827,6 +2827,9 @@ function rvDecorarPP() {
         if (data && data.ok && data.token) {
           rvAuthToken = data.token;
           localStorage.setItem('rv_auth_token', rvAuthToken);
+          // Recién ahora hay token: recarga SEED/app_storage/revisiones del
+          // servidor (antes fallaban con 401 porque corrían sin login).
+          if (typeof window.rvCargarDatosServidor === 'function') window.rvCargarDatosServidor();
           window.RV_ROL_REAL = data.user.role;
           // Inyectar el usuario ya verificado para que el flujo interno prosiga.
           // 'operaciones' edita como admin (para ver botones de editar/borrar).

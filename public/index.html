@@ -9,53 +9,63 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script>
       // ═══ DATOS PRECARGADOS DESDE LA BASE DE DATOS (seed_snapshot) ═══
-      // Se cargan ANTES de que arranque el sistema. Reemplazan a los arrays que
-      // antes vivían dentro del HTML. Fuente única: la base de datos.
+      // Y ═══ CARGA DESDE MySQL — EL SERVIDOR ES LA FUENTE DE VERDAD ═══
+      // Antes esto corría sin autenticar, apenas se abría la página (antes de
+      // cualquier login). Ahora la API exige sesión, así que se convirtió en
+      // una función que app.js llama recién despues de loguearse, mandando el
+      // token guardado en localStorage. Mismo comportamiento, solo que
+      // disparado en el momento correcto.
       window.__SEED = {};
-      try {
-        var _sx = new XMLHttpRequest();
-        _sx.open("GET", "/api/seed-all", false);
-        _sx.send(null);
-        if (_sx.status === 200) { window.__SEED = JSON.parse(_sx.responseText) || {}; }
-        console.log("[SEED] ✓ precargados desde la BD:", Object.keys(window.__SEED).join(", "));
-      } catch (e) {
-        console.warn("[SEED] no se pudo cargar del servidor:", e.message);
-      }
-    </script>
-    <script>
-      // ═══ CARGA DESDE MySQL — EL SERVIDOR ES LA FUENTE DE VERDAD ═══
-      // Cada equipo carga los datos del servidor al abrir, así lo que sube una
-      // computadora se ve en las demás (multi-dispositivo). Las claves locales
-      // que aún NO están en el servidor se conservan (se subirán enseguida).
-      // Los cambios se guardan en el servidor de inmediato, por eso no se revierte.
       window.RV_SERVER_KEYS = [];
-      try {
-        var _rvXhr = new XMLHttpRequest();
-        _rvXhr.open("GET", "/api/storage", false);
-        _rvXhr.send(null);
-        if (_rvXhr.status === 200) {
-          var _rvData = JSON.parse(_rvXhr.responseText);
-          for (var _rvK in _rvData) {
-            localStorage.setItem(_rvK, _rvData[_rvK]); // servidor gana
-            window.RV_SERVER_KEYS.push(_rvK);
-          }
-          console.log("[SYNC] ✓ Datos cargados del servidor:", window.RV_SERVER_KEYS.join(", ") || "(servidor vacío)");
-        }
-      } catch (e) {
-        console.warn("[SYNC] Servidor no disponible, usando datos locales:", e.message);
-      }
-      // Revisiones por clave: base del bloqueo optimista. Si esta pestaña se
-      // queda desactualizada, el servidor rechazará sus escrituras en vez de
-      // dejar que pise datos más nuevos guardados por otra sesión.
       window.RV_REVS = {};
-      try {
-        var _rvRev = new XMLHttpRequest();
-        _rvRev.open("GET", "/api/storage/rev", false);
-        _rvRev.send(null);
-        if (_rvRev.status === 200) window.RV_REVS = JSON.parse(_rvRev.responseText) || {};
-      } catch (e) {
-        console.warn("[SYNC] no se pudieron leer las revisiones:", e.message);
-      }
+      window.rvCargarDatosServidor = function () {
+        var _tok = null;
+        try { _tok = localStorage.getItem('rv_auth_token'); } catch (e) {}
+        var _authHeader = _tok ? { Authorization: 'Bearer ' + _tok } : {};
+
+        try {
+          var _sx = new XMLHttpRequest();
+          _sx.open("GET", "/api/seed-all", false);
+          if (_tok) _sx.setRequestHeader('Authorization', 'Bearer ' + _tok);
+          _sx.send(null);
+          if (_sx.status === 200) { window.__SEED = JSON.parse(_sx.responseText) || {}; }
+          console.log("[SEED] ✓ precargados desde la BD:", Object.keys(window.__SEED).join(", "));
+        } catch (e) {
+          console.warn("[SEED] no se pudo cargar del servidor:", e.message);
+        }
+
+        try {
+          var _rvXhr = new XMLHttpRequest();
+          _rvXhr.open("GET", "/api/storage", false);
+          if (_tok) _rvXhr.setRequestHeader('Authorization', 'Bearer ' + _tok);
+          _rvXhr.send(null);
+          if (_rvXhr.status === 200) {
+            var _rvData = JSON.parse(_rvXhr.responseText);
+            window.RV_SERVER_KEYS = [];
+            for (var _rvK in _rvData) {
+              localStorage.setItem(_rvK, _rvData[_rvK]); // servidor gana
+              window.RV_SERVER_KEYS.push(_rvK);
+            }
+            console.log("[SYNC] ✓ Datos cargados del servidor:", window.RV_SERVER_KEYS.join(", ") || "(servidor vacío)");
+          }
+        } catch (e) {
+          console.warn("[SYNC] Servidor no disponible, usando datos locales:", e.message);
+        }
+
+        try {
+          var _rvRev = new XMLHttpRequest();
+          _rvRev.open("GET", "/api/storage/rev", false);
+          if (_tok) _rvRev.setRequestHeader('Authorization', 'Bearer ' + _tok);
+          _rvRev.send(null);
+          if (_rvRev.status === 200) window.RV_REVS = JSON.parse(_rvRev.responseText) || {};
+        } catch (e) {
+          console.warn("[SYNC] no se pudieron leer las revisiones:", e.message);
+        }
+      };
+      // Intento inicial: funciona si ya había un token guardado (ej. F5 en
+      // medio de una sesión). Si todavía no hay login, falla silencioso
+      // (401) y app.js la vuelve a llamar apenas se loguea.
+      window.rvCargarDatosServidor();
     </script>
     <style>
       * {
