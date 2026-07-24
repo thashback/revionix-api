@@ -62,10 +62,13 @@
           console.warn("[SYNC] no se pudieron leer las revisiones:", e.message);
         }
       };
-      // Intento inicial: funciona si ya había un token guardado (ej. F5 en
-      // medio de una sesión). Si todavía no hay login, falla silencioso
-      // (401) y app.js la vuelve a llamar apenas se loguea.
-      window.rvCargarDatosServidor();
+      // Intento inicial: SOLO si ya hay un token guardado (ej. F5 en medio de
+      // una sesión). Sin token no tiene sentido intentar — siempre da 401 — y
+      // como son llamadas síncronas (bloquean la página entera mientras
+      // esperan respuesta), evitamos congelar la pantalla de login sin motivo.
+      try {
+        if (localStorage.getItem('rv_auth_token')) window.rvCargarDatosServidor();
+      } catch (e) {}
     </script>
     <style>
       * {

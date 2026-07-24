@@ -663,19 +663,24 @@ async function deletePlanilla(id) {
   });
 
   // Migración inicial: datos locales que el servidor aún no tiene
-  // (primera vez tras activar la sincronización)
-  const clavesServidor = window.RV_SERVER_KEYS || [];
-  const migrar = {};
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (k && k.startsWith(PREFIJO) && !clavesServidor.includes(k)) {
-      migrar[k] = localStorage.getItem(k);
+  // (primera vez tras activar la sincronización). Sin token todavía (recién
+  // cargó la página, nadie logueado) esto siempre fallaría con 401 — se
+  // saltea y queda pendiente para la próxima vez que corra esta función
+  // (justo después del login, cuando rvAuthToken ya existe).
+  if (localStorage.getItem('rv_auth_token')) {
+    const clavesServidor = window.RV_SERVER_KEYS || [];
+    const migrar = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(PREFIJO) && !clavesServidor.includes(k)) {
+        migrar[k] = localStorage.getItem(k);
+      }
     }
-  }
-  if (Object.keys(migrar).length) {
-    console.log('[SYNC] Migrando datos locales a BD:', Object.keys(migrar).join(', '));
-    pendientes = migrar;
-    empujar();
+    if (Object.keys(migrar).length) {
+      console.log('[SYNC] Migrando datos locales a BD:', Object.keys(migrar).join(', '));
+      pendientes = migrar;
+      empujar();
+    }
   }
 
   console.log('[SYNC] ✓ Respaldo automático en BD activo');
