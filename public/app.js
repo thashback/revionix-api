@@ -7,17 +7,24 @@
 const RV_API = `${window.location.protocol}//${window.location.host}/api`;
 console.log('[RV-API] Módulos API inicializando. Base:', RV_API);
 
-// Inyecta el token de sesión (JWT) en toda llamada a la API y desloguea si expiró
-let rvAuthToken = localStorage.getItem('rv_auth_token') || '';
+// Inyecta el token de sesión (JWT) en toda llamada a la API y desloguea si expiró.
+// La clave NO lleva el prefijo 'rv_' a propósito: ese prefijo lo intercepta la
+// capa de sincronización (initSyncBD), que subiría el token al servidor y, peor,
+// dispararía un PUT /api/storage en cada logout → 401 → logout → bucle infinito.
+let rvAuthToken = localStorage.getItem('revionix_auth_token') || '';
 const _rvFetch = window.fetch;
+let rvDeslogueando = false;
 window.fetch = function (url, opts = {}) {
   const isApiCall = typeof url === 'string' && url.startsWith(RV_API) && !url.includes('/auth/login');
   if (isApiCall && rvAuthToken) {
     opts.headers = { ...(opts.headers || {}), Authorization: `Bearer ${rvAuthToken}` };
   }
   return _rvFetch(url, opts).then((res) => {
-    if (isApiCall && res.status === 401 && typeof window.doLogout === 'function') {
-      window.doLogout();
+    // Solo desloguea si había sesión, y nunca de forma reentrante: si el propio
+    // logout provoca otra llamada que devuelve 401, no debe reiniciar el ciclo.
+    if (isApiCall && res.status === 401 && rvAuthToken && !rvDeslogueando && typeof window.doLogout === 'function') {
+      rvDeslogueando = true;
+      try { window.doLogout(); } finally { setTimeout(() => { rvDeslogueando = false; }, 1000); }
     }
     return res;
   });
@@ -667,7 +674,7 @@ async function deletePlanilla(id) {
   // cargó la página, nadie logueado) esto siempre fallaría con 401 — se
   // saltea y queda pendiente para la próxima vez que corra esta función
   // (justo después del login, cuando rvAuthToken ya existe).
-  if (localStorage.getItem('rv_auth_token')) {
+  if (localStorage.getItem('revionix_auth_token')) {
     const clavesServidor = window.RV_SERVER_KEYS || [];
     const migrar = {};
     for (let i = 0; i < localStorage.length; i++) {
@@ -2831,7 +2838,7 @@ function rvDecorarPP() {
         const data = await res.json();
         if (data && data.ok && data.token) {
           rvAuthToken = data.token;
-          localStorage.setItem('rv_auth_token', rvAuthToken);
+          localStorage.setItem('revionix_auth_token', rvAuthToken);
           // Recién ahora hay token: recarga SEED/app_storage/revisiones del
           // servidor (antes fallaban con 401 porque corrían sin login).
           if (typeof window.rvCargarDatosServidor === 'function') window.rvCargarDatosServidor();
@@ -2868,7 +2875,7 @@ function rvDecorarPP() {
     const inlineDoLogout = window.doLogout;
     window.doLogout = function () {
       rvAuthToken = '';
-      localStorage.removeItem('rv_auth_token');
+      localStorage.removeItem('revionix_auth_token');
       return inlineDoLogout();
     };
   }

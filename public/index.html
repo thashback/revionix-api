@@ -20,7 +20,7 @@
       window.RV_REVS = {};
       window.rvCargarDatosServidor = function () {
         var _tok = null;
-        try { _tok = localStorage.getItem('rv_auth_token'); } catch (e) {}
+        try { _tok = localStorage.getItem('revionix_auth_token'); } catch (e) {}
         var _authHeader = _tok ? { Authorization: 'Bearer ' + _tok } : {};
 
         try {
@@ -67,7 +67,7 @@
       // como son llamadas síncronas (bloquean la página entera mientras
       // esperan respuesta), evitamos congelar la pantalla de login sin motivo.
       try {
-        if (localStorage.getItem('rv_auth_token')) window.rvCargarDatosServidor();
+        if (localStorage.getItem('revionix_auth_token')) window.rvCargarDatosServidor();
       } catch (e) {}
     </script>
     <style>
