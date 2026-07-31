@@ -394,15 +394,12 @@ function verifyPass(password, salt, hash) {
   } catch (e) { return false; }
 }
 
+// Solo metadatos: nombre, rol y canal. Las contraseñas NO viven en el código
+// (antes estaban aquí en texto plano, en un repo público). La siembra usa
+// SEED_ADMIN_PASSWORD y solo crea el admin; el resto de cuentas se dan de alta
+// desde la pantalla de Usuarios, que ya guarda la contraseña con hash.
 const USUARIOS_DEFAULT = [
-  { u: 'admin', p: 'R3v10n1x#2026', n: 'Administrador General', role: 'admin', canal: '*' },
-  { u: 'compuplaza', p: 'Cpz2026#', n: 'Encargado Compuplaza', role: 'tienda', canal: 'Compuplaza' },
-  { u: 'malvitec', p: 'Mlv2026#', n: 'Encargado Malvitec', role: 'tienda', canal: 'Malvitec' },
-  { u: 'compupalace', p: 'Cpl2026#', n: 'Encargado Compupalace', role: 'tienda', canal: 'Compupalace' },
-  { u: 'corporativo', p: 'Corp2026#', n: 'Ejecutivo Corporativo', role: 'tienda', canal: 'Corporativo' },
-  { u: 'sanisidro', p: 'Si2026#', n: 'Encargado San Isidro', role: 'tienda', canal: 'San Isidro' },
-  { u: 'visor', p: 'V1s0r2026#', n: 'Solo Lectura', role: 'visor', canal: '*' },
-  { u: 'ccervep', p: 'ccervep2026@', n: 'Cervep — Solo Lectura', role: 'visor', canal: '*' }
+  { u: 'admin', n: 'Administrador General', role: 'admin', canal: '*' }
 ];
 
 async function initUsuariosTable() {
@@ -420,14 +417,20 @@ async function initUsuariosTable() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
     const [rows] = await conn.query('SELECT COUNT(*) AS c FROM usuarios');
     if (rows[0].c === 0) {
-      for (const d of USUARIOS_DEFAULT) {
-        const { salt, hash } = hashPass(d.p);
-        await conn.execute(
-          'INSERT INTO usuarios (username, salt, pass_hash, nombre, role, canal, activo) VALUES (?, ?, ?, ?, ?, ?, 1)',
-          [d.u, salt, hash, d.n, d.role, d.canal]
-        );
+      const seedPass = process.env.SEED_ADMIN_PASSWORD;
+      if (!seedPass) {
+        console.warn('⚠️  Tabla usuarios vacia y falta SEED_ADMIN_PASSWORD: no se sembro ningun usuario.');
+        console.warn('    Define SEED_ADMIN_PASSWORD en las variables de entorno y reinicia para crear el admin.');
+      } else {
+        for (const d of USUARIOS_DEFAULT) {
+          const { salt, hash } = hashPass(seedPass);
+          await conn.execute(
+            'INSERT INTO usuarios (username, salt, pass_hash, nombre, role, canal, activo) VALUES (?, ?, ?, ?, ?, ?, 1)',
+            [d.u, salt, hash, d.n, d.role, d.canal]
+          );
+        }
+        console.log('✓ Usuario admin inicial sembrado desde SEED_ADMIN_PASSWORD');
       }
-      console.log('✓ Usuarios por defecto sembrados (' + USUARIOS_DEFAULT.length + ')');
     }
     conn.release();
     console.log('✓ Tabla usuarios lista');
