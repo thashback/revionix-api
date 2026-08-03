@@ -29,6 +29,14 @@
           if (_tok) _sx.setRequestHeader('Authorization', 'Bearer ' + _tok);
           _sx.send(null);
           if (_sx.status === 200) { window.__SEED = JSON.parse(_sx.responseText) || {}; }
+          // Token vencido/invalido: se limpia la sesion para caer en el login
+          // en vez de entrar con la aplicacion vacia.
+          if (_sx.status === 401 && _tok) {
+            localStorage.removeItem('revionix_auth_token');
+            localStorage.removeItem('revionix_auth_user');
+            console.warn("[AUTH] Sesion vencida: hay que iniciar sesion de nuevo.");
+            return;
+          }
           console.log("[SEED] ✓ precargados desde la BD:", Object.keys(window.__SEED).join(", "));
         } catch (e) {
           console.warn("[SEED] no se pudo cargar del servidor:", e.message);

@@ -2820,9 +2820,14 @@ function rvDecorarPP() {
     };
   }
 
+  // Referencia al login interno del HTML, para poder reutilizarlo al restaurar
+  // la sesión tras una recarga (ver rvRestaurarSesion más abajo).
+  let inlineDoLoginRef = null;
+
   // Login → autenticación REAL contra la BD (contraseñas con hash en el servidor)
   if (typeof window.doLogin === 'function') {
     const inlineDoLogin = window.doLogin;
+    inlineDoLoginRef = inlineDoLogin;
     window.doLogin = async function () {
       const uEl = document.getElementById('login-user');
       const pEl = document.getElementById('login-pass');
@@ -2839,26 +2844,18 @@ function rvDecorarPP() {
         if (data && data.ok && data.token) {
           rvAuthToken = data.token;
           localStorage.setItem('revionix_auth_token', rvAuthToken);
-          // Recién ahora hay token: recarga SEED/app_storage/revisiones del
-          // servidor (antes fallaban con 401 porque corrían sin login).
-          if (typeof window.rvCargarDatosServidor === 'function') window.rvCargarDatosServidor();
-          window.RV_ROL_REAL = data.user.role;
-          // Inyectar el usuario ya verificado para que el flujo interno prosiga.
-          // 'operaciones' edita como admin (para ver botones de editar/borrar).
-          if (typeof USERS !== 'undefined') {
-            // 'operaciones' y 'pipeline' entran como admin interno (para ver los
-            // botones de editar/guardar); la restricción real se aplica por RV_ROL_REAL.
-            const rolInline = (data.user.role === 'operaciones' || data.user.role === 'pipeline') ? 'admin' : data.user.role;
-            // 'pass' solo se setea para que la validación interna de inlineDoLogin
-            // pase (ya fue verificada contra el servidor); se borra apenas se usa,
-            // para que nunca quede persistida en localStorage vía saveUsers().
-            USERS[u] = { pass: p, role: rolInline, canal: data.user.canal, name: data.user.nombre, email: '', activo: true };
-          }
-          inlineDoLogin();
-          if (typeof USERS !== 'undefined' && USERS[u]) delete USERS[u].pass;
-          rvMostrarCargandoDashboard(); // tapa el render parcial hasta que llegue la data de la BD
-          rvAplicarRestriccionesRol();
-          setTimeout(async () => { try { await rvCargarTodoDesdeBD(); rvRebuildTxns(); rvActualizarFechaReal(); rvAplicarRestriccionesRol(); rvCargarUsuariosBD(); } catch (e) {} }, 400);
+          localStorage.setItem('revionix_auth_user', JSON.stringify({
+            u: u, role: data.user.role, canal: data.user.canal, nombre: data.user.nombre
+          }));
+          // Recargar la página en vez de continuar aquí. Motivo: GASTOS_DATA,
+          // TXNS_DATA, COMPRAS_DATA y SEED son `const` que se evalúan desde
+          // window.__SEED cuando el HTML se parsea. Si el seed llega después
+          // del login, esas constantes ya quedaron fijadas en vacío y NO se
+          // actualizan: el histórico desaparece. Al recargar, el script del
+          // <head> ya encuentra el token, carga el seed y app_storage antes de
+          // que se evalúen, y la sesión se restaura sola (ver rvRestaurarSesion).
+          location.reload();
+          return;
         } else {
           if (errEl) errEl.textContent = (data && data.error) || 'Usuario o contraseña incorrectos';
         }
@@ -2876,9 +2873,48 @@ function rvDecorarPP() {
     window.doLogout = function () {
       rvAuthToken = '';
       localStorage.removeItem('revionix_auth_token');
+      localStorage.removeItem('revionix_auth_user');
       return inlineDoLogout();
     };
   }
+
+  // Restaura la sesión tras la recarga posterior al login (y en cada F5), sin
+  // volver a pedir credenciales: el token ya fue emitido por el servidor y el
+  // seed ya se cargó en el <head>. Si el token está vencido, las llamadas a la
+  // API devuelven 401 y el interceptor de fetch cierra la sesión solo.
+  function rvRestaurarSesion() {
+    if (typeof inlineDoLoginRef !== 'function') return;
+    const tok = localStorage.getItem('revionix_auth_token');
+    const raw = localStorage.getItem('revionix_auth_user');
+    if (!tok || !raw) return;
+    let info; try { info = JSON.parse(raw); } catch (e) { return; }
+    if (!info || !info.u) return;
+
+    const SENTINELA = '__sesion_restaurada__';
+    const rolInline = (info.role === 'operaciones' || info.role === 'pipeline') ? 'admin' : info.role;
+    if (typeof USERS !== 'undefined') {
+      USERS[info.u] = { pass: SENTINELA, role: rolInline, canal: info.canal, name: info.nombre, email: '', activo: true };
+    }
+    const uEl = document.getElementById('login-user');
+    const pEl = document.getElementById('login-pass');
+    if (uEl) uEl.value = info.u;
+    if (pEl) pEl.value = SENTINELA;
+    window.RV_ROL_REAL = info.role;
+    try {
+      inlineDoLoginRef();
+    } catch (e) {
+      console.error('[AUTH] no se pudo restaurar la sesion:', e.message);
+      return;
+    }
+    if (typeof USERS !== 'undefined' && USERS[info.u]) delete USERS[info.u].pass;
+    if (pEl) pEl.value = '';
+    try { rvAplicarRestriccionesRol(); } catch (e) {}
+    setTimeout(async () => {
+      try { await rvCargarTodoDesdeBD(); rvRebuildTxns(); rvActualizarFechaReal(); rvAplicarRestriccionesRol(); rvCargarUsuariosBD(); } catch (e) {}
+    }, 400);
+    console.log('[AUTH] ✓ Sesion restaurada para', info.u);
+  }
+  rvRestaurarSesion();
 
   // Sincronizar usuarios creados/editados en la UI hacia la BD (para que el login real los reconozca)
   if (typeof window.saveUsers === 'function') {
