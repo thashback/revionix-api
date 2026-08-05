@@ -3468,7 +3468,11 @@ function rvPlanillaCalc(r) {
   const desc_otros = rvNum(r.desc_otros);
   const total_descuentos = rvNum(r.total_descuentos) > 0 ? rvNum(r.total_descuentos) : RV_PLN_R2(desc_pension + adel + desc_otros);
   const neto = rvNum(r.neto) > 0 ? rvNum(r.neto) : RV_PLN_R2(total - total_descuentos);
-  const essalud = rvNum(r.essalud) > 0 ? rvNum(r.essalud) : RV_PLN_R2(rem * 0.09);
+  // EsSalud NO se calcula solo cuando el registro ya trae el campo: no todos
+  // los trabajadores estan en planilla EsSalud, y poner 0 es una decision, no
+  // un dato faltante. Solo se estima el 9% si el campo viene vacio/ausente.
+  const essaludVacio = r.essalud === undefined || r.essalud === null || r.essalud === '';
+  const essalud = essaludVacio ? RV_PLN_R2(rem * 0.09) : rvNum(r.essalud);
   return Object.assign({}, r, {
     ano: rvNum(r.ano), mes: rvNum(r.mes), dias: rvNum(r.dias),
     remuneracion: rem, bono, gratif: grat, vacaciones: vac, liquidacion: liq, adelantos: adel,
