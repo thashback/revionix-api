@@ -577,9 +577,16 @@ async function guardarStorage(req, res) {
     if (entries.length === 0) return res.json({ guardadas: 0, conflictos: [] });
 
     const conn = await pool.getConnection();
-    const [cur] = await conn.query('SELECT clave, rev FROM app_storage');
+    const [cur] = await conn.query('SELECT clave, rev, valor FROM app_storage');
     const revServidor = {};
-    cur.forEach(r => { revServidor[r.clave] = Number(r.rev) || 0; });
+    const valorServidor = {};
+    cur.forEach(r => { revServidor[r.clave] = Number(r.rev) || 0; valorServidor[r.clave] = r.valor; });
+
+    // Cuenta los elementos si el valor es un arreglo JSON; si no, devuelve null.
+    const contar = (txt) => {
+      try { const a = JSON.parse(txt); return Array.isArray(a) ? a.length : null; }
+      catch (e) { return null; }
+    };
 
     const conflictos = [];
     const escritas = [];
@@ -592,6 +599,30 @@ async function guardarStorage(req, res) {
       if (String(clave).startsWith('rv_') && servRev > 0) {
         const cliRev = revsCliente ? (Number(revsCliente[clave]) || 0) : -1;
         if (cliRev < servRev) { conflictos.push(clave); continue; } // NO sobrescribir
+      }
+
+      // ── Cortafuegos contra pérdida masiva de registros ──────────────
+      // El bloqueo por revisión NO basta: una pestaña que ya releyó la
+      // revisión vigente puede subir un conjunto más pequeño (su caché en
+      // memoria quedó vieja) y el servidor lo daría por válido. Paso real:
+      // rv_ventas cayó de 105 a 67 registros dos veces, borrando julio.
+      // Se permiten bajas normales (borrar algunos registros), pero se
+      // rechaza cualquier escritura que elimine de golpe una porción grande.
+      if (String(clave).startsWith('rv_') && valor !== null && valorServidor[clave] != null) {
+        const antes = contar(valorServidor[clave]);
+        const ahora = contar(valor);
+        if (antes !== null && ahora !== null && ahora < antes) {
+          const perdidos = antes - ahora;
+          const tope = Math.max(5, Math.floor(antes * 0.10)); // 10% o 5 registros
+          if (perdidos > tope) {
+            console.warn(
+              `[STORAGE] BLOQUEADO ${clave}: la escritura eliminaría ${perdidos} de ${antes} registros ` +
+              `(quedarían ${ahora}). Tope permitido: ${tope}.`
+            );
+            conflictos.push(clave);
+            continue;
+          }
+        }
       }
       const nueva = servRev + 1;
       if (valor === null) {
