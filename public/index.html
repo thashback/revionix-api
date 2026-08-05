@@ -7770,7 +7770,15 @@
         const gasData = [...(typeof GASTOS_DATA !== "undefined" ? GASTOS_DATA : []), ..._userGastos]
           .filter((g) => !(window.rvGastoEliminado && window.rvGastoEliminado(g.id)));
 
-        const mesesActivos = SEED.meses.filter(m => m.v > 0);
+        // El EBITDA mide la rentabilidad de TODA la empresa, asi que suma
+        // tiendas + ecommerce (m.v/m.c) y ademas los proyectos (m.pv/m.pc).
+        // Los proyectos se muestran aparte en las graficas porque una sola OC
+        // aplasta la escala, pero dejarlos fuera del EBITDA lo volvia irreal:
+        // se perdia, por ejemplo, la OC de S/. 837.554 de junio.
+        const vTot = (m) => (m.v || 0) + (m.pv || 0);
+        const cTot = (m) => (m.c || 0) + (m.pc || 0);
+
+        const mesesActivos = SEED.meses.filter(m => vTot(m) > 0);
         const rows = [];
 
         mesesActivos.forEach(m => {
@@ -7779,11 +7787,13 @@
           const esMovil = (g) => g.cat === "Movilidad";
           const gMovil  = gMes.filter(g => esMovil(g)).reduce((s,g) => s + (g.monto||0), 0);
           const gVars   = gMes.filter(g => !esMovil(g)).reduce((s,g) => s + (g.monto||0), 0);
-          const margen  = m.v - m.c;
+          const v = vTot(m), c = cTot(m);
+          const margen  = v - c;
           const ebitda  = margen - totalFijos - gVars - gMovil;
-          const ebitdaPct = m.v > 0 ? (ebitda/m.v*100) : 0;
-          rows.push({ m: m.m, p: m.p, v: m.v, c: m.c, margen, mb_pct: m.v>0?margen/m.v*100:0,
-                      fijos: totalFijos, vars: gVars, movil: gMovil, ebitda, ebitdaPct });
+          const ebitdaPct = v > 0 ? (ebitda/v*100) : 0;
+          rows.push({ m: m.m, p: m.p, v, c, margen, mb_pct: v>0?margen/v*100:0,
+                      fijos: totalFijos, vars: gVars, movil: gMovil, ebitda, ebitdaPct,
+                      proyV: m.pv || 0, proyC: m.pc || 0 });
         });
 
         // KPIs
@@ -7851,8 +7861,16 @@
         if (latest) {
           const wf = document.getElementById("tbl-ebitda-waterfall");
           if (wf) {
+            // Si el mes tiene proyectos, se abre la venta en dos lineas para
+            // que se vea cuanto viene de tiendas y cuanto de una OC.
             const items = [
-              { label: "Ventas", val: latest.v, color: "var(--c-green2)" },
+              ...(latest.proyV > 0
+                ? [
+                    { label: "Ventas tiendas", val: latest.v - latest.proyV, color: "var(--c-green2)" },
+                    { label: "Ventas proyectos", val: latest.proyV, color: "var(--c-green2)" },
+                    { label: "= Ventas totales", val: latest.v, color: "var(--c-navy)", bold: true },
+                  ]
+                : [{ label: "Ventas", val: latest.v, color: "var(--c-green2)" }]),
               { label: "(-) CMV", val: -latest.c, color: "var(--c-red2)" },
               { label: "= Margen Bruto", val: latest.margen, color: "var(--c-navy)", bold: true },
               { label: "(-) Gastos Fijos", val: -latest.fijos, color: "var(--c-red2)" },
