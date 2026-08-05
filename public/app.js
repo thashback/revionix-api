@@ -241,8 +241,34 @@ function rvCalcularEtapas(p) {
   return { tramos, actual, iActual, avance, diasRestantes, entregaEstimada: finEnv, inicio };
 }
 
-function rvPintarTimeline(proyectos) {
-  const cont = document.getElementById('rv-proy-timeline');
+// Resumen de proyectos en el dashboard: KPIs + timeline compacto.
+// Solo se muestra si hay proyectos; si no, la tarjeta queda oculta.
+function rvPintarProyectosDashboard(proyectos) {
+  const caja = document.getElementById('rv-dash-proyectos');
+  if (!caja) return;
+  const activos = proyectos.filter(p => p.estado !== 'completado' && p.estado !== 'cancelado');
+  if (!proyectos.length) { caja.style.display = 'none'; return; }
+  caja.style.display = '';
+
+  const total = proyectos.reduce((s, p) => s + rvNum(p.monto_total), 0);
+  const ejec = proyectos.reduce((s, p) => s + rvNum(p.monto_ejecutado), 0);
+  const costo = proyectos.reduce((s, p) => s + rvNum(p.costo), 0);
+  const margen = ejec - costo;
+
+  const set = (id, txt) => { const e = document.getElementById(id); if (e) e.textContent = txt; };
+  set('kpi-dash-proy-n', activos.length);
+  set('kpi-dash-proy-total', rvMoney(total));
+  set('kpi-dash-proy-ejec', rvMoney(ejec));
+  set('kpi-dash-proy-pct', total > 0 ? ((ejec / total) * 100).toFixed(1) + '% de avance' : 'sin órdenes');
+  set('kpi-dash-proy-margen', rvMoney(margen));
+  set('kpi-dash-proy-margen-pct', ejec > 0 ? ((margen / ejec) * 100).toFixed(1) + '% sobre ejecutado' : '—');
+
+  rvPintarTimeline(activos, 'rv-dash-proy-timeline');
+}
+window.rvPintarProyectosDashboard = rvPintarProyectosDashboard;
+
+function rvPintarTimeline(proyectos, contenedorId) {
+  const cont = document.getElementById(contenedorId || 'rv-proy-timeline');
   if (!cont) return;
   const activos = proyectos.filter(p => p.estado !== 'completado' && p.estado !== 'cancelado');
   if (!activos.length) {
@@ -311,6 +337,7 @@ async function loadProyectos() {
       return;
     }
     try { rvPintarTimeline(proyectos); } catch (e) { console.error('[PROYECTOS] timeline', e); }
+    try { rvPintarProyectosDashboard(proyectos); } catch (e) { console.error('[PROYECTOS] dashboard', e); }
 
     // KPIs
     const activos = proyectos.filter(p => p.estado === 'pendiente' || p.estado === 'en_proceso').length;
@@ -969,18 +996,23 @@ function rvDesgloseMes(periodo, etiqueta) {
   const cuerpo = rows.length
     ? rows.map(r => {
         const mg = (r.venta || 0) - (r.costo || 0);
+        // Comprobante = serie-correlativo (p. ej. B001-28)
+        const comp = [r.serie, r.correlativo].filter(Boolean).join('-') || '—';
         return `<tr>
           <td style="font-size:11px;white-space:nowrap">${r.fecha || '—'}</td>
           <td style="font-size:11px">${rvEsc(r.canal || '—')}</td>
           <td style="font-size:11px">${rvEsc(r.cliente || '—')}</td>
+          <td style="font-size:11px;white-space:nowrap">${rvEsc(comp)}</td>
           <td style="font-size:11px">${rvEsc(r.modelo || '—')}</td>
           <td style="font-size:11px">${rvEsc(r.marca || '—')}</td>
+          <td style="font-size:11px">${rvEsc(r.medio_pago || '—')}</td>
+          <td style="font-size:11px">${rvEsc(r.n_operacion || '—')}</td>
           <td style="font-size:11px;font-weight:600;text-align:right">${rvMoney(r.venta)}</td>
           <td style="font-size:11px;text-align:right">${rvMoney(r.costo)}</td>
           <td style="font-size:11px;text-align:right;font-weight:600;color:${mg >= 0 ? '#198c35' : '#c0392b'}">${rvMoney(mg)}</td>
         </tr>`;
       }).join('')
-    : '<tr><td colspan="8" style="text-align:center;color:#999;padding:16px">Sin ventas registradas este mes</td></tr>';
+    : '<tr><td colspan="11" style="text-align:center;color:#999;padding:16px">Sin ventas registradas este mes</td></tr>';
   rvModal(`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid #eee;padding-bottom:10px;gap:10px">
       <h3 style="margin:0;color:#333">📅 Desglose de Ventas — ${rvEsc(etiqueta)}</h3>
@@ -997,7 +1029,7 @@ function rvDesgloseMes(periodo, etiqueta) {
     </div>
     <div style="overflow:auto;max-height:52vh">
       <table style="width:100%;border-collapse:collapse">
-        <thead><tr style="background:#0f2540;color:#fff;font-size:11px"><th style="padding:6px">Fecha</th><th>Canal</th><th>Cliente</th><th>Modelo</th><th>Marca</th><th style="text-align:right">Venta</th><th style="text-align:right">Costo</th><th style="text-align:right">Margen</th></tr></thead>
+        <thead><tr style="background:#0f2540;color:#fff;font-size:11px"><th style="padding:6px">Fecha</th><th>Canal</th><th>Cliente</th><th>Comprobante</th><th>Modelo</th><th>Marca</th><th>Medio Pago</th><th>N° Operación</th><th style="text-align:right">Venta</th><th style="text-align:right">Costo</th><th style="text-align:right">Margen</th></tr></thead>
         <tbody>${cuerpo}</tbody>
       </table>
     </div>

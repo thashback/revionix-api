@@ -1515,9 +1515,58 @@
               </div>
             </div>
 
+            <!-- Proyectos: van aparte de las ventas de tienda porque una sola
+                 OC puede superar 10x el mes completo de las tiendas. -->
+            <div class="card" id="rv-dash-proyectos" style="display: none">
+              <div
+                style="
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                  flex-wrap: wrap;
+                  gap: 8px;
+                  margin-bottom: 12px;
+                "
+              >
+                <div class="card-title" style="margin: 0">Proyectos / OC</div>
+                <button
+                  class="btn btn-outline btn-sm"
+                  onclick="goPage('proyectos')"
+                >
+                  Ver todos
+                </button>
+              </div>
+              <div class="kpi-grid" style="margin-bottom: 14px">
+                <div class="kpi">
+                  <div class="kpi-label">Proyectos Activos</div>
+                  <div class="kpi-value" id="kpi-dash-proy-n">0</div>
+                  <div class="kpi-sub">En curso</div>
+                </div>
+                <div class="kpi">
+                  <div class="kpi-label">Monto Contratado</div>
+                  <div class="kpi-value" id="kpi-dash-proy-total">S/. 0</div>
+                  <div class="kpi-sub">Total de las OC</div>
+                </div>
+                <div class="kpi">
+                  <div class="kpi-label">Ejecutado</div>
+                  <div class="kpi-value" id="kpi-dash-proy-ejec">S/. 0</div>
+                  <div class="kpi-sub" id="kpi-dash-proy-pct">— de avance</div>
+                </div>
+                <div class="kpi kpi-green">
+                  <div class="kpi-label">Margen Proyectos</div>
+                  <div class="kpi-value" id="kpi-dash-proy-margen">S/. 0</div>
+                  <div class="kpi-sub" id="kpi-dash-proy-margen-pct">—</div>
+                </div>
+              </div>
+              <div id="rv-dash-proy-timeline"></div>
+            </div>
+
             <div class="two-col">
               <div class="card">
                 <div class="card-title">Ventas y Margen — Mes a Mes</div>
+                <div class="page-sub" style="margin: -6px 0 8px 0; font-size: 11px">
+                  Solo tiendas y ecommerce · los proyectos se muestran arriba
+                </div>
                 <div class="chart-wrap" style="height: 240px">
                   <canvas
                     id="chart-meses"
