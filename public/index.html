@@ -4155,9 +4155,19 @@
         SEED.proy_tot_m = SEED.proy_tot_v - SEED.proy_tot_c;
         SEED.proy_n = proy.length;
 
+        // Trabajos corporativos (instalaciones/servicios facturados a credito).
+        // Viven en CORP_VENTAS_DATA, fuera de las transacciones, pero son venta
+        // real de la empresa y por eso alimentan el EBITDA (m.cv/m.cc).
+        const corpRows = typeof CORP_VENTAS_DATA !== "undefined" ? CORP_VENTAS_DATA : [];
+        SEED.corp_tot_v = corpRows.reduce((s, r) => s + (Number(r.total) || 0), 0);
+        SEED.corp_tot_c = corpRows.reduce((s, r) => s + (Number(r.costo) || 0), 0);
+        SEED.corp_tot_m = SEED.corp_tot_v - SEED.corp_tot_c;
+        SEED.corp_n = corpRows.length;
+
         // Recompute inv from proveedores (in case provider was edited)
         SEED.inv_tot = SEED.proveedores.reduce((s, p) => s + (p.soles || 0), 0);
-        // Recompute meses (sin proyectos) + serie mensual de proyectos aparte
+        // Recompute meses (sin proyectos) + series mensuales de proyectos y
+        // corporativo aparte, para no aplastar la escala de las graficas
         SEED.meses.forEach((m) => {
           const mr = rows.filter((r) => r.mes === m.p);
           m.v = mr.reduce((s, r) => s + (r.venta || 0), 0);
@@ -4165,6 +4175,9 @@
           const pr = proy.filter((r) => r.mes === m.p);
           m.pv = pr.reduce((s, r) => s + (r.venta || 0), 0);
           m.pc = pr.reduce((s, r) => s + (r.costo || 0), 0);
+          const cr = corpRows.filter((r) => r.mes === m.p);
+          m.cv = cr.reduce((s, r) => s + (Number(r.total) || 0), 0);
+          m.cc = cr.reduce((s, r) => s + (Number(r.costo) || 0), 0);
         });
         // Recompute canales (re-build, since canal could be added)
         const canMap = {};
@@ -7807,12 +7820,13 @@
           .filter((g) => !(window.rvGastoEliminado && window.rvGastoEliminado(g.id)));
 
         // El EBITDA mide la rentabilidad de TODA la empresa, asi que suma
-        // tiendas + ecommerce (m.v/m.c) y ademas los proyectos (m.pv/m.pc).
-        // Los proyectos se muestran aparte en las graficas porque una sola OC
-        // aplasta la escala, pero dejarlos fuera del EBITDA lo volvia irreal:
-        // se perdia, por ejemplo, la OC de S/. 837.554 de junio.
-        const vTot = (m) => (m.v || 0) + (m.pv || 0);
-        const cTot = (m) => (m.c || 0) + (m.pc || 0);
+        // tiendas + ecommerce (m.v/m.c), los proyectos (m.pv/m.pc) y los
+        // trabajos corporativos (m.cv/m.cc).
+        // Proyectos y corporativo se muestran aparte en las graficas porque una
+        // sola OC aplasta la escala, pero dejarlos fuera del EBITDA lo volvia
+        // irreal: se perdia, por ejemplo, la OC de S/. 837.554 de junio.
+        const vTot = (m) => (m.v || 0) + (m.pv || 0) + (m.cv || 0);
+        const cTot = (m) => (m.c || 0) + (m.pc || 0) + (m.cc || 0);
 
         const mesesActivos = SEED.meses.filter(m => vTot(m) > 0);
         const rows = [];
@@ -7829,7 +7843,8 @@
           const ebitdaPct = v > 0 ? (ebitda/v*100) : 0;
           rows.push({ m: m.m, p: m.p, v, c, margen, mb_pct: v>0?margen/v*100:0,
                       fijos: totalFijos, vars: gVars, movil: gMovil, ebitda, ebitdaPct,
-                      proyV: m.pv || 0, proyC: m.pc || 0 });
+                      proyV: m.pv || 0, proyC: m.pc || 0,
+                      corpV: m.cv || 0, corpC: m.cc || 0 });
         });
 
         // KPIs
@@ -7897,13 +7912,18 @@
         if (latest) {
           const wf = document.getElementById("tbl-ebitda-waterfall");
           if (wf) {
-            // Si el mes tiene proyectos, se abre la venta en dos lineas para
-            // que se vea cuanto viene de tiendas y cuanto de una OC.
+            // Si el mes tiene proyectos o trabajos corporativos, se abre la
+            // venta en varias lineas para ver cuanto viene de cada frente.
+            const vTiendas = latest.v - latest.proyV - latest.corpV;
+            const fuentes = [
+              { label: "Ventas tiendas", val: vTiendas },
+              { label: "Ventas proyectos", val: latest.proyV },
+              { label: "Ventas corporativo", val: latest.corpV },
+            ].filter((f) => f.val > 0);
             const items = [
-              ...(latest.proyV > 0
+              ...(fuentes.length > 1
                 ? [
-                    { label: "Ventas tiendas", val: latest.v - latest.proyV, color: "var(--c-green2)" },
-                    { label: "Ventas proyectos", val: latest.proyV, color: "var(--c-green2)" },
+                    ...fuentes.map((f) => ({ ...f, color: "var(--c-green2)" })),
                     { label: "= Ventas totales", val: latest.v, color: "var(--c-navy)", bold: true },
                   ]
                 : [{ label: "Ventas", val: latest.v, color: "var(--c-green2)" }]),
