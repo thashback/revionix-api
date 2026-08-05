@@ -251,10 +251,14 @@
         top: 0;
         z-index: 100;
       }
+      /* Se usa una copia del logo ya en blanco y con fondo transparente
+         (logo-revionix-blanco.png). Antes se pintaba el logo normal con
+         filter: brightness(0) invert(1), pero ese archivo tiene fondo blanco
+         sólido, así que el filtro blanqueaba la imagen entera y en el header
+         se veía un rectángulo blanco. */
       .header-logo {
         height: 30px;
         width: auto;
-        filter: brightness(0) invert(1);
       }
       .header h1 {
         color: #fff;
@@ -1177,7 +1181,7 @@
     <!-- APP -->
     <div id="app">
       <div class="header">
-                <img src="img/logo-revionix.png" alt="REVIONIX" class="header-logo" />
+                <img src="img/logo-revionix-blanco.png" alt="REVIONIX" class="header-logo" />
         <span class="header-user" id="hdr-user"></span>
         <span class="header-badge" id="hdr-badge"></span>
         <span
