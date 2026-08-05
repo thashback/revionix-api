@@ -4272,6 +4272,29 @@
           if (k) corp[cli][k] += r.venta || 0;
           if (r.modelo) corp[cli].items.add(r.modelo.substring(0, 55));
         });
+        // Clientes que solo existen en CORP_VENTAS_DATA (servicios ejecutados
+        // aún no facturados). El filtro por razón social de arriba los dejaba
+        // fuera —"Megabazar Huaraz" o "Casa de Jhon" no llevan S.A.C.— así que
+        // sus líneas nunca se mostraban. Se incorporan igual, y su monto
+        // pendiente alimenta la columna "Por Facturar", que hasta ahora
+        // siempre salía en cero porque nadie calculaba c.pendiente.
+        const corpData = typeof CORP_VENTAS_DATA !== "undefined" ? CORP_VENTAS_DATA : [];
+        corpData.forEach((r) => {
+          const cli = (r.cliente || "").trim();
+          if (!cli) return;
+          if (!corp[cli]) {
+            corp[cli] = {
+              n: cli, oct: 0, nov: 0, dic: 0, ene: 0, feb: 0, mar: 0, abr: 0, may: 0,
+              total: 0, items: new Set(), estado: "Completado",
+            };
+          }
+          const esPendiente = r.fecha === "Pendiente" || r.estado === "Pendiente";
+          if (esPendiente) {
+            corp[cli].pendiente = (corp[cli].pendiente || 0) + (Number(r.total) || 0);
+          }
+          if (r.desc) corp[cli].items.add(String(r.desc).substring(0, 55));
+        });
+
         SEED.clientes = Object.values(corp)
           .map((c) => ({
             n: c.n,
@@ -4284,15 +4307,18 @@
             abr: c.abr,
             may: c.may,
             total: c.total,
+            pendiente: c.pendiente || 0,
             estado:
-              c.may > 0 || c.abr > 0
-                ? "Activo"
-                : c.mar > 0
-                  ? "Facturado"
-                  : "Completado",
+              (c.pendiente || 0) > 0
+                ? "Pendiente"
+                : c.may > 0 || c.abr > 0
+                  ? "Activo"
+                  : c.mar > 0
+                    ? "Facturado"
+                    : "Completado",
             items: Array.from(c.items).slice(0, 5),
           }))
-          .sort((a, b) => b.total - a.total);
+          .sort((a, b) => (b.total + b.pendiente) - (a.total + a.pendiente));
       }
 
       let _lastDetalleRows = null;
