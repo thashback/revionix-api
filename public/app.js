@@ -2908,9 +2908,13 @@ function rvDecorarPP() {
     }
     if (typeof USERS !== 'undefined' && USERS[info.u]) delete USERS[info.u].pass;
     if (pEl) pEl.value = '';
+    // Loader: tapa el render parcial (solo seed) hasta que rvRebuildTxns()
+    // integre ventas y proyectos. Se retira en el finally de esa función.
+    try { rvMostrarCargandoDashboard(); } catch (e) {}
     try { rvAplicarRestriccionesRol(); } catch (e) {}
     setTimeout(async () => {
-      try { await rvCargarTodoDesdeBD(); rvRebuildTxns(); rvActualizarFechaReal(); rvAplicarRestriccionesRol(); rvCargarUsuariosBD(); } catch (e) {}
+      try { await rvCargarTodoDesdeBD(); rvRebuildTxns(); rvActualizarFechaReal(); rvAplicarRestriccionesRol(); rvCargarUsuariosBD(); }
+      catch (e) { try { rvOcultarCargandoDashboard(); } catch (e2) {} }
     }, 400);
     console.log('[AUTH] ✓ Sesion restaurada para', info.u);
   }
