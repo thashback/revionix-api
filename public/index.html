@@ -7808,10 +7808,33 @@
       // ═══════════════════════════════════════════════════════════════
       // EBITDA MENSUAL REAL
       // ═══════════════════════════════════════════════════════════════
+      // Costo real de personal de un mes, tomado de la planilla cargada
+      // (rv_planilla, que si tiene ano/mes). Costo de empresa = bruto + EsSalud;
+      // el neto no sirve aqui porque deja fuera AFP/ONP, que igual paga la
+      // empresa. Si un mes no tiene planilla cargada cae al estimado recurrente
+      // (PLANILLA_DATA) para no dejarlo sin gasto de personal.
+      function rvPlanillaCostoMes(periodo) {
+        const N = (x) => Number(x) || 0;
+        // El bruto se arma desde sus componentes y NO desde la columna "Total"
+        // del Excel, porque en varias filas esa columna ya viene con el adelanto
+        // descontado. Los adelantos no son costo extra: son sueldo pagado antes.
+        const bruto = (r) => N(r.remuneracion) + N(r.bono) + N(r.gratif) +
+                             N(r.vacaciones) + N(r.liquidacion);
+        let lista = [];
+        try { lista = JSON.parse(localStorage.getItem("rv_planilla") || "[]"); } catch (e) { lista = []; }
+        if (!Array.isArray(lista)) lista = [];
+        const delMes = lista.filter(
+          (r) => r.ano + "-" + String(r.mes).padStart(2, "0") === periodo);
+        if (delMes.length) {
+          return delMes.reduce((s, r) => s + bruto(r) + N(r.essalud), 0);
+        }
+        return PLANILLA_DATA.reduce((s, r) => s + bruto(r) + N(r.essalud), 0);
+      }
+
       function renderEBITDA() {
         const TC = TC_FIJO;
-        const totalFijos = ALQUILERES_DATA.reduce((s,r) => s + (r.moneda==="USD" ? r.monto_mensual*TC : r.monto_mensual), 0)
-                          + PLANILLA_DATA.reduce((s,r) => s + r.remuneracion, 0);
+        // Los alquileres si son fijos todos los meses; la planilla cambia mes a mes.
+        const fijosAlquiler = ALQUILERES_DATA.reduce((s,r) => s + (r.moneda==="USD" ? r.monto_mensual*TC : r.monto_mensual), 0);
 
         let _userGastos = [];
         try { _userGastos = JSON.parse(localStorage.getItem("rv_gastos") || "[]"); } catch (e) { _userGastos = []; }
@@ -7839,10 +7862,11 @@
           const gVars   = gMes.filter(g => !esMovil(g)).reduce((s,g) => s + (g.monto||0), 0);
           const v = vTot(m), c = cTot(m);
           const margen  = v - c;
-          const ebitda  = margen - totalFijos - gVars - gMovil;
+          const fijosMes = fijosAlquiler + rvPlanillaCostoMes(m.p);
+          const ebitda  = margen - fijosMes - gVars - gMovil;
           const ebitdaPct = v > 0 ? (ebitda/v*100) : 0;
           rows.push({ m: m.m, p: m.p, v, c, margen, mb_pct: v>0?margen/v*100:0,
-                      fijos: totalFijos, vars: gVars, movil: gMovil, ebitda, ebitdaPct,
+                      fijos: fijosMes, vars: gVars, movil: gMovil, ebitda, ebitdaPct,
                       proyV: m.pv || 0, proyC: m.pc || 0,
                       corpV: m.cv || 0, corpC: m.cc || 0 });
         });

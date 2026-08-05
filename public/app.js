@@ -1274,7 +1274,9 @@ async function rvCargarFijosPlanillaBD() {
     ]);
     const fmes = {}, pmes = {};
     if (Array.isArray(gf)) gf.forEach(g => { const p = g.ano + '-' + String(g.mes).padStart(2, '0'); fmes[p] = (fmes[p] || 0) + rvNum(g.monto); });
-    if (Array.isArray(pl)) pl.forEach(x => { const p = x.ano + '-' + String(x.mes).padStart(2, '0'); pmes[p] = (pmes[p] || 0) + rvNum(x.neto); });
+    // Costo de la empresa = bruto (sueldo + bonificación). El neto deja fuera
+    // AFP/ONP y adelantos, que la empresa igual desembolsa.
+    if (Array.isArray(pl)) pl.forEach(x => { const p = x.ano + '-' + String(x.mes).padStart(2, '0'); pmes[p] = (pmes[p] || 0) + rvNum(x.sueldo) + rvNum(x.bonificacion); });
     window.RV_FIJOS_MES = fmes;
     window.RV_PLAN_MES = pmes;
     console.log('[FIJOS-BD] ✓ gastos fijos/planilla por mes cargados');
@@ -3537,7 +3539,9 @@ function rvRenderPlanillaTabla() {
     ${th('Año')}${th('Mes')}${th('Trabajador')}${th('Cargo')}${th('Ingreso')}${th('Días')}${th('Remun.', 'text-align:right')}${th('Bono', 'text-align:right')}${th('Adel.', 'text-align:right')}${th('Vacac.', 'text-align:right')}${th('Liquid.', 'text-align:right')}${th('Gratif.', 'text-align:right')}${th('Total', 'text-align:right')}${th('Sist.')}${th('Desc.AFP/ONP', 'text-align:right')}${th('Otros', 'text-align:right')}${th('Tot.Desc', 'text-align:right')}${th('Neto', 'text-align:right')}${th('EsSalud', 'text-align:right')}${th('N° Cuenta')}${editable ? th('') : ''}
   </tr>`;
   const meses = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Set', 'Oct', 'Nov', 'Dic'];
-  const cuerpo = data.map(r => {
+  const mesesLargo = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Setiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  const NCOLS = editable ? 21 : 20;
+  const fila = (r) => {
     const sisCol = r.sistema === 'ONP' ? '#455A64' : (r.sistema === 'AFP' ? '#1565C0' : '#90A4AE');
     return `<tr style="font-size:11px;border-bottom:1px solid #eef2f6">
       <td style="padding:5px 8px">${rvNum(r.ano) || '—'}</td>
@@ -3565,27 +3569,55 @@ function rvRenderPlanillaTabla() {
         <button onclick="rvPlanillaEliminar('${r.id}')" title="Eliminar" style="background:none;border:none;cursor:pointer;color:#c0392b;font-size:15px;padding:0 3px">×</button>
       </td>` : ''}
     </tr>`;
+  };
+  // Fila de totales reutilizable: sirve para el subtotal de cada mes y para el
+  // total general del pie.
+  const filaTotales = (arr, etiqueta, estilo) => {
+    const s = (k) => arr.reduce((a, r) => a + rvNum(r[k]), 0);
+    return `<tr style="${estilo}">
+      <td colspan="6" style="padding:7px 8px;text-align:right">${etiqueta} (${arr.length}):</td>
+      <td style="padding:7px 8px;text-align:right">${rvMoney(s('remuneracion'))}</td>
+      <td style="padding:7px 8px;text-align:right">${rvMoney(s('bono'))}</td>
+      <td style="padding:7px 8px;text-align:right">${rvMoney(s('adelantos'))}</td>
+      <td style="padding:7px 8px;text-align:right">${rvMoney(s('vacaciones'))}</td>
+      <td style="padding:7px 8px;text-align:right">${rvMoney(s('liquidacion'))}</td>
+      <td style="padding:7px 8px;text-align:right">${rvMoney(s('gratif'))}</td>
+      <td style="padding:7px 8px;text-align:right">${rvMoney(s('total'))}</td>
+      <td></td>
+      <td style="padding:7px 8px;text-align:right">${rvMoney(s('desc_pension'))}</td>
+      <td style="padding:7px 8px;text-align:right">${rvMoney(s('desc_otros'))}</td>
+      <td style="padding:7px 8px;text-align:right">${rvMoney(s('total_descuentos'))}</td>
+      <td style="padding:7px 8px;text-align:right;color:#198c35">${rvMoney(s('neto'))}</td>
+      <td style="padding:7px 8px;text-align:right;color:#7b1fa2">${rvMoney(s('essalud'))}</td>
+      <td colspan="${editable ? 2 : 1}"></td>
+    </tr>`;
+  };
+  // Con varios meses cargados, la lista corrida es ilegible: se agrupa por
+  // mes con una banda de encabezado y su propio subtotal.
+  const grupos = [];
+  data.forEach((r) => {
+    const k = rvNum(r.ano) + '-' + String(rvNum(r.mes)).padStart(2, '0');
+    const ult = grupos[grupos.length - 1];
+    if (!ult || ult.k !== k) grupos.push({ k, ano: rvNum(r.ano), mes: rvNum(r.mes), filas: [r] });
+    else ult.filas.push(r);
+  });
+  const cuerpo = grupos.map((g) => {
+    const costo = g.filas.reduce((s, r) => s + rvNum(r.remuneracion) + rvNum(r.bono) +
+      rvNum(r.gratif) + rvNum(r.vacaciones) + rvNum(r.liquidacion) + rvNum(r.essalud), 0);
+    const banda = `<tr style="background:#0f2540">
+      <td colspan="${NCOLS}" style="padding:8px 10px;color:#fff;font-size:11.5px;font-weight:800;letter-spacing:.4px">
+        ${(mesesLargo[g.mes] || g.mes).toUpperCase()} ${g.ano || ''}
+        <span style="font-weight:600;color:#9fb3c8;margin-left:10px">${g.filas.length} trabajador${g.filas.length === 1 ? '' : 'es'}</span>
+        <span style="float:right;font-weight:700;color:#7fd1a0">Costo empresa: ${rvMoney(costo)}</span>
+      </td></tr>`;
+    return banda + g.filas.map(fila).join('') +
+      filaTotales(g.filas, 'Subtotal ' + (meses[g.mes] || ''), 'background:#eef3f8;font-weight:700;font-size:11px;border-bottom:2px solid #cfd8dc');
   }).join('');
-  const sum = (k) => data.reduce((s, r) => s + rvNum(r[k]), 0);
-  const totRow = data.length ? `<tr style="background:#f4f7fa;font-weight:800;font-size:11px;border-top:2px solid #cfd8dc">
-    <td colspan="6" style="padding:7px 8px;text-align:right">TOTALES (${data.length}):</td>
-    <td style="padding:7px 8px;text-align:right">${rvMoney(sum('remuneracion'))}</td>
-    <td style="padding:7px 8px;text-align:right">${rvMoney(sum('bono'))}</td>
-    <td style="padding:7px 8px;text-align:right">${rvMoney(sum('adelantos'))}</td>
-    <td style="padding:7px 8px;text-align:right">${rvMoney(sum('vacaciones'))}</td>
-    <td style="padding:7px 8px;text-align:right">${rvMoney(sum('liquidacion'))}</td>
-    <td style="padding:7px 8px;text-align:right">${rvMoney(sum('gratif'))}</td>
-    <td style="padding:7px 8px;text-align:right">${rvMoney(sum('total'))}</td>
-    <td></td>
-    <td style="padding:7px 8px;text-align:right">${rvMoney(sum('desc_pension'))}</td>
-    <td style="padding:7px 8px;text-align:right">${rvMoney(sum('desc_otros'))}</td>
-    <td style="padding:7px 8px;text-align:right">${rvMoney(sum('total_descuentos'))}</td>
-    <td style="padding:7px 8px;text-align:right;color:#198c35">${rvMoney(sum('neto'))}</td>
-    <td style="padding:7px 8px;text-align:right;color:#7b1fa2">${rvMoney(sum('essalud'))}</td>
-    <td colspan="${editable ? 2 : 1}"></td>
-  </tr>` : '';
+  const totRow = grupos.length > 1
+    ? filaTotales(data, 'TOTAL GENERAL', 'background:#f4f7fa;font-weight:800;font-size:11px;border-top:2px solid #cfd8dc')
+    : '';
   tabla.style.minWidth = '1100px';
-  tabla.innerHTML = `<thead>${cabecera}</thead><tbody>${cuerpo || `<tr><td colspan="21" style="padding:26px;text-align:center;color:#90a4ae">Sin registros. Usa <b>📥 Plantilla XLS</b>, llénala y súbela con <b>📂 Importar XLS</b>.</td></tr>`}</tbody><tfoot>${totRow}</tfoot>`;
+  tabla.innerHTML = `<thead>${cabecera}</thead><tbody>${cuerpo || `<tr><td colspan="${NCOLS}" style="padding:26px;text-align:center;color:#90a4ae">Sin registros. Usa <b>📥 Plantilla XLS</b>, llénala y súbela con <b>📂 Importar XLS</b>.</td></tr>`}</tbody><tfoot>${totRow}</tfoot>`;
 }
 // ── Alta/edición manual (modal rico) ──
 function rvPlanillaForm(id) {
