@@ -1830,7 +1830,7 @@
                     <th>Mar</th>
                     <th>Abr</th>
                     <th>May</th>
-                    <th>Por Facturar</th>
+                    <th>Por Cobrar</th>
                     <th>Estado</th>
                     <th></th>
                   </tr>
@@ -4272,13 +4272,18 @@
           if (k) corp[cli][k] += r.venta || 0;
           if (r.modelo) corp[cli].items.add(r.modelo.substring(0, 55));
         });
-        // Clientes que solo existen en CORP_VENTAS_DATA (servicios ejecutados
-        // aún no facturados). El filtro por razón social de arriba los dejaba
-        // fuera —"Megabazar Huaraz" o "Casa de Jhon" no llevan S.A.C.— así que
-        // sus líneas nunca se mostraban. Se incorporan igual, y su monto
-        // pendiente alimenta la columna "Por Facturar", que hasta ahora
-        // siempre salía en cero porque nadie calculaba c.pendiente.
+        // Clientes con saldo por cobrar que viven en CORP_VENTAS_DATA. El
+        // filtro por razón social de arriba los dejaba fuera —"Megabazar
+        // Huaraz" o "Casa Ing. Molina" no llevan S.A.C.— y sus líneas nunca
+        // se mostraban. Se incorporan SOLO si deben algo: sumar también los
+        // ya facturados y cobrados metía clientes en S/. 0 que ensuciaban la
+        // tabla. El saldo alimenta la columna "Por Cobrar", que hasta ahora
+        // salía siempre en cero porque nadie calculaba c.pendiente.
         const corpData = typeof CORP_VENTAS_DATA !== "undefined" ? CORP_VENTAS_DATA : [];
+        // Se adeuda si es a crédito sin cobrar, o si aún no se facturó.
+        const seDebe = (r) =>
+          !r.cobrado &&
+          (r.condicion === "Crédito" || r.fecha === "Pendiente" || r.estado === "Pendiente");
         corpData.forEach((r) => {
           const cli = (r.cliente || "").trim();
           if (!cli) return;
@@ -4288,10 +4293,15 @@
               total: 0, items: new Set(), estado: "Completado",
             };
           }
-          const esPendiente = r.fecha === "Pendiente" || r.estado === "Pendiente";
-          if (esPendiente) {
-            corp[cli].pendiente = (corp[cli].pendiente || 0) + (Number(r.total) || 0);
-          }
+          const monto = Number(r.total) || 0;
+          // Estos clientes NO existen en TXNS_DATA (se verificó: cero
+          // coincidencias), así que sumar su importe aquí no duplica nada.
+          // Sin esto aparecían en la tabla con total S/. 0 pese a tener
+          // facturas cargadas.
+          corp[cli].total += monto;
+          const k = MES_KEY[r.mes];
+          if (k) corp[cli][k] += monto;
+          if (seDebe(r)) corp[cli].pendiente = (corp[cli].pendiente || 0) + monto;
           if (r.desc) corp[cli].items.add(String(r.desc).substring(0, 55));
         });
 
