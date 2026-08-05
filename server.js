@@ -537,6 +537,7 @@ async function migrarColumnaCosto() {
     // Los plazos son configurables por proyecto porque varían según proveedor.
     const columnasEtapa = [
       ["etapa", "VARCHAR(20) DEFAULT 'fabricacion'"],
+      ["dias_espera", "INT DEFAULT 10"],   // desde la OC hasta que arranca fabricación
       ["dias_fabricacion", "INT DEFAULT 60"],
       ["dias_envio", "INT DEFAULT 40"],
       ["fecha_inicio_etapas", "DATE NULL"],
@@ -988,20 +989,23 @@ app.put('/api/proyectos/:id', upload.single('ruta_oc'), async (req, res) => {
       res.json({ id, mensaje: 'Proyecto actualizado' });
     } else {
       const { cliente, descripcion, monto_total, monto_ejecutado, costo, estado, condicion_pago,
-              etapa, dias_fabricacion, dias_envio, fecha_inicio_etapas } = req.body;
+              etapa, dias_espera, dias_fabricacion, dias_envio, fecha_inicio_etapas } = req.body;
       // Actualización parcial: si el formulario no manda un campo de etapas, se
       // conserva el valor actual (COALESCE) en vez de pisarlo con null.
       const query =
         'UPDATE proyectos SET cliente=?, descripcion=?, monto_total=?, monto_ejecutado=?, costo=?, ' +
         'estado=?, condicion_pago=?, etapa=COALESCE(?, etapa), ' +
+        'dias_espera=COALESCE(?, dias_espera), ' +
         'dias_fabricacion=COALESCE(?, dias_fabricacion), dias_envio=COALESCE(?, dias_envio), ' +
         'fecha_inicio_etapas=COALESCE(?, fecha_inicio_etapas) WHERE id=?';
+      const num = (x) => (x != null && x !== '' ? Number(x) : null);
       const params = [
         cliente, descripcion, monto_total, monto_ejecutado, costo || 0,
         estado, condicion_pago || 'contado',
         etapa || null,
-        dias_fabricacion != null && dias_fabricacion !== '' ? Number(dias_fabricacion) : null,
-        dias_envio != null && dias_envio !== '' ? Number(dias_envio) : null,
+        num(dias_espera),
+        num(dias_fabricacion),
+        num(dias_envio),
         fecha_inicio_etapas || null,
         id,
       ];

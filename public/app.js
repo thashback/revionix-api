@@ -183,10 +183,11 @@ const RV_ESTADO_COLOR = { pendiente: '#e67e22', en_proceso: '#1565c0', completad
 // dias_envio) porque cambian segun proveedor.
 // ═══════════════════════════════════════════════════════════════
 const RV_ETAPAS = [
-  { id: 'oc',          nombre: 'OC emitida',  icono: '📄', dias: 0 },
-  { id: 'fabricacion', nombre: 'Fabricación', icono: '🏭', dias: 'dias_fabricacion' },
-  { id: 'envio',       nombre: 'Envío',       icono: '🚚', dias: 'dias_envio' },
-  { id: 'entrega',     nombre: 'Entrega',     icono: '✅', dias: 0 },
+  { id: 'oc',          nombre: 'OC emitida',   icono: '📄', dias: 0 },
+  { id: 'espera',      nombre: 'Confirmación', icono: '⏳', dias: 'dias_espera' },
+  { id: 'fabricacion', nombre: 'Fabricación',  icono: '🏭', dias: 'dias_fabricacion' },
+  { id: 'envio',       nombre: 'Envío',        icono: '🚚', dias: 'dias_envio' },
+  { id: 'entrega',     nombre: 'Entrega',      icono: '✅', dias: 0 },
 ];
 
 function rvSumarDias(fechaISO, dias) {
@@ -200,29 +201,36 @@ function rvSumarDias(fechaISO, dias) {
 function rvCalcularEtapas(p) {
   const inicio = String(p.fecha_inicio_etapas || p.fecha_oc || '').slice(0, 10);
   if (!inicio) return null;
+  // La fabricación no arranca el día de la OC: hay un plazo previo de
+  // confirmación (10 días por defecto) antes de que el proveedor empiece.
+  const dEsp = p.dias_espera == null ? 10 : Number(p.dias_espera) || 0;
   const dFab = Number(p.dias_fabricacion) || 0;
   const dEnv = Number(p.dias_envio) || 0;
 
-  const finFab = rvSumarDias(inicio, dFab);
+  const iniFab = rvSumarDias(inicio, dEsp);
+  const finFab = rvSumarDias(iniFab, dFab);
   const finEnv = rvSumarDias(finFab, dEnv);
   const hoy = new Date().toISOString().slice(0, 10);
 
   const tramos = [
-    { ...RV_ETAPAS[0], desde: inicio, hasta: inicio, dur: 0 },
-    { ...RV_ETAPAS[1], desde: inicio, hasta: finFab, dur: dFab },
-    { ...RV_ETAPAS[2], desde: finFab, hasta: finEnv, dur: dEnv },
-    { ...RV_ETAPAS[3], desde: finEnv, hasta: finEnv, dur: 0 },
+    { ...RV_ETAPAS[0], desde: inicio, hasta: inicio,  dur: 0 },
+    { ...RV_ETAPAS[1], desde: inicio, hasta: iniFab,  dur: dEsp },
+    { ...RV_ETAPAS[2], desde: iniFab, hasta: finFab,  dur: dFab },
+    { ...RV_ETAPAS[3], desde: finFab, hasta: finEnv,  dur: dEnv },
+    { ...RV_ETAPAS[4], desde: finEnv, hasta: finEnv,  dur: 0 },
   ];
 
   // Etapa vigente: la marcada a mano manda; si no, se deduce por fecha.
   let actual = p.etapa;
   if (!actual) {
     if (hoy < inicio) actual = 'oc';
+    else if (hoy < iniFab) actual = 'espera';
     else if (hoy <= finFab) actual = 'fabricacion';
     else if (hoy <= finEnv) actual = 'envio';
     else actual = 'entrega';
   }
-  const iActual = tramos.findIndex(t => t.id === actual);
+  let iActual = tramos.findIndex(t => t.id === actual);
+  if (iActual < 0) iActual = 0;   // etapa guardada que ya no existe
 
   tramos.forEach((t, i) => {
     t.estado = i < iActual ? 'completada' : (i === iActual ? 'en_curso' : 'pendiente');
@@ -2243,6 +2251,36 @@ function rvPersistirCompras() {
 // entren ventas manuales/importadas/proyectos.
 const RV_BASE_TXNS = (typeof TXNS_DATA !== 'undefined') ? TXNS_DATA.slice() : [];
 
+// ── Nombre único por canal ──────────────────────────────────────
+// La misma tienda venía escrita de varias formas ("compuplaza",
+// "Compuplaza", "REVIONIX COMPUPLAZA"…) y aparecía como barras separadas
+// en "Ventas por Canal". Se normalizó en la base, pero un navegador con
+// datos viejos en localStorage volvía a mostrar los nombres antiguos.
+// Normalizar aquí, al construir las transacciones, hace que la vista sea
+// correcta sin importar qué haya quedado guardado en el equipo.
+const RV_CANAL_CANONICO = {
+  'COMPUPLAZA': 'REVIONIX COMPUPLAZA',
+  'REVIONIX COMPUPLAZA': 'REVIONIX COMPUPLAZA',
+  'REVIONIX COMPLAZA': 'REVIONIX COMPUPLAZA',
+  'MALVITEC': 'REVIONIX MALVITEC',
+  'REVIONIX MALVITEC': 'REVIONIX MALVITEC',
+  'REVIONIX SAGA SAN ISIDRO': 'REVIONIX MALVITEC',
+  'SAGA SAN ISIDRO': 'REVIONIX MALVITEC',
+  'COMPUPALACE': 'REVIONIX COMPUPALACE',
+  'COMPUPAPALACE': 'REVIONIX COMPUPALACE',
+  'REVIONIX COMPUPALACE': 'REVIONIX COMPUPALACE',
+  'SAN ISIDRO': 'REVIONIX SAN ISIDRO',
+  'REVIONIX SAN ISIDRO': 'REVIONIX SAN ISIDRO',
+  'ECOMMERCE': 'Ecommerce',
+  'PROYECTOS': 'Proyectos',
+  'CORPORATIVO': 'Corporativo',
+};
+function rvCanal(v) {
+  const k = String(v == null ? '' : v).replace(/\s+/g, ' ').trim().toUpperCase();
+  return RV_CANAL_CANONICO[k] || (v == null ? '' : String(v).trim());
+}
+window.rvCanal = rvCanal;
+
 // ═══════════════════════════════════════════════════════════════
 // BORRADO REAL (lápidas persistentes) + AUDITORÍA OCULTA
 // Lo eliminado se registra en rv_eliminados (se respalda en la BD y se
@@ -2369,7 +2407,9 @@ async function rvRebuildTxns() {
   try {
     // 1) Reset a base
     TXNS_DATA.length = 0;
-    RV_BASE_TXNS.forEach(t => TXNS_DATA.push(t));
+    RV_BASE_TXNS.forEach(t => TXNS_DATA.push(
+      t && rvCanal(t.canal) !== t.canal ? { ...t, canal: rvCanal(t.canal) } : t
+    ));
 
     // 2) Ventas extra (manuales + importadas) desde rv_ventas
     let ev = [];
@@ -2381,7 +2421,7 @@ async function rvRebuildTxns() {
     ev.forEach(r => {
       const venta = rvNum(r.venta), costo = rvNum(r.costo);
       TXNS_DATA.push({
-        canal: r.canal || '—', cliente: r.cliente || 'Tienda',
+        canal: rvCanal(r.canal) || '—', cliente: r.cliente || 'Tienda',
         mes: r.mes || (r.fecha || '').slice(0, 7), fecha: r.fecha || '',
         tipo_doc: r.tipo_doc || 'MANUAL', serie: r.serie || '', correlativo: r.correlativo || '',
         n_operacion: r.n_operacion || '', modelo: r.modelo || '—', marca: r.marca || '—',
@@ -2420,6 +2460,9 @@ async function rvRebuildTxns() {
         const i = TXNS_DATA.findIndex(t => rvSigTxn(t) === sig);
         if (i >= 0) {
           Object.assign(TXNS_DATA[i], campos);
+          // Una edición guardada puede traer el nombre viejo del canal y
+          // deshacer la unificación justo al final. Se normaliza igual.
+          if (TXNS_DATA[i].canal) TXNS_DATA[i].canal = rvCanal(TXNS_DATA[i].canal);
           const v = rvNum(TXNS_DATA[i].venta), c = rvNum(TXNS_DATA[i].costo);
           TXNS_DATA[i].margen = v - c;
           TXNS_DATA[i].margen_pct = v > 0 ? ((v - c) / v * 100) : 0;
