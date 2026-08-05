@@ -3527,12 +3527,46 @@ window.rvImportarPlanilla = function () {
   input.click();
 };
 // ── Render de la tabla rica ──
+// Mes seleccionado en la planilla: 'YYYY-MM' o 'todos'. Se resuelve al mes mas
+// reciente la primera vez que se pinta.
+window.__rvPlnMes = window.__rvPlnMes || null;
+window.rvPlanillaVerMes = function (k) {
+  window.__rvPlnMes = k;
+  rvRenderPlanillaTabla();
+};
+
 function rvRenderPlanillaTabla() {
   const tabla = document.getElementById('tbl-planilla');
   if (!tabla) return;
   const editable = (typeof CURRENT !== 'undefined' && CURRENT && CURRENT.role === 'admin');
-  const data = rvPlanillaFull().map(rvPlanillaCalc);
-  data.sort((a, b) => (b.ano - a.ano) || (b.mes - a.mes) || String(a.trabajador || '').localeCompare(String(b.trabajador || '')));
+  const todo = rvPlanillaFull().map(rvPlanillaCalc);
+  todo.sort((a, b) => (b.ano - a.ano) || (b.mes - a.mes) || String(a.trabajador || '').localeCompare(String(b.trabajador || '')));
+
+  // Un boton por mes con planilla cargada, del mas reciente al mas antiguo.
+  const periodos = [...new Set(todo.map((r) => rvNum(r.ano) + '-' + String(rvNum(r.mes)).padStart(2, '0')))];
+  if (window.__rvPlnMes !== 'todos' && periodos.indexOf(window.__rvPlnMes) < 0) {
+    window.__rvPlnMes = periodos[0] || 'todos';
+  }
+  const sel = window.__rvPlnMes;
+  const barra = document.getElementById('rv-pln-meses');
+  if (barra) {
+    const MES_B = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Setiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const boton = (k, txt, n) => {
+      const act = k === sel;
+      return `<button onclick="rvPlanillaVerMes('${k}')" style="padding:7px 14px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:${act ? '800' : '600'};
+        border:1.5px solid ${act ? '#0f2540' : '#d8dde3'};background:${act ? '#0f2540' : '#fff'};color:${act ? '#fff' : '#5b6b7b'}">
+        ${txt}${n != null ? `<span style="opacity:.65;font-weight:600;margin-left:6px">${n}</span>` : ''}</button>`;
+    };
+    barra.innerHTML = periodos.length
+      ? periodos.map((p) => {
+          const [a, m] = p.split('-');
+          return boton(p, (MES_B[parseInt(m, 10)] || p) + ' ' + a, todo.filter((r) => rvNum(r.ano) + '-' + String(rvNum(r.mes)).padStart(2, '0') === p).length);
+        }).join('') + (periodos.length > 1 ? boton('todos', 'Todos los meses', todo.length) : '')
+      : '';
+  }
+  const data = sel === 'todos'
+    ? todo
+    : todo.filter((r) => rvNum(r.ano) + '-' + String(rvNum(r.mes)).padStart(2, '0') === sel);
   const M = (v) => rvNum(v) ? rvMoney(v) : '<span style="color:#c3ccd4">—</span>';
   const th = (t, extra) => `<th style="padding:7px 8px;white-space:nowrap;${extra || ''}">${t}</th>`;
   const cabecera = `<tr style="background:#0f2540;color:#fff;font-size:10.5px;text-align:left">
