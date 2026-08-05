@@ -5783,11 +5783,18 @@
       // ═══════════════════════════════════════════
       // DETALLE POR PRODUCTO
       // ═══════════════════════════════════════════
-      let _detalleData = null;
-
+      // BUG que corrige: esto cacheaba SEED.transacciones la PRIMERA vez que se
+      // llamaba y no se limpiaba nunca. Como la primera llamada ocurre al pintar
+      // el dashboard —antes de que rvRebuildTxns() integre rv_ventas y los
+      // proyectos— la caché se quedaba con el snapshot precargado, que solo
+      // llega hasta mayo 2026. Resultado: junio y julio salían casi en cero en
+      // "Mes a Mes" y no aparecían en "Detalle por Producto", aunque los datos
+      // estuvieran bien guardados en la base.
+      // rvRebuildTxns() reasigna SEED.transacciones, así que leerlo en cada
+      // llamada siempre devuelve el conjunto vigente. Son ~250 registros: no
+      // hay motivo de rendimiento para cachear.
       function getDetalleData() {
-        if (!_detalleData) _detalleData = SEED.transacciones || [];
-        return _detalleData;
+        return SEED.transacciones || [];
       }
 
       // Llena el filtro de meses dinámicamente desde los datos reales
