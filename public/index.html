@@ -4070,18 +4070,39 @@
         }
       }
 
+      // Un proyecto (orden de compra) es una venta de otra naturaleza: un solo
+      // proyecto puede superar en 10x las ventas de todo un mes de tiendas.
+      // Mezclarlos aplastaba la escala de la gráfica mensual y aparecía
+      // "Proyectos" como si fuera una tienda más en Canales. Se separan.
+      function esProyecto(r) {
+        return !!(r && (r.__proy || r.canal === 'Proyectos'));
+      }
+
       function recomputeSeedTotals() {
-        const rows = getDetalleData();
+        const todo = getDetalleData();
+        const rows = todo.filter((r) => !esProyecto(r));   // solo tiendas/ecommerce
+        const proy = todo.filter(esProyecto);              // proyectos aparte
+
         SEED.tot_v = rows.reduce((s, r) => s + (r.venta || 0), 0);
         SEED.tot_c = rows.reduce((s, r) => s + (r.costo || 0), 0);
         SEED.tot_m = SEED.tot_v - SEED.tot_c;
+
+        // Totales de proyectos, para su propia sección/gráfica
+        SEED.proy_tot_v = proy.reduce((s, r) => s + (r.venta || 0), 0);
+        SEED.proy_tot_c = proy.reduce((s, r) => s + (r.costo || 0), 0);
+        SEED.proy_tot_m = SEED.proy_tot_v - SEED.proy_tot_c;
+        SEED.proy_n = proy.length;
+
         // Recompute inv from proveedores (in case provider was edited)
         SEED.inv_tot = SEED.proveedores.reduce((s, p) => s + (p.soles || 0), 0);
-        // Recompute meses
+        // Recompute meses (sin proyectos) + serie mensual de proyectos aparte
         SEED.meses.forEach((m) => {
           const mr = rows.filter((r) => r.mes === m.p);
           m.v = mr.reduce((s, r) => s + (r.venta || 0), 0);
           m.c = mr.reduce((s, r) => s + (r.costo || 0), 0);
+          const pr = proy.filter((r) => r.mes === m.p);
+          m.pv = pr.reduce((s, r) => s + (r.venta || 0), 0);
+          m.pc = pr.reduce((s, r) => s + (r.costo || 0), 0);
         });
         // Recompute canales (re-build, since canal could be added)
         const canMap = {};
@@ -4107,7 +4128,7 @@
         SEED.marcas = Object.entries(marMap)
           .map(([b, d]) => ({ b, inv: oldInv[b] || 0, v: d.v, c: d.c, n: d.n }))
           .sort((a, b) => b.v - a.v);
-        // Rebuild corp clients from txns
+        // Rebuild corp clients from txns (sin proyectos)
         rebuildCorpClients(rows);
       }
 
