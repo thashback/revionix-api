@@ -176,6 +176,130 @@ async function uploadFile(id, tipo, endpoint) {
 const RV_ESTADOS = ['pendiente', 'en_proceso', 'completado', 'cancelado'];
 const RV_ESTADO_COLOR = { pendiente: '#e67e22', en_proceso: '#1565c0', completado: '#198c35', cancelado: '#c0392b' };
 
+// ═══════════════════════════════════════════════════════════════
+// LÍNEA DE TIEMPO DEL PROYECTO
+// Un proyecto no se factura de golpe: pasa por fabricación y envío antes
+// de entregarse. Los plazos se guardan por proyecto (dias_fabricacion /
+// dias_envio) porque cambian segun proveedor.
+// ═══════════════════════════════════════════════════════════════
+const RV_ETAPAS = [
+  { id: 'oc',          nombre: 'OC emitida',  icono: '📄', dias: 0 },
+  { id: 'fabricacion', nombre: 'Fabricación', icono: '🏭', dias: 'dias_fabricacion' },
+  { id: 'envio',       nombre: 'Envío',       icono: '🚚', dias: 'dias_envio' },
+  { id: 'entrega',     nombre: 'Entrega',     icono: '✅', dias: 0 },
+];
+
+function rvSumarDias(fechaISO, dias) {
+  const d = new Date(fechaISO + 'T00:00:00');
+  if (isNaN(d)) return null;
+  d.setDate(d.getDate() + Number(dias || 0));
+  return d.toISOString().slice(0, 10);
+}
+
+// Calcula fecha de inicio/fin de cada etapa y cuál está en curso hoy.
+function rvCalcularEtapas(p) {
+  const inicio = String(p.fecha_inicio_etapas || p.fecha_oc || '').slice(0, 10);
+  if (!inicio) return null;
+  const dFab = Number(p.dias_fabricacion) || 0;
+  const dEnv = Number(p.dias_envio) || 0;
+
+  const finFab = rvSumarDias(inicio, dFab);
+  const finEnv = rvSumarDias(finFab, dEnv);
+  const hoy = new Date().toISOString().slice(0, 10);
+
+  const tramos = [
+    { ...RV_ETAPAS[0], desde: inicio, hasta: inicio, dur: 0 },
+    { ...RV_ETAPAS[1], desde: inicio, hasta: finFab, dur: dFab },
+    { ...RV_ETAPAS[2], desde: finFab, hasta: finEnv, dur: dEnv },
+    { ...RV_ETAPAS[3], desde: finEnv, hasta: finEnv, dur: 0 },
+  ];
+
+  // Etapa vigente: la marcada a mano manda; si no, se deduce por fecha.
+  let actual = p.etapa;
+  if (!actual) {
+    if (hoy < inicio) actual = 'oc';
+    else if (hoy <= finFab) actual = 'fabricacion';
+    else if (hoy <= finEnv) actual = 'envio';
+    else actual = 'entrega';
+  }
+  const iActual = tramos.findIndex(t => t.id === actual);
+
+  tramos.forEach((t, i) => {
+    t.estado = i < iActual ? 'completada' : (i === iActual ? 'en_curso' : 'pendiente');
+  });
+
+  // Avance dentro de la etapa en curso
+  const t = tramos[iActual];
+  let avance = 0;
+  if (t && t.dur > 0) {
+    const transcurridos = Math.floor((new Date(hoy) - new Date(t.desde)) / 86400000);
+    avance = Math.max(0, Math.min(100, Math.round((transcurridos / t.dur) * 100)));
+  }
+  const diasRestantes = t && t.hasta
+    ? Math.ceil((new Date(t.hasta) - new Date(hoy)) / 86400000) : 0;
+
+  return { tramos, actual, iActual, avance, diasRestantes, entregaEstimada: finEnv, inicio };
+}
+
+function rvPintarTimeline(proyectos) {
+  const cont = document.getElementById('rv-proy-timeline');
+  if (!cont) return;
+  const activos = proyectos.filter(p => p.estado !== 'completado' && p.estado !== 'cancelado');
+  if (!activos.length) {
+    cont.innerHTML = '<div style="color:#90a4ae;font-size:13px;padding:14px">Sin proyectos en curso.</div>';
+    return;
+  }
+
+  cont.innerHTML = activos.map(p => {
+    const e = rvCalcularEtapas(p);
+    if (!e) return '';
+    const COL = { completada: '#198c35', en_curso: '#1565c0', pendiente: '#cfd8dc' };
+
+    const pasos = e.tramos.map((t, i) => {
+      const col = COL[t.estado];
+      const esUlt = i === e.tramos.length - 1;
+      return (
+        '<div style="flex:1;min-width:0">' +
+          '<div style="display:flex;align-items:center">' +
+            '<div style="width:34px;height:34px;border-radius:50%;flex:none;display:flex;align-items:center;' +
+              'justify-content:center;font-size:15px;background:' + col + (t.estado === 'pendiente' ? '' : '') + ';' +
+              'color:#fff;box-shadow:0 0 0 4px ' + col + '22">' + t.icono + '</div>' +
+            (!esUlt ? '<div style="flex:1;height:4px;background:' + (t.estado === 'completada' ? COL.completada : COL.pendiente) + '"></div>' : '') +
+          '</div>' +
+          '<div style="margin-top:7px;font-size:12px;font-weight:700;color:' + (t.estado === 'pendiente' ? '#90a4ae' : '#0f2540') + '">' +
+            rvEsc(t.nombre) + (t.dur ? ' <span style="font-weight:500;color:#78909c">(' + t.dur + ' d)</span>' : '') +
+          '</div>' +
+          '<div style="font-size:11px;color:#90a4ae">' + (t.dur ? rvDate(t.desde) + ' → ' + rvDate(t.hasta) : rvDate(t.desde)) + '</div>' +
+          (t.estado === 'en_curso' && t.dur
+            ? '<div style="margin-top:5px"><div style="height:6px;background:#e3f0fb;border-radius:3px;overflow:hidden">' +
+              '<div style="height:100%;width:' + e.avance + '%;background:#1565c0"></div></div>' +
+              '<div style="font-size:10px;color:#1565c0;margin-top:3px;font-weight:600">' + e.avance + '% · ' +
+              (e.diasRestantes >= 0 ? 'faltan ' + e.diasRestantes + ' días' : Math.abs(e.diasRestantes) + ' días de atraso') +
+              '</div></div>'
+            : '') +
+        '</div>'
+      );
+    }).join('');
+
+    const atrasado = e.diasRestantes < 0;
+    return (
+      '<div style="background:#fff;border:1px solid #e3e8ee;border-radius:10px;padding:16px 18px;margin-bottom:14px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:16px">' +
+          '<div><div style="font-weight:700;color:#0f2540">' + rvEsc(p.numero_oc || '') + ' · ' + rvEsc(p.cliente || '') + '</div>' +
+          '<div style="font-size:12px;color:#78909c;margin-top:2px">' + rvEsc(String(p.descripcion || '').split('\n')[0]) + '</div></div>' +
+          '<div style="text-align:right">' +
+            '<div style="font-weight:700;color:#0f2540">' + rvMoney(rvNum(p.monto_total)) + '</div>' +
+            '<div style="font-size:11px;color:' + (atrasado ? '#c0392b' : '#78909c') + '">Entrega estimada: ' + rvDate(e.entregaEstimada) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:6px;align-items:flex-start">' + pasos + '</div>' +
+      '</div>'
+    );
+  }).join('');
+}
+window.rvPintarTimeline = rvPintarTimeline;
+window.rvCalcularEtapas = rvCalcularEtapas;
+
 async function loadProyectos() {
   try {
     const proyectos = await fetch(`${RV_API}/proyectos`).then(r => r.json());
@@ -186,6 +310,7 @@ async function loadProyectos() {
       console.error('[PROYECTOS] Respuesta inesperada:', proyectos);
       return;
     }
+    try { rvPintarTimeline(proyectos); } catch (e) { console.error('[PROYECTOS] timeline', e); }
 
     // KPIs
     const activos = proyectos.filter(p => p.estado === 'pendiente' || p.estado === 'en_proceso').length;

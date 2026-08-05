@@ -533,6 +533,27 @@ async function migrarColumnaCosto() {
       if (e.code === 'ER_DUP_FIELDNAME') console.log('✓ Columna proyectos.condicion_pago ya existe');
       else console.error('migrar condicion_pago:', e.message);
     }
+    // Seguimiento por etapas del proyecto: OC → fabricación → envío → entrega.
+    // Los plazos son configurables por proyecto porque varían según proveedor.
+    const columnasEtapa = [
+      ["etapa", "VARCHAR(20) DEFAULT 'fabricacion'"],
+      ["dias_fabricacion", "INT DEFAULT 60"],
+      ["dias_envio", "INT DEFAULT 40"],
+      ["fecha_inicio_etapas", "DATE NULL"],
+    ];
+    for (const [col, tipo] of columnasEtapa) {
+      try {
+        await conn.query(`ALTER TABLE proyectos ADD COLUMN ${col} ${tipo}`);
+        console.log(`✓ Columna proyectos.${col} agregada`);
+      } catch (e) {
+        if (e.code === 'ER_DUP_FIELDNAME') console.log(`✓ Columna proyectos.${col} ya existe`);
+        else console.error(`migrar ${col}:`, e.message);
+      }
+    }
+    // Los proyectos ya cargados arrancan sus etapas en la fecha de la OC
+    try {
+      await conn.query('UPDATE proyectos SET fecha_inicio_etapas = fecha_oc WHERE fecha_inicio_etapas IS NULL');
+    } catch (e) { console.error('inicializar fecha_inicio_etapas:', e.message); }
     conn.release();
   } catch (err) {
     console.error('✗ migrarColumnaCosto:', err.message);
@@ -966,9 +987,24 @@ app.put('/api/proyectos/:id', upload.single('ruta_oc'), async (req, res) => {
       conn.release();
       res.json({ id, mensaje: 'Proyecto actualizado' });
     } else {
-      const { cliente, descripcion, monto_total, monto_ejecutado, costo, estado, condicion_pago } = req.body;
-      let query = 'UPDATE proyectos SET cliente=?, descripcion=?, monto_total=?, monto_ejecutado=?, costo=?, estado=?, condicion_pago=? WHERE id=?';
-      let params = [cliente, descripcion, monto_total, monto_ejecutado, costo || 0, estado, condicion_pago || 'contado', id];
+      const { cliente, descripcion, monto_total, monto_ejecutado, costo, estado, condicion_pago,
+              etapa, dias_fabricacion, dias_envio, fecha_inicio_etapas } = req.body;
+      // Actualización parcial: si el formulario no manda un campo de etapas, se
+      // conserva el valor actual (COALESCE) en vez de pisarlo con null.
+      const query =
+        'UPDATE proyectos SET cliente=?, descripcion=?, monto_total=?, monto_ejecutado=?, costo=?, ' +
+        'estado=?, condicion_pago=?, etapa=COALESCE(?, etapa), ' +
+        'dias_fabricacion=COALESCE(?, dias_fabricacion), dias_envio=COALESCE(?, dias_envio), ' +
+        'fecha_inicio_etapas=COALESCE(?, fecha_inicio_etapas) WHERE id=?';
+      const params = [
+        cliente, descripcion, monto_total, monto_ejecutado, costo || 0,
+        estado, condicion_pago || 'contado',
+        etapa || null,
+        dias_fabricacion != null && dias_fabricacion !== '' ? Number(dias_fabricacion) : null,
+        dias_envio != null && dias_envio !== '' ? Number(dias_envio) : null,
+        fecha_inicio_etapas || null,
+        id,
+      ];
       await conn.execute(query, params);
       conn.release();
       res.json({ id, mensaje: 'Proyecto actualizado' });
