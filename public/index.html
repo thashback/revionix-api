@@ -1483,14 +1483,14 @@
 
             <div class="kpi-grid">
               <div class="kpi kpi-red">
-                <div class="kpi-label">Productos Agotados</div>
-                <div class="kpi-value" id="kpi-stock-agotados">0</div>
-                <div class="kpi-sub">Sin unidades disponibles</div>
+                <div class="kpi-label">Unidades en Stock</div>
+                <div class="kpi-value" id="kpi-stock-unid">0</div>
+                <div class="kpi-sub" id="kpi-stock-unid-sub">0 líneas de inventario</div>
               </div>
               <div class="kpi kpi-navy">
-                <div class="kpi-label">Inversión Total</div>
-                <div class="kpi-value">S/. 213,964</div>
-                <div class="kpi-sub">Inversión mayoristas</div>
+                <div class="kpi-label">Inventario en Stock</div>
+                <div class="kpi-value">S/. 0</div>
+                <div class="kpi-sub" id="kpi-inv-sub">Valorizado a precio de venta</div>
               </div>
               <div class="kpi kpi-green">
                 <div class="kpi-label">Ventas Realizadas</div>
@@ -1515,9 +1515,9 @@
                 <div class="kpi-sub">Alquileres + planilla est.</div>
               </div>
               <div class="kpi kpi-red">
-                <div class="kpi-label">Stock Almacén Est.</div>
-                <div class="kpi-value">S/. 682,313</div>
-                <div class="kpi-sub">Inversión − costo vendido</div>
+                <div class="kpi-label">Stock Valorizado a Costo</div>
+                <div class="kpi-value" id="kpi-stock-costo">S/. 0</div>
+                <div class="kpi-sub" id="kpi-stock-costo-sub">Solo productos con costo</div>
               </div>
             </div>
 
@@ -2116,35 +2116,55 @@
 
           <!-- STOCK DISPONIBLE -->
           <div class="page" id="page-stock">
-            <div class="page-title">Stock Disponible</div>
+            <div class="page-title">Inventario por Sede</div>
             <div class="page-sub">
-              Inventario por producto · Inversión − Costo Vendido
+              Conteo físico por sede · Almacén SJL, Matriz San Isidro, Compuplaza, Malvitec y Compupalace
             </div>
-            <div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr)">
-              <div class="kpi kpi-red">
-                <div class="kpi-label">Productos Agotados</div>
-                <div class="kpi-value" id="kpi-stock-agotados">0</div>
-                <div class="kpi-sub">Sin unidades disponibles</div>
-              </div>
+            <div class="kpi-grid" style="grid-template-columns: repeat(5, 1fr)">
               <div class="kpi kpi-navy">
-                <div class="kpi-label">Inversión Total</div>
-                <div class="kpi-value" id="stk-inv">S/. 0</div>
-                <div class="kpi-sub">Compras a mayoristas</div>
-              </div>
-              <div class="kpi kpi-red">
-                <div class="kpi-label">Costo Vendido</div>
-                <div class="kpi-value" id="stk-cv">S/. 0</div>
-                <div class="kpi-sub">Costo de items vendidos</div>
+                <div class="kpi-label">Unidades en Stock</div>
+                <div class="kpi-value" id="stk-unid">0</div>
+                <div class="kpi-sub" id="stk-lineas">0 líneas</div>
               </div>
               <div class="kpi kpi-green">
-                <div class="kpi-label">Stock Disponible S/.</div>
-                <div class="kpi-value" id="stk-disp">S/. 0</div>
-                <div class="kpi-sub">Valorizado a costo</div>
+                <div class="kpi-label">Valor Venta</div>
+                <div class="kpi-value" id="stk-vv">S/. 0</div>
+                <div class="kpi-sub">A precio de lista</div>
+              </div>
+              <div class="kpi kpi-red">
+                <div class="kpi-label">Valor Costo</div>
+                <div class="kpi-value" id="stk-vc">S/. 0</div>
+                <div class="kpi-sub" id="stk-vc-sub">Solo productos con costo</div>
               </div>
               <div class="kpi kpi-purple">
-                <div class="kpi-label">% Vendido</div>
-                <div class="kpi-value" id="stk-pct">0%</div>
-                <div class="kpi-sub">Sobre la inversión</div>
+                <div class="kpi-label">Margen Potencial</div>
+                <div class="kpi-value" id="stk-mg">S/. 0</div>
+                <div class="kpi-sub" id="stk-mg-pct">0% sobre venta</div>
+              </div>
+              <div class="kpi kpi-navy">
+                <div class="kpi-label">Sedes</div>
+                <div class="kpi-value" id="stk-sedes">0</div>
+                <div class="kpi-sub" id="stk-marcas-n">0 marcas</div>
+              </div>
+            </div>
+            <!-- Resumen por sede: lo llena renderStock() -->
+            <div class="card" style="margin-bottom: 16px">
+              <div class="card-title">Resumen por Sede</div>
+              <div style="overflow-x: auto">
+                <table id="tbl-stock-sedes">
+                  <thead>
+                    <tr>
+                      <th>Sede</th>
+                      <th>Líneas</th>
+                      <th>Unidades</th>
+                      <th>Valor Venta</th>
+                      <th>Valor Costo</th>
+                      <th>Margen</th>
+                      <th>% del Inventario</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbl-stock-sedes-body"></tbody>
+                </table>
               </div>
             </div>
             <div class="btn-group" style="margin-bottom: 16px">
@@ -2161,13 +2181,6 @@
                 "
               >
                 ⬇ Excel
-              </button>
-              <button
-                class="btn btn-success btn-sm"
-                onclick="addNewStock()"
-                style="font-size: 11px"
-              >
-                ➕ Agregar Item
               </button>
             </div>
             <div
@@ -2194,8 +2207,9 @@
                   outline: none;
                 "
               />
+              <!-- Las opciones de sede las llena renderStock() con las sedes reales -->
               <select
-                id="stk-estado"
+                id="stk-sede"
                 onchange="renderStock()"
                 style="
                   padding: 8px 12px;
@@ -2206,9 +2220,7 @@
                   background: #fff;
                 "
               >
-                <option value="">Todos</option>
-                <option value="disponible">✅ Con stock</option>
-                <option value="agotado">🔴 Agotados</option>
+                <option value="">Todas las sedes</option>
               </select>
               <select
                 id="stk-marca"
@@ -2222,58 +2234,32 @@
                   background: #fff;
                 "
               >
+                <!-- Las opciones de marca las llena renderStock() -->
                 <option value="">Todas las marcas</option>
-                <option>EZVIZ</option>
-                <option>HIKVISION</option>
-                <option>DAHUA</option>
-                <option>HUAWEI</option>
-                <option>MSI</option>
-                <option>ASUS</option>
-                <option>LENOVO</option>
-                <option>HP</option>
-                <option>WD / HDD</option>
-                <option>TP-LINK</option>
-                <option>ZKTeco</option>
-                <option>Otros</option>
               </select>
             </div>
             <div class="card">
-              <div class="card-title">Stock Detallado por Producto</div>
-              <table id="tbl-stock">
-                <thead>
-                  <tr>
-                    <th>Producto</th>
-                    <th>Marca</th>
-                    <th>Comprado</th>
-                    <th>Vendido</th>
-                    <th>Disponible</th>
-                    <th>Costo Unit.</th>
-                    <th>Valor Stock</th>
-                    <th>Estado</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody id="tbl-stock-body"></tbody>
-              </table>
-            </div>
-            <div class="card" style="margin-top: 18px">
-              <div class="card-title">
-                Items Individuales (manualmente agregados)
+              <div class="card-title" id="stk-tabla-titulo">Inventario Detallado</div>
+              <div style="overflow-x: auto">
+                <table id="tbl-stock">
+                  <thead>
+                    <tr>
+                      <th>Sede</th>
+                      <th>Marca</th>
+                      <th>Producto</th>
+                      <th>Código / SKU</th>
+                      <th>Cant.</th>
+                      <th>Precio Venta</th>
+                      <th>Costo Unit.</th>
+                      <th>Valor Venta</th>
+                      <th>Valor Costo</th>
+                      <th>Margen</th>
+                      <th>Series</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbl-stock-body"></tbody>
+                </table>
               </div>
-              <table id="tbl-stock-items">
-                <thead>
-                  <tr>
-                    <th>Producto</th>
-                    <th>Marca</th>
-                    <th>Cant.</th>
-                    <th>Costo Unit.</th>
-                    <th>Total S/.</th>
-                    <th>Ubicación</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody id="tbl-stock-items-body"></tbody>
-              </table>
             </div>
           </div>
 
@@ -3462,6 +3448,12 @@
       const ECOMMERCE_DATA = (window.__SEED && window.__SEED.ECOMMERCE_DATA) || [];
       const COMPRAS_DATA = (window.__SEED && window.__SEED.COMPRAS_DATA) || [];
 
+      // Inventario fisico por sede (incluye ALMACEN SJL). Es la unica fuente
+      // del stock: antes se deducia de COMPRAS_DATA menos lo vendido, lo que
+      // daba cifras que no cuadraban con el conteo real de cada tienda.
+      // COMPRAS_DATA se conserva porque es historial de compras, no inventario.
+      const INVENTARIO_DATA = (window.__SEED && window.__SEED.INVENTARIO_DATA) || [];
+
       const SEED = (window.__SEED && window.__SEED.SEED) || {};
       SEED.transacciones = TXNS_DATA;
       SEED.ecommerce = ECOMMERCE_DATA;
@@ -3997,10 +3989,10 @@
             rec[k] =
               el.type === "number" ? parseFloat(el.value) || 0 : el.value;
           });
-          SEED.inv_tot = SEED.proveedores.reduce(
-            (s, p) => s + (p.soles || 0),
-            0,
-          );
+          // Con inventario por sede cargado, el total lo manda ese conteo;
+          // la suma de proveedores solo aplica si aun no hay inventario.
+          if (INVENTARIO_DATA.length) rvAplicarInventario();
+          else SEED.inv_tot = SEED.proveedores.reduce((s, p) => s + (p.soles || 0), 0);
           renderAll();
           setTimeout(() => initCharts(), 100);
         } else if (_editSource === "marca") {
@@ -4166,8 +4158,11 @@
         SEED.corp_tot_m = SEED.corp_tot_v - SEED.corp_tot_c;
         SEED.corp_n = corpRows.length;
 
-        // Recompute inv from proveedores (in case provider was edited)
-        SEED.inv_tot = SEED.proveedores.reduce((s, p) => s + (p.soles || 0), 0);
+        // El inventario manda el conteo por sede; los proveedores solo se usan
+        // como respaldo mientras no haya inventario cargado.
+        if (!INVENTARIO_DATA.length) {
+          SEED.inv_tot = SEED.proveedores.reduce((s, p) => s + (p.soles || 0), 0);
+        }
         // Recompute meses (sin proyectos) + series mensuales de proyectos y
         // corporativo aparte, para no aplastar la escala de las graficas
         SEED.meses.forEach((m) => {
@@ -4205,6 +4200,9 @@
         SEED.marcas = Object.entries(marMap)
           .map(([b, d]) => ({ b, inv: oldInv[b] || 0, v: d.v, c: d.c, n: d.n }))
           .sort((a, b) => b.v - a.v);
+        // El rebuild de marcas se hace desde las ventas, asi que una marca que
+        // solo existe en inventario se perderia. Se vuelve a aplicar al final.
+        rvAplicarInventario();
         // Rebuild corp clients from txns (sin proyectos)
         rebuildCorpClients(rows);
       }
@@ -5315,13 +5313,18 @@
         // Investment KPI
         const invEl = document.querySelector(".kpi-navy .kpi-value");
         if (invEl) invEl.textContent = fmt(inv);
-        const invSub = document.querySelector(".kpi-navy .kpi-sub");
-        if (invSub)
-          invSub.textContent =
-            "USD " + Math.round(inv / 3.5).toLocaleString() + " × 3.50";
-        // Stock KPI
-        const stockEl = document.querySelector(".kpi-purple .kpi-value");
-        if (stockEl) stockEl.textContent = fmt(inv - tot_c);
+        // KPIs de inventario: salen del conteo por sede, no de las compras.
+        const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+        if (INVENTARIO_DATA.length) {
+          const und = SEED.inv_unidades || 0;
+          const sedes = new Set(INVENTARIO_DATA.map((x) => x.sede)).size;
+          const conCosto = INVENTARIO_DATA.filter((x) => (x.costo || 0) > 0).length;
+          setTxt("kpi-inv-sub", und.toLocaleString("es-PE") + " unidades · " + sedes + " sedes");
+          setTxt("kpi-stock-unid", und.toLocaleString("es-PE"));
+          setTxt("kpi-stock-unid-sub", INVENTARIO_DATA.length + " líneas · " + sedes + " sedes");
+          setTxt("kpi-stock-costo", fmt(SEED.inv_costo || 0));
+          setTxt("kpi-stock-costo-sub", conCosto + " de " + INVENTARIO_DATA.length + " productos con costo");
+        }
         // Avance % in alert
         const avEl = document.getElementById("avance-pct");
         if (avEl && inv > 0)
@@ -6152,302 +6155,123 @@
         localStorage.getItem("rv_stock_overrides") || "{}",
       );
 
-      // ── Returns all sold rows (tiendas + corporativo) for stock matching ──
-      function getAllSoldRows() {
-        const rows = [];
-        // Tiendas (TXNS_DATA)
-        const txns = getDetalleData();
-        txns.forEach((r) =>
-          rows.push({
-            modelo: r.modelo || "",
-            qty: r.qty || 1,
-            marca: r.marca || "",
-          }),
-        );
-        // Corporativo (CORP_VENTAS_DATA)
-        if (typeof CORP_VENTAS_DATA !== "undefined") {
-          CORP_VENTAS_DATA.forEach((r) => {
-            // All corp is now Facturado — include all
-            rows.push({
-              modelo: r.desc || "",
-              qty: r.qty || 1,
-              marca: r.marca || "",
-            });
-          });
-        }
-        // Ecommerce (ECOMMERCE_DATA) — si tiene qty
-        if (typeof ECOMMERCE_DATA !== "undefined") {
-          ECOMMERCE_DATA.forEach((r) => {
-            rows.push({
-              modelo: r.modelo || "",
-              qty: r.qty || 1,
-              marca: r.marca || "",
-            });
-          });
-        }
-        return rows;
+      // ── Inventario fisico por sede ─────────────────────────────────
+      // Antes esta pagina deducia el stock de COMPRAS_DATA menos lo vendido,
+      // emparejando descripciones con heuristicas. Ahora se pinta el conteo
+      // real cargado por sede (INVENTARIO_DATA), que es el dato que la empresa
+      // usa para operar.
+      function rvInvFiltrado() {
+        const txt = (document.getElementById("stk-filter")?.value || "").toLowerCase().trim();
+        const sede = document.getElementById("stk-sede")?.value || "";
+        const marca = document.getElementById("stk-marca")?.value || "";
+        return INVENTARIO_DATA.filter((x) => {
+          if (sede && x.sede !== sede) return false;
+          if (marca && x.marca !== marca) return false;
+          if (txt && !((x.producto || "") + " " + (x.sku || "") + " " + (x.marca || ""))
+            .toLowerCase().includes(txt)) return false;
+          return true;
+        });
       }
 
       function renderStock() {
-        const TC = 3.5;
+        if (!document.getElementById("tbl-stock-body")) return;
+        const fmt = (n) => "S/. " + Math.round(n).toLocaleString("es-PE");
+        const fmt2 = (n) => "S/. " + n.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const esc = (s) => String(s == null ? "" : s)
+          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        const setEl = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
 
-        // ── Model code extractor ──────────────────────────────────────
-        // Extracts the PRIMARY model code from a description
-        // Priority: known prefixes (CS-, DH-, DS-, HK-, AP-, IHB-, etc.)
-        function extractModelCode(s) {
-          if (!s) return "";
-          const u = s.toUpperCase();
-          // Try to extract structured codes: CS-H6C, DH-HAC-B2A21N, DS-2CD1123, AP361, etc.
-          const patterns = [
-            /\b(CS-[A-Z0-9\-]{3,20})\b/, // EZVIZ CS-xxx
-            /\b(DH-[A-Z0-9\-]{3,20})\b/, // Dahua DH-xxx
-            /\b(DHI-[A-Z0-9\-]{3,20})\b/, // Dahua DHI-xxx
-            /\b(IPC-[A-Z0-9\-]{3,20})\b/, // Dahua IPC-xxx
-            /\b(HAC-[A-Z0-9\-]{3,20})\b/, // Dahua HAC-xxx
-            /\b(DS-[A-Z0-9\-]{3,20})\b/, // Hikvision DS-xxx
-            /\b(HK-[A-Z0-9\-]{3,20})\b/, // Hikvision HK-xxx
-            /\b(IDS-[A-Z0-9\-]{3,20})\b/, // Hikvision IDS-xxx
-            /\b(AP\d{3}[A-Z0-9\-]*)\b/, // Huawei AP361 etc
-            /\b(IHB[0-9\-A-Z]{2,15})\b/, // Huawei IdeaHub
-            /\b(S\d{3}-[0-9A-Z]{3,12})\b/, // Huawei S110-xxx
-            /\b(WD[0-9A-Z]{4,12})\b/, // WD drives
-            /\b(ST2-[0-9A-Z]{3,10})\b/, // Dahua MicroSD
-            /\b(ZK-[A-Z0-9\-]{3,15})\b/, // ZKTeco
-            /\b(B[0-9][A-Z0-9]{1,3}[A-Z0-9\-]{1,10})\b/, // MSI B7UC B7VE B13UC
-            // Short EZVIZ model: H6C, H8C, H9C, H3C, H1C, H80, H90, EB3, EB8, CB2
-            /\b(H[0-9][A-Z0-9]{1,4})\b/,
-            /\b(EB[0-9][A-Z0-9\-]*)\b/,
-            /\b(CB[0-9][A-Z0-9\-]*)\b/,
-          ];
-          for (const p of patterns) {
-            const m = u.match(p);
-            if (m) return m[1];
-          }
-          const cpuM = u.match(
-            /\b(R[3579]-[0-9]{4}[A-Z0-9]{0,3}|I[357]-[0-9]{4,5}[A-Z0-9]{0,3})\b/,
-          );
-          if (cpuM) return cpuM[1];
-          return "";
-        }
-
-        // Resolution aliases
-        function normRes(s) {
-          return s
-            .toUpperCase()
-            .replace(/\b2K\b/g, "3MP")
-            .replace(/\b3K\b/g, "5MP")
-            .replace(/\b4K\b/g, "8MP")
-            .replace(/\b5K\b/g, "10MP");
-        }
-
-        // Score how well two items match (0–100)
-        // HIGH PRECISION: model code must match, brand alone is NOT enough
-        function matchScore(sold, bought) {
-          const su = normRes(sold.toUpperCase());
-          const bu = normRes(bought.toUpperCase());
-
-          const soldCode = extractModelCode(sold);
-          const boughtCode = extractModelCode(bought);
-
-          // 1. Exact model code match → very high score
-          if (soldCode && boughtCode && soldCode === boughtCode) return 90;
-
-          // 2. One contains the other (e.g. "H6C" in "CS-H6C (3MP,W1)")
-          if (soldCode && boughtCode) {
-            if (soldCode.includes(boughtCode) || boughtCode.includes(soldCode))
-              return 75;
-            // codes share a significant prefix (>=5 chars)
-            const minLen = Math.min(soldCode.length, boughtCode.length);
-            let prefixLen = 0;
-            for (let i = 0; i < minLen; i++) {
-              if (soldCode[i] === boughtCode[i]) prefixLen++;
-              else break;
-            }
-            if (prefixLen >= 5) return 55;
-          }
-
-          // 3. If sold has a code but bought doesn't (or vice versa) — try substring in full text
-          const code = soldCode || boughtCode;
-          if (code && code.length >= 4) {
-            // BOTH full texts must contain the code for a match
-            if (su.includes(code) && bu.includes(code)) return 70;
-          }
-
-          // 4. No reliable code match → 0
-          return 0;
-        }
-
-        // ── Aggregate COMPRAS by description ─────────────────────────
-        const stockMap = {};
-        COMPRAS_DATA.forEach((c) => {
-          if (!c.desc || !c.cant) return;
-          const t = c.sol > 0 ? c.sol * c.cant : c.usd * TC * c.cant;
-          if (t <= 0) return;
-          // Use full desc as key (not truncated) for accuracy
-          const key = c.desc.trim();
-          if (!stockMap[key])
-            stockMap[key] = {
-              desc: c.desc,
-              marca: c.marca,
-              prov: c.prov,
-              cant_comp: 0,
-              soles_total: 0,
-            };
-          stockMap[key].cant_comp += c.cant;
-          stockMap[key].soles_total += t;
-        });
-
-        // ── Match sold rows against COMPRAS ──────────────────────────
-        const sold = getAllSoldRows();
-        sold.forEach((r) => {
-          if (!r.modelo) return;
-          let bestKey = null,
-            bestScore = 0;
-          Object.keys(stockMap).forEach((k) => {
-            const sc = matchScore(r.modelo, stockMap[k].desc);
-            if (sc > bestScore) {
-              bestScore = sc;
-              bestKey = k;
-            }
-          });
-          if (bestKey && bestScore >= 70) {
-            stockMap[bestKey].cant_vend =
-              (stockMap[bestKey].cant_vend || 0) + (r.qty || 1);
-          }
-        });
-        Object.keys(STOCK_OVERRIDES).forEach((desc) => {
-          if (stockMap[desc]) stockMap[desc]._override = STOCK_OVERRIDES[desc];
-        });
-
-        const stockItems = Object.values(stockMap)
-          .map((s) => {
-            const cu = s.cant_comp > 0 ? s.soles_total / s.cant_comp : 0;
-            const cv =
-              s._override !== undefined ? s._override : s.cant_vend || 0;
-            const disp = Math.max(0, s.cant_comp - cv);
-            return {
-              ...s,
-              cant_vend: cv,
-              cant_disp: disp,
-              costo_unit: cu,
-              valor_stock: disp * cu,
-            };
-          })
-          .filter((s) => s.cant_comp > 0)
-          .sort((a, b) => b.valor_stock - a.valor_stock);
-
-        // ── KPIs ──────────────────────────────────────────────────────
-        const totInv = stockItems.reduce((s, x) => s + x.soles_total, 0);
-        const totVend = stockItems.reduce(
-          (s, x) => s + x.cant_vend * x.costo_unit,
-          0,
-        );
-        const totDisp = stockItems.reduce((s, x) => s + x.valor_stock, 0);
-        const totAgotados = stockItems.filter(x => {
-          const disp = x.cant_disp !== undefined ? x.cant_disp : (x.cant_comp - x.cant_vend);
-          return disp <= 0;
-        }).length;
-        const agotadosEl = document.getElementById("kpi-stock-agotados");
-        if (agotadosEl) agotadosEl.textContent = totAgotados;
-        // Also update dashboard kpi-stock-agotados if present (duplicated element)
-        document.querySelectorAll('[id="kpi-stock-agotados"]').forEach(el => el.textContent = totAgotados);
-        const pct = totInv > 0 ? (totVend / totInv) * 100 : 0;
-        const setEl = (id, v) => {
+        // Los selectores se llenan con las sedes y marcas que existen de verdad,
+        // conservando lo que el usuario tenga elegido.
+        const llenar = (id, valores, etiquetaTodos) => {
           const el = document.getElementById(id);
-          if (el) el.textContent = v;
+          if (!el) return;
+          const actual = el.value;
+          el.innerHTML = `<option value="">${etiquetaTodos}</option>` +
+            valores.map((v) => `<option value="${esc(v)}"${v === actual ? " selected" : ""}>${esc(v)}</option>`).join("");
+          el.value = valores.indexOf(actual) >= 0 ? actual : "";
         };
-        setEl("stk-inv", fmt(totInv));
-        setEl("stk-cv", fmt(totVend));
-        setEl("stk-disp", fmt(totDisp));
-        setEl("stk-pct", pct.toFixed(1) + "%");
+        llenar("stk-sede", [...new Set(INVENTARIO_DATA.map((x) => x.sede))].sort(), "Todas las sedes");
+        llenar("stk-marca", [...new Set(INVENTARIO_DATA.map((x) => x.marca))].sort(), "Todas las marcas");
 
-        // ── Table ─────────────────────────────────────────────────────
+        const items = rvInvFiltrado();
+        const und = items.reduce((s, x) => s + (x.cant || 0), 0);
+        const vv = items.reduce((s, x) => s + (x.valor_venta || 0), 0);
+        const vc = items.reduce((s, x) => s + (x.valor_costo || 0), 0);
+        const conCosto = items.filter((x) => (x.costo || 0) > 0).length;
+
+        setEl("stk-unid", und.toLocaleString("es-PE"));
+        setEl("stk-lineas", items.length + (items.length === 1 ? " línea" : " líneas"));
+        setEl("stk-vv", fmt(vv));
+        setEl("stk-vc", fmt(vc));
+        setEl("stk-vc-sub", conCosto + " de " + items.length + " productos con costo");
+        setEl("stk-mg", fmt(vv - vc));
+        setEl("stk-mg-pct", (vv > 0 ? ((vv - vc) / vv * 100).toFixed(1) : "0.0") + "% sobre venta");
+        setEl("stk-sedes", new Set(items.map((x) => x.sede)).size);
+        setEl("stk-marcas-n", new Set(items.map((x) => x.marca)).size + " marcas");
+
+        // ── Resumen por sede (siempre sobre el inventario completo) ──
+        const tbSedes = document.getElementById("tbl-stock-sedes-body");
+        if (tbSedes) {
+          const porSede = {};
+          INVENTARIO_DATA.forEach((x) => {
+            const s = porSede[x.sede] || (porSede[x.sede] = { n: 0, u: 0, vv: 0, vc: 0 });
+            s.n++; s.u += x.cant || 0; s.vv += x.valor_venta || 0; s.vc += x.valor_costo || 0;
+          });
+          const totVV = Object.values(porSede).reduce((s, x) => s + x.vv, 0);
+          const filas = Object.entries(porSede).sort((a, b) => b[1].vv - a[1].vv);
+          tbSedes.innerHTML = filas.length
+            ? filas.map(([nombre, s]) => {
+                const pct = totVV > 0 ? (s.vv / totVV) * 100 : 0;
+                return `<tr>
+                  <td style="font-weight:600;color:var(--c-navy)">${esc(nombre)}</td>
+                  <td>${s.n}</td>
+                  <td>${s.u.toLocaleString("es-PE")}</td>
+                  <td>${fmt(s.vv)}</td>
+                  <td>${s.vc > 0 ? fmt(s.vc) : "—"}</td>
+                  <td style="color:var(--c-green2);font-weight:600">${fmt(s.vv - s.vc)}</td>
+                  <td>
+                    <div style="font-size:12px">${pct.toFixed(1)}%</div>
+                    <div class="progress-bar"><div class="progress-fill" style="width:${Math.min(pct, 100)}%"></div></div>
+                  </td>
+                </tr>`;
+              }).join("") +
+              `<tr style="background:var(--c-bg);font-weight:800">
+                 <td>TOTAL</td>
+                 <td>${INVENTARIO_DATA.length}</td>
+                 <td>${INVENTARIO_DATA.reduce((s, x) => s + (x.cant || 0), 0).toLocaleString("es-PE")}</td>
+                 <td>${fmt(totVV)}</td>
+                 <td>${fmt(INVENTARIO_DATA.reduce((s, x) => s + (x.valor_costo || 0), 0))}</td>
+                 <td style="color:var(--c-green2)">${fmt(totVV - INVENTARIO_DATA.reduce((s, x) => s + (x.valor_costo || 0), 0))}</td>
+                 <td>100%</td>
+               </tr>`
+            : `<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--c-gray)">Sin inventario cargado</td></tr>`;
+        }
+
+        // ── Detalle ──
+        const titulo = document.getElementById("stk-tabla-titulo");
+        if (titulo) {
+          const sede = document.getElementById("stk-sede")?.value || "";
+          titulo.textContent = "Inventario Detallado" + (sede ? " · " + sede : "") +
+            " (" + items.length + " de " + INVENTARIO_DATA.length + " líneas)";
+        }
         const tbody = document.getElementById("tbl-stock-body");
-        if (tbody) {
-          const filt = (
-            document.getElementById("stk-filter")?.value || ""
-          ).toLowerCase();
-          const fmarca = document.getElementById("stk-marca")?.value || "";
-          const festado = document.getElementById("stk-estado")?.value || "";
-          let rows = stockItems;
-          if (filt)
-            rows = rows.filter(
-              (s) =>
-                s.desc.toLowerCase().includes(filt) ||
-                (s.prov || "").toLowerCase().includes(filt),
-            );
-          if (fmarca) rows = rows.filter((s) => s.marca === fmarca);
-          if (festado === "agotado") rows = rows.filter((s) => (s.cant_disp || 0) <= 0);
-          else if (festado === "disponible") rows = rows.filter((s) => (s.cant_disp || 0) > 0);
-
-          if (!rows.length) {
-            tbody.innerHTML =
-              '<tr><td colspan="8" style="text-align:center;padding:25px;color:var(--c-gray)">Sin resultados</td></tr>';
-          } else {
-            tbody.innerHTML =
-              rows
-                .map((s) => {
-                  const pctV =
-                    s.cant_comp > 0 ? (s.cant_vend / s.cant_comp) * 100 : 0;
-                  const estado =
-                    s.cant_disp <= 0
-                      ? '<span class="pill pill-red">🔴 Agotado</span>'
-                      : pctV >= 80
-                        ? '<span class="pill pill-yellow">⚠️ Bajo</span>'
-                        : pctV >= 20
-                          ? '<span class="pill pill-blue">📦 Normal</span>'
-                          : '<span class="pill pill-green">✅ Abundante</span>';
-                  return `<tr>
-          <td style="font-size:11px;max-width:300px">
-            <div style="font-weight:600;color:var(--c-navy);line-height:1.3">${s.desc.substring(0, 90)}</div>
-            <div style="color:var(--c-gray);font-size:10px;margin-top:2px">${s.prov || ""}</div>
-          </td>
-          <td><span class="mark-brand" style="background:${BCOLORS[s.marca] || "#90A4AE"}"></span><span style="font-size:11px">${s.marca}</span></td>
-          <td style="text-align:center;font-weight:600">${s.cant_comp}</td>
-          <td style="text-align:center;color:var(--c-red)">${s.cant_vend}</td>
-          <td style="text-align:center;font-weight:700;color:${s.cant_disp <= 0 ? "var(--c-red)" : "var(--c-green)"}">${s.cant_disp}</td>
-          <td style="font-size:11px">${fmt(s.costo_unit)}</td>
-          <td><strong>${fmt(s.valor_stock)}</strong></td>
-          <td>${estado}</td>
-          <td>${CURRENT && CURRENT.role === "admin" ? `<button data-desc="${s.desc.substring(0, 80).replace(/"/g, "&quot;")}" data-cant="${s.cant_comp}" data-costo="${Math.round(s.costo_unit * 100) / 100}" onclick="editStockRowBtn(this)" style="background:none;border:1.5px solid var(--c-border);border-radius:5px;cursor:pointer;padding:2px 6px;font-size:11px">✏️</button>` : ""}</td>
-        </tr>`;
-                })
-                .join("") +
-              `<tr style="background:var(--c-bg);font-weight:700;font-size:12px">
-        <td colspan="2">TOTAL (${rows.length} productos)</td>
-        <td style="text-align:center">${rows.reduce((s, x) => s + x.cant_comp, 0)}</td>
-        <td style="text-align:center">${rows.reduce((s, x) => s + x.cant_vend, 0)}</td>
-        <td style="text-align:center;color:var(--c-green)">${rows.reduce((s, x) => s + x.cant_disp, 0)}</td>
-        <td>—</td>
-        <td>${fmt(rows.reduce((s, x) => s + x.valor_stock, 0))}</td>
-        <td></td>
-      </tr>`;
-          }
-        }
-
-        // ── Manual items ──────────────────────────────────────────────
-        const tbody2 = document.getElementById("tbl-stock-items-body");
-        if (tbody2) {
-          if (!STOCK_ITEMS.length) {
-            tbody2.innerHTML =
-              '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--c-gray)">Sin items manuales · Click <strong>+ Agregar Item</strong></td></tr>';
-          } else {
-            tbody2.innerHTML = STOCK_ITEMS.map(
-              (s, i) => `<tr>
-        <td>${s.desc}</td>
-        <td><span class="mark-brand" style="background:${BCOLORS[s.marca] || "#90A4AE"}"></span>${s.marca}</td>
-        <td style="text-align:center"><strong>${s.cant}</strong></td>
-        <td>${fmt(s.costo_unit)}</td>
-        <td><strong>${fmt((s.cant || 0) * (s.costo_unit || 0))}</strong></td>
-        <td>${s.ubicacion || "—"}</td>
-        <td>
-          ${CURRENT && CURRENT.role === "admin" ? `<button onclick="openEdit(${i},'stock')" style="background:none;border:1.5px solid var(--c-border);border-radius:5px;cursor:pointer;padding:2px 6px;font-size:11px;margin-right:3px">✏️</button>` : ""}
-          <button onclick="deleteStockItem(${i})" style="background:none;border:none;cursor:pointer;color:var(--c-red2);font-size:16px;padding:0 4px">×</button>
-        </td>
-      </tr>`,
-            ).join("");
-          }
-        }
+        const orden = items.slice().sort((a, b) => (b.valor_venta || 0) - (a.valor_venta || 0));
+        tbody.innerHTML = orden.length
+          ? orden.map((x) => `<tr>
+              <td style="font-size:11px;color:var(--c-gray4);white-space:nowrap">${esc(x.sede)}</td>
+              <td><span style="font-size:11px;font-weight:700;color:var(--c-navy)">${esc(x.marca)}</span></td>
+              <td style="font-weight:600">${esc(x.producto)}</td>
+              <td style="font-size:10.5px;color:var(--c-gray)">${esc(x.sku) || "—"}</td>
+              <td style="text-align:center;font-weight:700">${(x.cant || 0).toLocaleString("es-PE")}</td>
+              <td>${fmt2(x.precio || 0)}</td>
+              <td>${(x.costo || 0) > 0 ? fmt2(x.costo) : "—"}</td>
+              <td style="font-weight:600">${fmt(x.valor_venta || 0)}</td>
+              <td>${(x.valor_costo || 0) > 0 ? fmt(x.valor_costo) : "—"}</td>
+              <td style="color:var(--c-green2);font-weight:600">${fmt(x.margen || 0)}</td>
+              <td style="text-align:center;font-size:11px">${x.req_serie ? (x.series || 0) + " reg." : "—"}</td>
+            </tr>`).join("")
+          : `<tr><td colspan="11" style="padding:24px;text-align:center;color:var(--c-gray)">Sin resultados para el filtro aplicado</td></tr>`;
       }
 
       function addNewStock() {
@@ -6783,26 +6607,36 @@
             soles: Math.round(d.soles * 100) / 100,
           }))
           .sort((a, b) => b.soles - a.soles);
-        SEED.inv_tot = SEED.proveedores.reduce((s, p) => s + p.soles, 0);
-        // Rebuild marcas inv
-        const invByMarca = {};
-        COMPRAS_DATA.forEach((c) => {
-          const t = c.sol > 0 ? c.sol * c.cant : c.usd * TC * c.cant;
-          if (t > 0) invByMarca[c.marca] = (invByMarca[c.marca] || 0) + t;
+        rvAplicarInventario();
+      }
+
+      // Inventario del dashboard: sale del conteo por sede (INVENTARIO_DATA),
+      // no de las compras acumuladas. Se valoriza a PRECIO DE VENTA porque solo
+      // 7 de las 204 lineas tienen costo real; a costo, casi todas las marcas
+      // apareceria en cero y la rotacion (venta/inventario) no diria nada.
+      function rvAplicarInventario() {
+        if (!INVENTARIO_DATA.length) return;
+        const invPorMarca = {};
+        INVENTARIO_DATA.forEach((x) => {
+          invPorMarca[x.marca] = (invPorMarca[x.marca] || 0) + (x.valor_venta || 0);
         });
+        SEED.inv_tot = Math.round(
+          INVENTARIO_DATA.reduce((s, x) => s + (x.valor_venta || 0), 0) * 100) / 100;
+        SEED.inv_unidades = INVENTARIO_DATA.reduce((s, x) => s + (x.cant || 0), 0);
+        SEED.inv_costo = Math.round(
+          INVENTARIO_DATA.reduce((s, x) => s + (x.valor_costo || 0), 0) * 100) / 100;
+        // Las marcas del inventario y las de ventas no siempre coinciden en
+        // mayusculas/minusculas; se emparejan sin distinguir.
+        const usadas = {};
         SEED.marcas.forEach((m) => {
-          m.inv = Math.round((invByMarca[m.b] || 0) * 100) / 100;
+          const clave = Object.keys(invPorMarca).find(
+            (b) => b.toUpperCase() === String(m.b).toUpperCase());
+          m.inv = clave ? Math.round(invPorMarca[clave] * 100) / 100 : 0;
+          if (clave) usadas[clave] = true;
         });
-        // Add new marcas not yet in SEED.marcas
-        Object.keys(invByMarca).forEach((b) => {
-          if (!SEED.marcas.find((m) => m.b === b)) {
-            SEED.marcas.push({
-              b,
-              inv: Math.round(invByMarca[b] * 100) / 100,
-              v: 0,
-              c: 0,
-              n: 0,
-            });
+        Object.keys(invPorMarca).forEach((b) => {
+          if (!usadas[b]) {
+            SEED.marcas.push({ b, inv: Math.round(invPorMarca[b] * 100) / 100, v: 0, c: 0, n: 0 });
           }
         });
       }
