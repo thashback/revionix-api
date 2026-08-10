@@ -156,6 +156,9 @@ function blockVisorWrites(req, res, next) {
 
 app.use('/api', (req, res, next) => {
   if (req.path === '/auth/login' || req.path === '/health') return next();
+  // La pantalla de mantenimiento consulta su propio estado para volver sola
+  // cuando termina; en ese momento nadie tiene sesión iniciada.
+  if (req.path === '/mantenimiento' && req.method === 'GET') return next();
   return requireAuth(req, res, next);
 }, blockVisorWrites);
 app.use('/api/auth/users', requireAdmin);
@@ -166,6 +169,90 @@ app.use('/api/auth/users', requireAdmin);
 // PDFs/imágenes/XML. Para cerrar esto de verdad hace falta un esquema de URL
 // firmada con expiración (o pasar el token por query string), tocando cada
 // sitio que arma la ruta en app.js — requiere probarlo con datos reales.
+
+// ═══════════════════════════════════════════════════════════════
+// MODO MANTENIMIENTO
+// El estado vive en app_storage (clave sys_mantenimiento), no en una variable
+// de entorno, para poder encenderlo y apagarlo sin redesplegar. Se cachea unos
+// segundos: se consulta en cada request y no vale ir a MySQL cada vez.
+// ═══════════════════════════════════════════════════════════════
+const MANT_CLAVE = 'sys_mantenimiento';
+const MANT_ACCESO = process.env.MANTENIMIENTO_ACCESO || 'revionix';
+const MANT_TTL = 15000;
+let _mantCache = { valor: { activo: false }, hasta: 0 };
+
+async function leerMantenimiento() {
+  if (Date.now() < _mantCache.hasta) return _mantCache.valor;
+  let valor = { activo: false };
+  try {
+    const conn = await pool.getConnection();
+    const [rows] = await conn.execute('SELECT valor FROM app_storage WHERE clave = ?', [MANT_CLAVE]);
+    conn.release();
+    if (rows.length) valor = JSON.parse(rows[0].valor) || valor;
+  } catch (e) {
+    // Si no se puede leer el flag, el sistema sigue abierto: es preferible a
+    // dejar a todos fuera por un problema de base de datos.
+    console.warn('[MANTENIMIENTO] no se pudo leer el estado:', e.message);
+  }
+  _mantCache = { valor, hasta: Date.now() + MANT_TTL };
+  return valor;
+}
+
+function tienePase(req) {
+  if ((req.query.acceso || '') === MANT_ACCESO) return true;
+  const cookies = req.headers.cookie || '';
+  return cookies.split(';').some((c) => c.trim() === 'rv_pase=' + MANT_ACCESO);
+}
+
+app.get('/api/mantenimiento', async (req, res) => {
+  const m = await leerMantenimiento();
+  res.json({ activo: !!m.activo, mensaje: m.mensaje || '' });
+});
+
+app.post('/api/mantenimiento', requireAdmin, async (req, res) => {
+  try {
+    const valor = JSON.stringify({
+      activo: !!req.body.activo,
+      mensaje: String(req.body.mensaje || ''),
+    });
+    const conn = await pool.getConnection();
+    await conn.execute(
+      'INSERT INTO app_storage (clave, valor, rev) VALUES (?, ?, 1) ' +
+      'ON DUPLICATE KEY UPDATE valor = VALUES(valor), rev = rev + 1', [MANT_CLAVE, valor]);
+    conn.release();
+    _mantCache.hasta = 0;   // que el próximo request lo relea ya
+    res.json({ ok: true, activo: !!req.body.activo });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Intercepta solo la navegación a páginas. La API, el logo, el favicon y los
+// adjuntos siguen sirviéndose: la propia pantalla de mantenimiento los necesita.
+app.use(async (req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) return next();
+  const esPagina = req.path === '/' || req.path.endsWith('.html');
+  if (!esPagina || req.path === '/mantenimiento.html') return next();
+
+  const m = await leerMantenimiento();
+  if (!m.activo) return next();
+
+  if (tienePase(req)) {
+    // El pase se guarda en cookie para que el resto de la navegación no tenga
+    // que arrastrar el parámetro en cada enlace.
+    if (req.query.acceso) {
+      res.setHeader('Set-Cookie', 'rv_pase=' + MANT_ACCESO + '; Path=/; Max-Age=43200; SameSite=Lax');
+    }
+    return next();
+  }
+
+  // 503 + Retry-After: le dice a buscadores y monitores que es temporal.
+  res.status(503);
+  res.setHeader('Retry-After', '600');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  return res.sendFile(path.join(__dirname, 'public', 'mantenimiento.html'));
+});
 
 // no-store en html/js: el navegador NUNCA guarda copia, siempre pide la última
 app.use(express.static(path.join(__dirname, 'public'), {

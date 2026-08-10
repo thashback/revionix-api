@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>REVIONIX · En mantenimiento</title>
+    <link rel="icon" type="image/png" href="img/favicon.png" />
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        background: radial-gradient(120% 120% at 50% 0%, #1b3c67 0%, #0f2540 55%, #0a1a2e 100%);
+        color: #e8eef5;
+      }
+      .caja {
+        width: 100%;
+        max-width: 560px;
+        text-align: center;
+      }
+      .logo {
+        background: #fff;
+        border-radius: 16px;
+        padding: 26px 34px;
+        display: inline-block;
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+      }
+      .logo img { display: block; width: 100%; max-width: 320px; height: auto; }
+
+      h1 {
+        margin: 34px 0 12px;
+        font-size: 27px;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+      }
+      p.frase {
+        font-size: 16.5px;
+        line-height: 1.6;
+        color: #a9c0d8;
+        margin-bottom: 30px;
+      }
+
+      /* Barra de progreso indeterminada: señal de que el trabajo sigue en curso */
+      .barra {
+        height: 4px;
+        width: 200px;
+        margin: 0 auto 30px;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.14);
+        overflow: hidden;
+      }
+      .barra span {
+        display: block;
+        height: 100%;
+        width: 40%;
+        border-radius: 4px;
+        background: linear-gradient(90deg, #2563a8, #7fd1a0);
+        animation: correr 1.7s ease-in-out infinite;
+      }
+      @keyframes correr {
+        0%   { transform: translateX(-100%); }
+        100% { transform: translateX(350%); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .barra span { animation: none; width: 100%; }
+      }
+
+      .pie {
+        font-size: 13px;
+        color: #7d97b3;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        padding-top: 18px;
+      }
+      .pie strong { color: #a9c0d8; font-weight: 600; }
+
+      @media (max-width: 480px) {
+        .logo { padding: 20px 24px; }
+        h1 { font-size: 22px; }
+        p.frase { font-size: 15px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="caja">
+      <div class="logo">
+        <img src="img/logo-revionix.svg" alt="REVIONIX" />
+      </div>
+
+      <h1>Estamos en mantenimiento</h1>
+      <p class="frase">Estamos trabajando para mejorar para ti.<br />Volvemos en unos minutos.</p>
+
+      <div class="barra"><span></span></div>
+
+      <div class="pie">
+        Si necesitas acceder con urgencia, comunícate con el
+        <strong>administrador del sistema</strong>.
+      </div>
+    </div>
+
+    <script>
+      // Reintenta sola: cuando el mantenimiento termina, la página entra al
+      // sistema sin que el usuario tenga que recargar.
+      setInterval(function () {
+        fetch("/api/mantenimiento", { cache: "no-store" })
+          .then(function (r) { return r.json(); })
+          .then(function (d) { if (d && d.activo === false) location.replace("/"); })
+          .catch(function () {});
+      }, 20000);
+    </script>
+  </body>
+</html>

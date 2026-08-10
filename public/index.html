@@ -3234,6 +3234,30 @@
           <div class="page" id="page-usuarios">
             <div class="page-title">Gestión de Usuarios</div>
             <div class="page-sub">Administrar acceso al sistema</div>
+
+            <!-- Modo mantenimiento: lo pinta rvRenderMantenimiento() -->
+            <div class="card" style="margin-bottom: 18px">
+              <div class="card-title">Modo Mantenimiento</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
+                <div style="flex:1;min-width:260px">
+                  <div id="mant-estado" style="font-size:14px;font-weight:700;color:var(--c-navy)">
+                    Consultando…
+                  </div>
+                  <div style="font-size:12px;color:var(--c-gray);margin-top:4px">
+                    Con el mantenimiento activo, los usuarios ven el logo y el aviso en lugar
+                    del sistema. Tú puedes seguir entrando con el enlace de acceso.
+                  </div>
+                </div>
+                <button id="mant-boton" class="btn btn-outline" onclick="rvToggleMantenimiento()">
+                  Cargando…
+                </button>
+              </div>
+              <div id="mant-enlace" style="font-size:12px;color:var(--c-gray);margin-top:12px;display:none">
+                Enlace de acceso mientras dura el mantenimiento:
+                <a id="mant-enlace-url" href="#" style="color:var(--c-blue)"></a>
+              </div>
+            </div>
+
             <div id="usuarios-content"></div>
           </div>
 
@@ -7181,6 +7205,9 @@
       function renderUsuarios() {
         const content = document.getElementById("usuarios-content");
         if (!content) return;
+        // El interruptor de mantenimiento vive en esta pagina; se oculta solo
+        // si quien mira no es administrador.
+        if (window.rvRenderMantenimiento) window.rvRenderMantenimiento();
         if (CURRENT.role !== "admin") {
           content.innerHTML = `<div class="access-denied">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>

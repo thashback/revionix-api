@@ -3778,3 +3778,71 @@ window.rvMostrarCargandoDashboard = rvMostrarCargandoDashboard;
 window.rvOcultarCargandoDashboard = rvOcultarCargandoDashboard;
 
 console.log('[RV-API] ✓ Módulos API cargados sin conflictos');
+
+// ═══════════════════════════════════════════════════════════════
+// MODO MANTENIMIENTO (solo administradores)
+// El estado vive en el servidor, no en el navegador: encenderlo desde un
+// equipo lo enciende para todos.
+// ═══════════════════════════════════════════════════════════════
+window.rvRenderMantenimiento = function () {
+  const estado = document.getElementById('mant-estado');
+  const boton = document.getElementById('mant-boton');
+  if (!estado || !boton) return;
+  const esAdmin = typeof CURRENT !== 'undefined' && CURRENT && CURRENT.role === 'admin';
+  if (!esAdmin) {
+    const tarjeta = estado.closest('.card');
+    if (tarjeta) tarjeta.style.display = 'none';
+    return;
+  }
+  fetch(`${RV_API}/mantenimiento`, { cache: 'no-store' })
+    .then((r) => r.json())
+    .then((d) => {
+      const activo = !!d.activo;
+      estado.textContent = activo
+        ? '🔴 Mantenimiento ACTIVO — los usuarios no pueden entrar'
+        : '🟢 Sistema operativo — todos los usuarios pueden entrar';
+      estado.style.color = activo ? '#c0392b' : '#198c35';
+      boton.textContent = activo ? 'Reactivar el sistema' : 'Activar mantenimiento';
+      boton.className = activo ? 'btn btn-success' : 'btn btn-outline';
+      boton.dataset.activo = activo ? '1' : '0';
+      const enlace = document.getElementById('mant-enlace');
+      const url = document.getElementById('mant-enlace-url');
+      if (enlace && url) {
+        enlace.style.display = activo ? 'block' : 'none';
+        const destino = `${window.location.origin}/?acceso=revionix`;
+        url.textContent = destino;
+        url.href = destino;
+      }
+    })
+    .catch(() => { estado.textContent = 'No se pudo consultar el estado'; });
+};
+
+window.rvToggleMantenimiento = function () {
+  const boton = document.getElementById('mant-boton');
+  if (!boton) return;
+  const activar = boton.dataset.activo !== '1';
+  const aviso = activar
+    ? '¿Activar el mantenimiento?\n\nTodos los usuarios dejarán de ver el sistema hasta que lo reactives. Tú podrás seguir entrando con el enlace de acceso.'
+    : '¿Reactivar el sistema?\n\nLos usuarios volverán a entrar con normalidad.';
+  if (!confirm(aviso)) return;
+  boton.disabled = true;
+  boton.textContent = 'Guardando…';
+  fetch(`${RV_API}/mantenimiento`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ activo: activar, mensaje: 'Estamos trabajando para mejorar para ti.' }),
+  })
+    .then((r) => r.json())
+    .then((d) => {
+      if (d.error) throw new Error(d.error);
+      if (typeof rvAuditar === 'function') {
+        rvAuditar(activar ? 'activar' : 'desactivar', 'mantenimiento',
+          activar ? 'Activó el modo mantenimiento' : 'Reactivó el sistema');
+      }
+      if (typeof showToast === 'function') {
+        showToast(activar ? 'Mantenimiento activado' : 'Sistema reactivado');
+      }
+    })
+    .catch((e) => alert('No se pudo cambiar el estado: ' + e.message))
+    .finally(() => { boton.disabled = false; window.rvRenderMantenimiento(); });
+};
