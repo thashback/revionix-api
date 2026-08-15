@@ -169,6 +169,54 @@ app.use('/api', (req, res, next) => {
 }, blockVisorWrites);
 app.use('/api/auth/users', requireAdmin);
 
+// ═══════════════════════════════════════════════════════════════
+// STOCK DESDE BILLIA, cada 2 horas.
+// BILLIA es el dueño del inventario pero en producción no tiene un
+// programador de tareas (corre solo gunicorn); este proceso sí vive
+// las 24 horas, así que el CRM jala en vez de esperar el empujón.
+// El snapshot se guarda en seed_snapshot (INVENTARIO_DATA) que es lo
+// que la página de stock ya pinta, junto con INVENTARIO_META para el
+// sello de "de cuándo es este número".
+// ═══════════════════════════════════════════════════════════════
+async function sincronizarStockBillia(motivo) {
+  const url = process.env.BILLIA_SNAPSHOT_URL;
+  const token = process.env.SEED_TOKEN;
+  if (!url || !token) return; // sin configurar, no hace nada ni estorba
+  try {
+    const r = await fetch(url, { headers: { 'x-seed-token': token }, signal: AbortSignal.timeout(90000) });
+    if (!r.ok) {
+      console.error(`[BILLIA] sync falló (${motivo}): HTTP ${r.status}`);
+      return;
+    }
+    const { lineas, meta } = await r.json();
+    if (!Array.isArray(lineas) || !lineas.length) {
+      // Un snapshot vacío casi siempre es un error del otro lado; pisar el
+      // inventario con [] dejaría la página en blanco sin aviso.
+      console.error(`[BILLIA] sync (${motivo}): snapshot vacío, se conserva el anterior`);
+      return;
+    }
+    const conn = await pool.getConnection();
+    try {
+      for (const [clave, datos, n] of [
+        ['INVENTARIO_DATA', JSON.stringify(lineas), lineas.length],
+        ['INVENTARIO_META', JSON.stringify(meta || {}), 1],
+      ]) {
+        await conn.execute(
+          'INSERT INTO seed_snapshot (clave, datos, registros) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE datos=VALUES(datos), registros=VALUES(registros)',
+          [clave, datos, n]
+        );
+      }
+    } finally {
+      conn.release();
+    }
+    console.log(`[BILLIA] stock sincronizado (${motivo}): ${lineas.length} líneas, ${meta && meta.unidades} unidades`);
+  } catch (err) {
+    console.error(`[BILLIA] sync falló (${motivo}):`, err.message);
+  }
+}
+setTimeout(() => sincronizarStockBillia('arranque'), 30000);
+setInterval(() => sincronizarStockBillia('programado'), 2 * 60 * 60 * 1000);
+
 // NOTA: /uploads/:nombre (comprobantes) queda sin requerir token a propósito.
 // viewFile() en app.js los abre con window.open()/<img>/<a href> directos,
 // que no pueden mandar el header Authorization; protegerlo rompería ver
