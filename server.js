@@ -385,6 +385,12 @@ initSeedSnapshotTable();
 
 app.post('/api/seed', async (req, res) => {
   try {
+    // El seed es la fuente del dashboard: quien escribe aqui pinta las cifras de la
+    // empresa. Si SEED_TOKEN esta configurado, solo entra quien lo traiga; sin la
+    // variable se comporta como antes para no romper el flujo actual de carga.
+    if (process.env.SEED_TOKEN && req.headers['x-seed-token'] !== process.env.SEED_TOKEN) {
+      return res.status(401).json({ error: 'Token de seed requerido' });
+    }
     const { clave, datos } = req.body || {};
     if (!clave || datos == null) return res.status(400).json({ error: 'Falta clave o datos' });
     let n = 0; try { const a = JSON.parse(datos); n = Array.isArray(a) ? a.length : 1; } catch (e) {}
