@@ -159,6 +159,12 @@ app.use('/api', (req, res, next) => {
   // La pantalla de mantenimiento consulta su propio estado para volver sola
   // cuando termina; en ese momento nadie tiene sesión iniciada.
   if (req.path === '/mantenimiento' && req.method === 'GET') return next();
+  // BILLIA empuja el inventario de maquina a maquina: no tiene sesion de persona.
+  // Entra solo con el token de servicio exacto, y unicamente a escribir el seed.
+  if (req.path === '/seed' && req.method === 'POST'
+      && process.env.SEED_TOKEN && req.headers['x-seed-token'] === process.env.SEED_TOKEN) {
+    return next();
+  }
   return requireAuth(req, res, next);
 }, blockVisorWrites);
 app.use('/api/auth/users', requireAdmin);
