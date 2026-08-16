@@ -3253,7 +3253,7 @@
                   <tr>
                     <th>Mes</th>
                     <th>Ventas S/.</th>
-                    <th title="Lo efectivamente facturado en BILLIA ese mes. Si no coincide con Ventas, hay ventas sin comprobante o cargadas dos veces.">Facturado BILLIA</th>
+                    <th title="Lo facturado en BILLIA ese mes. Hasta julio convivió con el sistema anterior, así que una venta puede estar facturada sin aparecer aquí. Lo que se marca en rojo son las ventas sin ningún número de comprobante.">Facturado BILLIA</th>
                     <th>CMV S/.</th>
                     <th>Margen Bruto</th>
                     <th>MB %</th>
@@ -3651,6 +3651,51 @@
       // real: antes se cargaban a mano y faltaban meses enteros.
       const VENTAS_BILLIA_DATA = (window.__SEED && window.__SEED.VENTAS_BILLIA_DATA) || [];
       const VENTAS_BILLIA_META = (window.__SEED && window.__SEED.VENTAS_BILLIA_META) || null;
+
+      /**
+       * Series emitidas por el sistema de facturación ANTERIOR a BILLIA.
+       *
+       * Los dos sistemas convivieron: BILLIA arrancó el 05/05/2026 y el
+       * anterior se siguió usando hasta el 25/07. Una venta con estas series
+       * está facturada de verdad, solo que su comprobante no vive en BILLIA.
+       * Sin esta lista, S/. 73 mil de ventas legítimas salían marcadas como
+       * si faltara facturarlas.
+       *
+       * Se deducen de los datos: son las series que aparecen en las ventas
+       * del CRM y que BILLIA nunca emitió.
+       */
+      const SERIES_SISTEMA_ANTERIOR = ["B008", "B009", "EB01", "F006", "F007", "F009"];
+
+      /**
+       * Reparte las ventas del mes según su respaldo documental:
+       *   · conDoc      → tienen número de comprobante (BILLIA o el anterior)
+       *   · sinDoc      → no tienen ningún número registrado
+       * Lo que importa vigilar es sinDoc: una venta sin documento no se puede
+       * rastrear a ningún sistema.
+       */
+      function rvRespaldoDocumentalPorMes() {
+        // Solo TXNS_DATA: rvRebuildTxns() ya integró ahí las ventas de
+        // rv_ventas antes de que esto corra. Sumar las dos fuentes contaba
+        // cada venta dos veces y junio salía por S/. 144 mil en vez de 72.
+        const todas = (typeof TXNS_DATA !== "undefined" ? TXNS_DATA : []);
+        const porMes = {};
+        todas.forEach((v) => {
+          const mes = v.mes || String(v.fecha || "").slice(0, 7);
+          if (!mes) return;
+          const a = porMes[mes] || (porMes[mes] = { conDoc: 0, sinDoc: 0, nSinDoc: 0, heredado: 0 });
+          const monto = Number(v.venta != null ? v.venta : v.total) || 0;
+          const serie = String(v.serie || "").trim().toUpperCase();
+          const corr = String(v.correlativo || "").replace(/\D/g, "");
+          if (serie && corr) {
+            a.conDoc += monto;
+            if (SERIES_SISTEMA_ANTERIOR.includes(serie)) a.heredado += monto;
+          } else {
+            a.sinDoc += monto;
+            a.nSinDoc += 1;
+          }
+        });
+        return porMes;
+      }
 
       /**
        * Agrupa por mes lo facturado en BILLIA.
@@ -7931,6 +7976,7 @@
         // junio en adelante facturados. Esos meses se agregan para que no
         // queden invisibles, aunque su costo no se conozca.
         const billiaMes = rvVentasBilliaPorMes();
+        const respaldoMes = rvRespaldoDocumentalPorMes();
         const yaEnSeed = new Set(SEED.meses.map(m => m.p));
         const NOMBRE_MES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
         const mesesBillia = Object.keys(billiaMes)
@@ -8036,22 +8082,33 @@
               : `<td><span class="pill ${r.ebitdaPct >= 0 ? "pill-green" : "pill-red"}">${r.ebitdaPct.toFixed(1)}%</span></td>`;
             const marcaBillia = r.costoConocido ? "" :
               ` <span class="pill" style="background:var(--c-bg);color:var(--c-gray);font-size:10px" title="${r.docsBillia} comprobantes facturados en BILLIA">BILLIA</span>`;
-            // Contraste con lo facturado: las ventas del CRM se cargan a mano
-            // y BILLIA es quien emite los comprobantes. Cuando no coinciden,
-            // o hay ventas sin facturar o algo se cargó dos veces. No se pisa
-            // el dato del CRM: se muestra la diferencia para que alguien mire.
+            // Respaldo documental del mes.
+            //
+            // No se compara contra BILLIA a secas: hasta julio convivió con el
+            // sistema de facturación anterior, así que una venta puede estar
+            // facturada de verdad sin aparecer en BILLIA. Marcar esas como
+            // problema señalaba S/. 73 mil de ventas legítimas.
+            //
+            // Lo que sí merece alerta es la venta SIN ningún número de
+            // comprobante: no se puede rastrear a ningún sistema.
             const fact = billiaMes[r.p];
+            const resp = respaldoMes[r.p];
             let celdaFact;
-            if (!fact) {
-              celdaFact = `<td title="BILLIA no tiene comprobantes de este mes" style="color:var(--c-gray2)">—</td>`;
+            if (!fact && !resp) {
+              celdaFact = `<td style="color:var(--c-gray2)">—</td>`;
             } else {
-              const dif = r.v - fact.ventas;
-              const pct = fact.ventas > 0 ? Math.abs(dif) / fact.ventas * 100 : 0;
-              // Menos de 5% se toma como redondeo y no se resalta.
-              const alerta = pct >= 5;
-              celdaFact = `<td title="${fact.docs} comprobantes emitidos${alerta ? ` · diferencia de ${sol(dif)}` : ""}">`
-                + sol(fact.ventas)
-                + (alerta ? ` <span class="pill pill-red" style="font-size:10px">${dif > 0 ? "+" : ""}${sol(dif)}</span>` : "")
+              const enBillia = fact ? fact.ventas : 0;
+              const heredado = resp ? resp.heredado : 0;
+              const sinDoc = resp ? resp.sinDoc : 0;
+              const partes = [];
+              if (fact) partes.push(`${fact.docs} comprobantes en BILLIA`);
+              if (heredado > 0) partes.push(`${sol(heredado)} en series del sistema anterior`);
+              if (sinDoc > 0) partes.push(`${resp.nSinDoc} ventas sin número de comprobante`);
+              celdaFact = `<td title="${partes.join(" · ")}">`
+                + sol(enBillia)
+                + (sinDoc > 0
+                    ? ` <span class="pill pill-red" style="font-size:10px">sin doc: ${sol(sinDoc)}</span>`
+                    : "")
                 + `</td>`;
             }
             return `<tr>
