@@ -5,6 +5,7 @@ const fs = require('fs');
 const multer = require('multer');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const { normalizarInventario } = require('./services/marcas');
 
 require('dotenv').config();
 
@@ -188,13 +189,26 @@ async function sincronizarStockBillia(motivo) {
       console.error(`[BILLIA] sync falló (${motivo}): HTTP ${r.status}`);
       return;
     }
-    const { lineas, meta } = await r.json();
-    if (!Array.isArray(lineas) || !lineas.length) {
+    const { lineas: lineasCrudas, meta } = await r.json();
+    if (!Array.isArray(lineasCrudas) || !lineasCrudas.length) {
       // Un snapshot vacío casi siempre es un error del otro lado; pisar el
       // inventario con [] dejaría la página en blanco sin aviso.
       console.error(`[BILLIA] sync (${motivo}): snapshot vacío, se conserva el anterior`);
       return;
     }
+
+    // BILLIA manda la marca tal como la escribieron: llegaban "Huawei" y
+    // "HUAWEI" como marcas distintas y los reportes por marca salían partidos
+    // en dos filas. Se unifica acá, al entrar, porque corregirlo más adelante
+    // lo pisaría la siguiente sincronización.
+    const { lineas, unificadas } = normalizarInventario(lineasCrudas);
+    if (unificadas.length) {
+      const detalle = unificadas
+        .map((u) => `${u.canonica} ← ${u.formas.join(' / ')}`)
+        .join('; ');
+      console.log(`[BILLIA] marcas unificadas (${motivo}): ${detalle}`);
+    }
+
     const conn = await pool.getConnection();
     try {
       for (const [clave, datos, n] of [
