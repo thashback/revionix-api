@@ -3253,6 +3253,7 @@
                   <tr>
                     <th>Mes</th>
                     <th>Ventas S/.</th>
+                    <th title="Lo efectivamente facturado en BILLIA ese mes. Si no coincide con Ventas, hay ventas sin comprobante o cargadas dos veces.">Facturado BILLIA</th>
                     <th>CMV S/.</th>
                     <th>Margen Bruto</th>
                     <th>MB %</th>
@@ -3645,6 +3646,34 @@
       // daba cifras que no cuadraban con el conteo real de cada tienda.
       // COMPRAS_DATA se conserva porque es historial de compras, no inventario.
       const INVENTARIO_DATA = (window.__SEED && window.__SEED.INVENTARIO_DATA) || [];
+
+      // Ventas facturadas que BILLIA sincroniza cada 2 horas. Son la fuente
+      // real: antes se cargaban a mano y faltaban meses enteros.
+      const VENTAS_BILLIA_DATA = (window.__SEED && window.__SEED.VENTAS_BILLIA_DATA) || [];
+      const VENTAS_BILLIA_META = (window.__SEED && window.__SEED.VENTAS_BILLIA_META) || null;
+
+      /**
+       * Agrupa por mes lo facturado en BILLIA.
+       * El costo solo se acumula si el comprobante trae detalle de producto;
+       * si falta en alguno, el costo del mes queda como desconocido y no se
+       * finge un margen que no se puede calcular.
+       */
+      function rvVentasBilliaPorMes() {
+        const porMes = {};
+        VENTAS_BILLIA_DATA.forEach((v) => {
+          if (!v || !v.mes) return;
+          const a = porMes[v.mes] || (porMes[v.mes] = {
+            ventas: 0, costo: 0, docs: 0, sinDetalle: 0,
+          });
+          a.ventas += Number(v.total) || 0;
+          a.docs += 1;
+          if (v.costo == null) a.sinDetalle += 1;
+          else a.costo += Number(v.costo) || 0;
+        });
+        // Un solo comprobante sin detalle ya vuelve incompleto el costo del mes.
+        Object.values(porMes).forEach((a) => { a.costoConocido = a.sinDetalle === 0; });
+        return porMes;
+      }
 
       const SEED = (window.__SEED && window.__SEED.SEED) || {};
       SEED.transacciones = TXNS_DATA;
@@ -7897,7 +7926,28 @@
         const vTot = (m) => (m.v || 0) + (m.pv || 0) + (m.cv || 0);
         const cTot = (m) => (m.c || 0) + (m.pc || 0) + (m.cc || 0);
 
-        const mesesActivos = SEED.meses.filter(m => vTot(m) > 0);
+        // ── Meses que solo existen en BILLIA ──────────────────────────
+        // El histórico cargado a mano llegaba hasta mayo; BILLIA ya tenía
+        // junio en adelante facturados. Esos meses se agregan para que no
+        // queden invisibles, aunque su costo no se conozca.
+        const billiaMes = rvVentasBilliaPorMes();
+        const yaEnSeed = new Set(SEED.meses.map(m => m.p));
+        const NOMBRE_MES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+        const mesesBillia = Object.keys(billiaMes)
+          .filter(p => !yaEnSeed.has(p))
+          .sort()
+          .map(p => {
+            const [a, mm] = p.split("-");
+            return {
+              p,
+              m: NOMBRE_MES[Number(mm) - 1] + "-" + a.slice(2),
+              v: billiaMes[p].ventas,
+              c: 0,
+              soloBillia: true,
+            };
+          });
+
+        const mesesActivos = SEED.meses.filter(m => vTot(m) > 0).concat(mesesBillia);
         const rows = [];
 
         mesesActivos.forEach(m => {
@@ -7907,12 +7957,27 @@
           const gMovil  = gMes.filter(g => esMovil(g)).reduce((s,g) => s + (g.monto||0), 0);
           const gVars   = gMes.filter(g => !esMovil(g)).reduce((s,g) => s + (g.monto||0), 0);
           const v = vTot(m), c = cTot(m);
-          const margen  = v - c;
           const fijosMes = fijosAlquiler + rvPlanillaCostoMes(m.p);
-          const ebitda  = margen - fijosMes - gVars - gMovil;
-          const ebitdaPct = v > 0 ? (ebitda/v*100) : 0;
-          rows.push({ m: m.m, p: m.p, v, c, margen, mb_pct: v>0?margen/v*100:0,
-                      fijos: fijosMes, vars: gVars, movil: gMovil, ebitda, ebitdaPct,
+
+          // Un mes que solo viene de BILLIA no trae costo de lo vendido:
+          // BILLIA emite la mayoría de comprobantes sin detalle de producto.
+          // Sin costo no hay margen, y sin margen no hay EBITDA. Se marca
+          // como desconocido en vez de calcularlo con costo cero, que
+          // mostraría un margen del 100% y un EBITDA inflado.
+          const info = billiaMes[m.p];
+          const costoConocido = !m.soloBillia && !(info && !info.costoConocido && !yaEnSeed.has(m.p));
+          const margen = costoConocido ? v - c : null;
+          const ebitda = costoConocido ? margen - fijosMes - gVars - gMovil : null;
+
+          rows.push({ m: m.m, p: m.p, v,
+                      c: costoConocido ? c : null,
+                      margen,
+                      mb_pct: costoConocido && v > 0 ? margen/v*100 : null,
+                      fijos: fijosMes, vars: gVars, movil: gMovil,
+                      ebitda,
+                      ebitdaPct: costoConocido && v > 0 ? ebitda/v*100 : null,
+                      costoConocido,
+                      docsBillia: info ? info.docs : 0,
                       proyV: m.pv || 0, proyC: m.pc || 0,
                       corpV: m.cv || 0, corpC: m.cc || 0 });
         });
@@ -7925,7 +7990,9 @@
         // más reciente primero. Se actualizan valores Y etiquetas.
         const hoyE = new Date();
         const curPE = hoyE.getFullYear() + "-" + String(hoyE.getMonth() + 1).padStart(2, "0");
-        const ult3 = rows.filter(r => r.p <= curPE).slice(-3).reverse();
+        // Solo entran meses con EBITDA calculable: una tarjeta vacía no dice
+        // nada, y una con costo inventado diría algo falso.
+        const ult3 = rows.filter(r => r.p <= curPE && r.ebitda !== null).slice(-3).reverse();
         const slots = ["may", "abr", "mar"]; // ids existentes de los 3 cards
         slots.forEach((slot, i) => {
           const el = document.getElementById("kpi-ebitda-" + slot);
@@ -7945,7 +8012,7 @@
             }
           }
         });
-        const last3 = rows.filter(r => r.p <= curPE).slice(-3);
+        const last3 = rows.filter(r => r.p <= curPE && r.ebitda !== null).slice(-3);
         if (last3.length) {
           const avg = last3.reduce((s,r) => s+r.ebitda, 0) / last3.length;
           const el = document.getElementById("kpi-ebitda-prom");
@@ -7955,30 +8022,59 @@
         // Table
         const tbody = document.getElementById("tbl-ebitda-body");
         if (tbody) {
+          const sol = (n) => "S/. " + n.toLocaleString("es-PE",{minimumFractionDigits:0,maximumFractionDigits:0});
+          // Celda para lo que no se puede calcular: se explica al pasar el
+          // cursor, para que "—" no se lea como un error de la página.
+          const nd = `<td title="BILLIA emite estos comprobantes sin detalle de producto, así que no se conoce el costo de lo vendido" style="color:var(--c-gray2)">—</td>`;
+
           tbody.innerHTML = rows.map(r => {
-            const ePill = r.ebitda >= 0
-              ? `<span class="pill pill-green">S/. ${r.ebitda.toLocaleString("es-PE",{minimumFractionDigits:0,maximumFractionDigits:0})}</span>`
-              : `<span class="pill pill-red">S/. ${r.ebitda.toLocaleString("es-PE",{minimumFractionDigits:0,maximumFractionDigits:0})}</span>`;
-            const pPill = r.ebitdaPct >= 0
-              ? `<span class="pill pill-green">${r.ebitdaPct.toFixed(1)}%</span>`
-              : `<span class="pill pill-red">${r.ebitdaPct.toFixed(1)}%</span>`;
+            const ePill = r.ebitda === null
+              ? nd
+              : `<td><span class="pill ${r.ebitda >= 0 ? "pill-green" : "pill-red"}">${sol(r.ebitda)}</span></td>`;
+            const pPill = r.ebitdaPct === null
+              ? nd
+              : `<td><span class="pill ${r.ebitdaPct >= 0 ? "pill-green" : "pill-red"}">${r.ebitdaPct.toFixed(1)}%</span></td>`;
+            const marcaBillia = r.costoConocido ? "" :
+              ` <span class="pill" style="background:var(--c-bg);color:var(--c-gray);font-size:10px" title="${r.docsBillia} comprobantes facturados en BILLIA">BILLIA</span>`;
+            // Contraste con lo facturado: las ventas del CRM se cargan a mano
+            // y BILLIA es quien emite los comprobantes. Cuando no coinciden,
+            // o hay ventas sin facturar o algo se cargó dos veces. No se pisa
+            // el dato del CRM: se muestra la diferencia para que alguien mire.
+            const fact = billiaMes[r.p];
+            let celdaFact;
+            if (!fact) {
+              celdaFact = `<td title="BILLIA no tiene comprobantes de este mes" style="color:var(--c-gray2)">—</td>`;
+            } else {
+              const dif = r.v - fact.ventas;
+              const pct = fact.ventas > 0 ? Math.abs(dif) / fact.ventas * 100 : 0;
+              // Menos de 5% se toma como redondeo y no se resalta.
+              const alerta = pct >= 5;
+              celdaFact = `<td title="${fact.docs} comprobantes emitidos${alerta ? ` · diferencia de ${sol(dif)}` : ""}">`
+                + sol(fact.ventas)
+                + (alerta ? ` <span class="pill pill-red" style="font-size:10px">${dif > 0 ? "+" : ""}${sol(dif)}</span>` : "")
+                + `</td>`;
+            }
             return `<tr>
-              <td style="font-weight:600">${r.m}</td>
-              <td>S/. ${r.v.toLocaleString("es-PE",{minimumFractionDigits:0,maximumFractionDigits:0})}</td>
-              <td>S/. ${r.c.toLocaleString("es-PE",{minimumFractionDigits:0,maximumFractionDigits:0})}</td>
-              <td>S/. ${r.margen.toLocaleString("es-PE",{minimumFractionDigits:0,maximumFractionDigits:0})}</td>
-              <td>${r.mb_pct.toFixed(1)}%</td>
-              <td>S/. ${r.fijos.toLocaleString("es-PE",{minimumFractionDigits:0,maximumFractionDigits:0})}</td>
-              <td>S/. ${r.vars.toLocaleString("es-PE",{minimumFractionDigits:0,maximumFractionDigits:0})}</td>
-              <td>S/. ${r.movil.toLocaleString("es-PE",{minimumFractionDigits:0,maximumFractionDigits:0})}</td>
-              <td>${ePill}</td>
-              <td>${pPill}</td>
+              <td style="font-weight:600">${r.m}${marcaBillia}</td>
+              <td>${sol(r.v)}</td>
+              ${celdaFact}
+              ${r.c === null ? nd : `<td>${sol(r.c)}</td>`}
+              ${r.margen === null ? nd : `<td>${sol(r.margen)}</td>`}
+              ${r.mb_pct === null ? nd : `<td>${r.mb_pct.toFixed(1)}%</td>`}
+              <td>${sol(r.fijos)}</td>
+              <td>${sol(r.vars)}</td>
+              <td>${sol(r.movil)}</td>
+              ${ePill}
+              ${pPill}
             </tr>`;
           }).join("");
         }
 
         // Waterfall for latest month
-        const latest = rows[rows.length-1];
+        // Se toma el último mes con costo conocido: la cascada descompone el
+        // margen, y sin costo no hay margen que descomponer.
+        const conCosto = rows.filter(r => r.costoConocido);
+        const latest = conCosto[conCosto.length-1];
         if (latest) {
           const wf = document.getElementById("tbl-ebitda-waterfall");
           if (wf) {
@@ -8028,7 +8124,10 @@
               datasets: [
                 { label: "Margen Bruto", data: rows.map(r => r.margen), backgroundColor: "rgba(21,87,36,0.7)", borderRadius: 4 },
                 { label: "EBITDA", data: rows.map(r => r.ebitda),
-                  backgroundColor: rows.map(r => r.ebitda >= 0 ? "rgba(21,101,192,0.8)" : "rgba(192,57,43,0.8)"), borderRadius: 4 }
+                  // Los meses sin costo van en null: Chart.js deja el hueco,
+                  // que es justo lo que se quiere mostrar.
+                  backgroundColor: rows.map(r => r.ebitda === null ? "rgba(0,0,0,0.08)"
+                    : r.ebitda >= 0 ? "rgba(21,101,192,0.8)" : "rgba(192,57,43,0.8)"), borderRadius: 4 }
               ]
             },
             options: { responsive: true, maintainAspectRatio: false,
