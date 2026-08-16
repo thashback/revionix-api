@@ -231,6 +231,65 @@ async function sincronizarStockBillia(motivo) {
 setTimeout(() => sincronizarStockBillia('arranque'), 30000);
 setInterval(() => sincronizarStockBillia('programado'), 2 * 60 * 60 * 1000);
 
+// ═══════════════════════════════════════════════════════════════
+// VENTAS DESDE BILLIA, cada 2 horas.
+//
+// Las ventas se cargaban a mano desde Excel y llegaban tarde e incompletas:
+// al 16/08/2026 el CRM tenía ventas hasta mayo mientras BILLIA ya había
+// facturado junio, julio y agosto (S/. 87 mil que el EBITDA no veía).
+// BILLIA emite los comprobantes, así que es la única fuente que sabe de
+// verdad cuánto se vendió.
+//
+// LÍMITE CONOCIDO: BILLIA guarda el detalle por producto en muy pocos
+// comprobantes (20 de 111 al momento de escribir esto). Sin detalle no hay
+// costo, así que estas ventas traen 'costo' y 'margen' en null. Se conserva
+// así a propósito: rellenarlos con cero haría ver un margen del 100%.
+// ═══════════════════════════════════════════════════════════════
+async function sincronizarVentasBillia(motivo) {
+  const url = process.env.BILLIA_VENTAS_URL;
+  const token = process.env.SEED_TOKEN;
+  if (!url || !token) return; // sin configurar, no hace nada ni estorba
+  try {
+    const r = await fetch(url, { headers: { 'x-seed-token': token }, signal: AbortSignal.timeout(90000) });
+    if (!r.ok) {
+      console.error(`[BILLIA] ventas: sync falló (${motivo}): HTTP ${r.status}`);
+      return;
+    }
+    const { ventas, meta } = await r.json();
+    if (!Array.isArray(ventas) || !ventas.length) {
+      // Igual que con el stock: un snapshot vacío casi siempre es un error del
+      // otro lado, y pisar las ventas con [] dejaría los meses en blanco.
+      console.error(`[BILLIA] ventas: sync (${motivo}): snapshot vacío, se conserva el anterior`);
+      return;
+    }
+    const conn = await pool.getConnection();
+    try {
+      for (const [clave, datos, n] of [
+        ['VENTAS_BILLIA_DATA', JSON.stringify(ventas), ventas.length],
+        ['VENTAS_BILLIA_META', JSON.stringify(meta || {}), 1],
+      ]) {
+        await conn.execute(
+          'INSERT INTO seed_snapshot (clave, datos, registros) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE datos=VALUES(datos), registros=VALUES(registros)',
+          [clave, datos, n]
+        );
+      }
+    } finally {
+      conn.release();
+    }
+    const sinDetalle = (meta && meta.sin_detalle) || 0;
+    console.log(
+      `[BILLIA] ventas sincronizadas (${motivo}): ${ventas.length} comprobantes, ` +
+      `S/. ${meta && meta.ventas_netas}` +
+      (sinDetalle ? ` — ${sinDetalle} sin detalle de producto (sin costo)` : '')
+    );
+  } catch (err) {
+    console.error(`[BILLIA] ventas: sync falló (${motivo}):`, err.message);
+  }
+}
+// Se separa 15s del stock para no abrir dos conexiones pesadas a la vez.
+setTimeout(() => sincronizarVentasBillia('arranque'), 45000);
+setInterval(() => sincronizarVentasBillia('programado'), 2 * 60 * 60 * 1000);
+
 // NOTA: /uploads/:nombre (comprobantes) queda sin requerir token a propósito.
 // viewFile() en app.js los abre con window.open()/<img>/<a href> directos,
 // que no pueden mandar el header Authorization; protegerlo rompería ver
