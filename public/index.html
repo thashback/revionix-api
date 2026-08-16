@@ -1129,6 +1129,155 @@
       }
       #chart-modal-canvas { width: 100% !important; height: 100% !important; }
 
+      /* ══════════════════════════════════════════════════════════════
+         RESPONSIVE — tablet y móvil
+         Este bloque va al final a propósito: necesita ganar por cascada
+         a las reglas de arriba. Los !important son para vencer a los
+         style="grid-template-columns:repeat(N,1fr)" escritos inline en
+         el HTML, que de otro modo anulan cualquier media query.
+         ══════════════════════════════════════════════════════════════ */
+
+      /* ── 1. Tablas anchas: scroll horizontal propio ──
+         La más ancha (Detalle por Producto) tiene 15 columnas y ~1006px.
+         Se envuelven en .rv-tw por JS (ver rvWrapTables) para que la
+         tabla scrollee sola sin arrastrar la página entera. */
+      .rv-tw {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        max-width: 100%;
+      }
+      .rv-tw > table {
+        min-width: max-content;
+      }
+
+      /* ── 2. Pantallas grandes: evitar líneas kilométricas ── */
+      .main > .page {
+        max-width: 1600px;
+        margin: 0 auto;
+      }
+
+      /* ── 3. Botón hamburguesa (oculto en escritorio) ── */
+      .btn-menu {
+        display: none;
+        background: rgba(255, 255, 255, 0.15);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 8px;
+        color: #fff;
+        width: 40px;
+        height: 40px;
+        cursor: pointer;
+        flex-shrink: 0;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+      }
+      .btn-menu:hover { background: rgba(255, 255, 255, 0.25); }
+      .sidebar-backdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 37, 64, 0.5);
+        z-index: 150;
+      }
+      .sidebar-backdrop.open { display: block; }
+
+      /* ── TABLET Y MÓVIL (<1024px) ──
+         El corte va en 1023px a propósito: el iPad en horizontal mide
+         1024px justos y ahí el sidebar fijo todavía deja 804px de
+         contenido, que es cómodo. Por debajo ya no. */
+      @media (max-width: 1023px) {
+        /* El sidebar pasa a ser cajón deslizable: dejaba solo 155px de
+           contenido en un teléfono de 390px. */
+        .btn-menu { display: flex; }
+        .sidebar {
+          position: fixed;
+          top: var(--hdr);
+          left: 0;
+          bottom: 0;
+          width: 264px;
+          z-index: 200;
+          transform: translateX(-100%);
+          transition: transform 0.25s ease;
+          box-shadow: 2px 0 16px rgba(0, 0, 0, 0.18);
+        }
+        .sidebar.open { transform: translateX(0); }
+
+        /* Rejillas fijas (repeat(4,1fr), repeat(5,1fr)…) → adaptativas */
+        .kpi-grid {
+          grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)) !important;
+        }
+        .two-col,
+        .three-col {
+          grid-template-columns: 1fr !important;
+        }
+
+        /* Los hijos de un grid nacen con min-width:auto y se niegan a
+           encogerse por debajo de su contenido: en Inversión eso estiraba
+           la tarjeta a 428px dentro de un contenedor de 352px. */
+        .two-col > *,
+        .three-col > *,
+        .kpi-grid > * {
+          min-width: 0;
+        }
+
+        .main { padding: 16px !important; }
+        .main > .page { max-width: none; }
+      }
+
+      /* ── MÓVIL (≤680px) ── */
+      @media (max-width: 680px) {
+        /* Header: a 390px el contenido medía 413px y "Salir" se salía. */
+        .header {
+          padding: 0 12px;
+          gap: 10px;
+          flex-wrap: nowrap;
+        }
+        .header-logo { height: 24px; }
+        .header-user { display: none; }
+        .header .header-badge { margin-left: auto; }
+
+        .kpi-grid {
+          grid-template-columns: 1fr 1fr !important;
+          gap: 10px !important;
+        }
+        .kpi { padding: 12px !important; }
+        .kpi-value { font-size: 18px !important; }
+        .kpi-label { font-size: 10px; line-height: 1.3; }
+
+        /* Legibilidad: las cabeceras estaban a 10px y las celdas a 13px. */
+        table { font-size: 14px; }
+        th { font-size: 12px !important; padding: 10px 10px !important; }
+        td { padding: 11px 10px !important; }
+
+        /* Áreas táctiles: 22 controles medían menos de 44px de alto. */
+        .nav-item {
+          padding: 12px 16px !important;
+          font-size: 15px;
+          min-height: 44px;
+          box-sizing: border-box;
+        }
+        button,
+        select,
+        input[type="text"],
+        input[type="number"],
+        input[type="date"] {
+          min-height: 44px;
+        }
+        .btn-logout { min-height: 44px; padding: 8px 14px; }
+
+        .page-title { font-size: 20px !important; line-height: 1.25; }
+        .card { padding: 14px !important; }
+
+        /* Filtros y botones de exportar: en columna, sin desbordar */
+        .card > div[style*="display: flex"],
+        .card > div[style*="display:flex"] { flex-wrap: wrap; }
+      }
+
+      /* ── MÓVIL ESTRECHO (≤430px) ── */
+      @media (max-width: 430px) {
+        .kpi-grid { grid-template-columns: 1fr !important; }
+      }
+
     </style>
   </head>
   <body>
@@ -1183,6 +1332,20 @@
     <!-- APP -->
     <div id="app">
       <div class="header">
+        <button
+          class="btn-menu"
+          id="btn-menu"
+          onclick="rvToggleSidebar()"
+          aria-label="Abrir menú de navegación"
+          aria-expanded="false"
+          aria-controls="sidebar"
+        >
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
                 <img src="img/logo-revionix-blanco.png" alt="REVIONIX" class="header-logo" />
         <span class="header-user" id="hdr-user"></span>
         <span class="header-badge" id="hdr-badge"></span>
@@ -1200,6 +1363,7 @@
         <button class="btn-logout" onclick="doLogout()">Salir</button>
       </div>
       <div class="body-layout">
+        <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="rvCloseSidebar()"></div>
         <nav class="sidebar" id="sidebar">
           <div class="nav-section">
             <div class="nav-label">Principal</div>
@@ -8033,5 +8197,99 @@
   <!-- Indicador de versión: si NO ves este número, tu navegador tiene caché viejo -->
   <div id="rv-version" style="position:fixed;bottom:6px;right:10px;font-size:11px;font-weight:600;color:#fff;z-index:99999;background:#198c35;padding:3px 10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.25)">v59 · 06-Jul</div>
   <script src="app.js?v=59"></script>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       RESPONSIVE — comportamiento móvil
+       Va después de app.js para no interferir con la carga de datos.
+       ══════════════════════════════════════════════════════════════ -->
+  <script>
+    (function () {
+      var MOVIL = '(max-width: 1023px)';
+
+      function esMovil() {
+        return window.matchMedia(MOVIL).matches;
+      }
+
+      // ── Cajón de navegación ──────────────────────────────────────
+      window.rvToggleSidebar = function () {
+        var sb = document.getElementById('sidebar');
+        var bd = document.getElementById('sidebar-backdrop');
+        var bt = document.getElementById('btn-menu');
+        if (!sb) return;
+        var abierto = sb.classList.toggle('open');
+        if (bd) bd.classList.toggle('open', abierto);
+        if (bt) bt.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+      };
+
+      window.rvCloseSidebar = function () {
+        var sb = document.getElementById('sidebar');
+        var bd = document.getElementById('sidebar-backdrop');
+        var bt = document.getElementById('btn-menu');
+        if (sb) sb.classList.remove('open');
+        if (bd) bd.classList.remove('open');
+        if (bt) bt.setAttribute('aria-expanded', 'false');
+      };
+
+      // Al elegir una sección en móvil, el cajón se cierra solo.
+      document.addEventListener('click', function (e) {
+        var item = e.target.closest && e.target.closest('.nav-item');
+        if (item && esMovil()) window.rvCloseSidebar();
+      });
+
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') window.rvCloseSidebar();
+      });
+
+      // Si se vuelve a escritorio con el cajón abierto, se limpia el estado.
+      window.matchMedia(MOVIL).addEventListener('change', function (ev) {
+        if (!ev.matches) window.rvCloseSidebar();
+      });
+
+      // ── Scroll horizontal en tablas ──────────────────────────────
+      // Las tablas se regeneran con renderAll(), así que no basta con
+      // envolverlas una vez: un observer re-envuelve las nuevas.
+      function rvWrapTables() {
+        var tablas = document.querySelectorAll('#app table');
+        for (var i = 0; i < tablas.length; i++) {
+          var t = tablas[i];
+          var p = t.parentElement;
+          if (!p || p.classList.contains('rv-tw')) continue;
+          // Respeta los contenedores que ya scrollean por su cuenta.
+          var ox = getComputedStyle(p).overflowX;
+          if (ox === 'auto' || ox === 'scroll') continue;
+          var wrap = document.createElement('div');
+          wrap.className = 'rv-tw';
+          p.insertBefore(wrap, t);
+          wrap.appendChild(t);
+        }
+      }
+
+      var pendiente = null;
+      function programarWrap() {
+        if (pendiente) return;
+        pendiente = setTimeout(function () {
+          pendiente = null;
+          rvWrapTables();
+        }, 120);
+      }
+
+      function iniciar() {
+        rvWrapTables();
+        var app = document.getElementById('app');
+        if (app && window.MutationObserver) {
+          new MutationObserver(programarWrap).observe(app, {
+            childList: true,
+            subtree: true
+          });
+        }
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', iniciar);
+      } else {
+        iniciar();
+      }
+    })();
+  </script>
   </body>
 </html>
