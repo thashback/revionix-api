@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Menu, LogOut, LayoutDashboard, Package, TrendingUp, ShoppingCart, Receipt,
-  Activity, Tag, Building2, Globe } from 'lucide-react'
+  Activity, Tag, Building2, Globe, CalendarRange, FolderKanban } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
@@ -11,6 +11,7 @@ import { BotonTema } from '@/componentes/BotonTema'
 export type ClavePagina =
   | 'dashboard' | 'ventas' | 'ebitda' | 'stock' | 'marcas'
   | 'compras' | 'gastos' | 'corporativo' | 'ecommerce'
+  | 'meses' | 'proyectos'
 
 interface ItemNav {
   clave: ClavePagina
@@ -37,8 +38,10 @@ const SECCIONES: Seccion[] = [
     titulo: 'Comercial',
     items: [
       { clave: 'ventas', etiqueta: 'Ventas', icono: TrendingUp },
+      { clave: 'meses', etiqueta: 'Mes a Mes', icono: CalendarRange },
       { clave: 'corporativo', etiqueta: 'Corporativo', icono: Building2 },
       { clave: 'ecommerce', etiqueta: 'Ecommerce', icono: Globe },
+      { clave: 'proyectos', etiqueta: 'Proyectos', icono: FolderKanban },
     ],
   },
   {

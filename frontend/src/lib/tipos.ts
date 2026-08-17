@@ -64,6 +64,10 @@ export interface VentaCorp {
   fecha: string
   mes: string
   doc: string
+  /** Serie y número del comprobante, vacíos mientras está "Por emitir".
+   *  Sirven para no contar dos veces las ventas que ya están en TXNS_DATA. */
+  serie?: string
+  numero?: string | number
   desc: string
   marca: string
   qty: number

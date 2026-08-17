@@ -13,13 +13,8 @@ import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras, GraficoDonut, agrupar, topYResto } from '@/componentes/Graficos'
 import { usarSeed } from '@/hooks/usarSeed'
-import { numero, porcentaje, soles } from '@/lib/formato'
+import { etiquetaMes, numero, porcentaje, soles } from '@/lib/formato'
 
-const MES_CORTO = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
-const etiquetaMes = (p: string) => {
-  const [a, m] = String(p).split('-')
-  return m ? `${MES_CORTO[Number(m) - 1]}-${a.slice(2)}` : p
-}
 
 export function Gastos() {
   const { gastos, alquileres, planilla, crudo, cargando, error, recargar } = usarSeed()

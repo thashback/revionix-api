@@ -1,4 +1,5 @@
-import { useMemo } from 'react'
+import { Fragment, useMemo, useState } from 'react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -6,10 +7,12 @@ import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras, GraficoDonut, agrupar, topYResto } from '@/componentes/Graficos'
 import { usarSeed } from '@/hooks/usarSeed'
-import { numero, porcentaje, soles } from '@/lib/formato'
+import { etiquetaMes, numero, porcentaje, soles } from '@/lib/formato'
+import type { VentaCorp } from '@/lib/tipos'
 
 export function Corporativo() {
   const { ventasCorp, cargando, error, recargar } = usarSeed()
+  const [abierto, setAbierto] = useState<string | null>(null)
 
   const porCliente = useMemo(
     () =>
@@ -21,6 +24,25 @@ export function Corporativo() {
       }).sort((a, b) => b.total - a.total),
     [ventasCorp],
   )
+
+  /**
+   * Las líneas de cada cliente, para el desglose. La aplicación anterior las
+   * pintaba en tarjetas siempre visibles; aquí van plegadas porque con 29
+   * documentos la tabla completa tapaba el resumen.
+   */
+  const lineasPorCliente = useMemo(() => {
+    const mapa = new Map<string, VentaCorp[]>()
+    for (const v of ventasCorp) {
+      const k = v.cliente || '—'
+      const a = mapa.get(k) ?? []
+      a.push(v)
+      mapa.set(k, a)
+    }
+    for (const a of mapa.values()) {
+      a.sort((x, y) => (x.fecha < y.fecha ? -1 : x.fecha > y.fecha ? 1 : 0))
+    }
+    return mapa
+  }, [ventasCorp])
 
   const totales = useMemo(() => {
     const total = ventasCorp.reduce((s, v) => s + (v.total || 0), 0)
@@ -86,7 +108,10 @@ export function Corporativo() {
       <Card className="t-card-hover">
         <CardHeader>
           <CardTitle>Detalle por cliente</CardTitle>
-          <CardDescription>{numero(porCliente.length)} clientes</CardDescription>
+          <CardDescription>
+            {numero(porCliente.length)} clientes · toca una fila para ver sus
+            documentos
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {cargando ? <SinDatos mensaje="Cargando…" /> : !hay ? <SinDatos mensaje="Sin ventas corporativas." />
@@ -95,6 +120,7 @@ export function Corporativo() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-8" />
                       <TableHead>Cliente</TableHead>
                       <TableHead className="text-right">Docs</TableHead>
                       <TableHead className="text-right">Facturado</TableHead>
@@ -105,25 +131,97 @@ export function Corporativo() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {porCliente.map((c) => (
-                      <TableRow key={c.nombre}>
-                        <TableCell className="font-medium">{c.nombre}</TableCell>
-                        <TableCell className="text-right tabular-nums">{numero(c.docs)}</TableCell>
-                        <TableCell className="text-right tabular-nums">{soles(c.total)}</TableCell>
-                        <TableCell className="text-right tabular-nums">{c.costo > 0 ? soles(c.costo) : '—'}</TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {c.costo > 0 ? soles(c.total - c.costo) : '—'}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {c.porCobrar > 0 ? soles(c.porCobrar) : '—'}
-                        </TableCell>
-                        <TableCell>
-                          {c.porCobrar > 0
-                            ? <Badge variant="destructive">Pendiente</Badge>
-                            : <Badge variant="secondary">Cobrado</Badge>}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {porCliente.map((c) => {
+                      const lineas = lineasPorCliente.get(c.nombre) ?? []
+                      const expandido = abierto === c.nombre
+                      return (
+                        <Fragment key={c.nombre}>
+                          <TableRow tabIndex={0} role="button" aria-expanded={expandido}
+                            aria-label={`Ver los documentos de ${c.nombre}`}
+                            className="cursor-pointer"
+                            onClick={() => setAbierto(expandido ? null : c.nombre)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                setAbierto(expandido ? null : c.nombre)
+                              }
+                            }}>
+                            <TableCell className="text-muted-foreground">
+                              {expandido ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+                            </TableCell>
+                            <TableCell className="font-medium">{c.nombre}</TableCell>
+                            <TableCell className="text-right tabular-nums">{numero(c.docs)}</TableCell>
+                            <TableCell className="text-right tabular-nums">{soles(c.total)}</TableCell>
+                            <TableCell className="text-right tabular-nums">{c.costo > 0 ? soles(c.costo) : '—'}</TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {c.costo > 0 ? soles(c.total - c.costo) : '—'}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {c.porCobrar > 0 ? soles(c.porCobrar) : '—'}
+                            </TableCell>
+                            <TableCell>
+                              {c.porCobrar > 0
+                                ? <Badge variant="destructive">Pendiente</Badge>
+                                : <Badge variant="secondary">Cobrado</Badge>}
+                            </TableCell>
+                          </TableRow>
+
+                          {expandido && (
+                            <TableRow className="hover:bg-transparent">
+                              <TableCell colSpan={8} className="bg-muted/40 p-0">
+                                <div className="overflow-x-auto p-3">
+                                  <Table>
+                                    <TableHeader>
+                                      <TableRow>
+                                        <TableHead>Fecha</TableHead>
+                                        <TableHead>Mes</TableHead>
+                                        <TableHead>Documento</TableHead>
+                                        <TableHead>Producto</TableHead>
+                                        <TableHead>Marca</TableHead>
+                                        <TableHead className="text-right">Cant.</TableHead>
+                                        <TableHead className="text-right">Total</TableHead>
+                                        <TableHead>Condición</TableHead>
+                                        <TableHead>Cobro</TableHead>
+                                      </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                      {lineas.map((l, i) => (
+                                        <TableRow key={`${l.doc}-${i}`}>
+                                          <TableCell className="whitespace-nowrap text-xs">
+                                            {l.fecha || <Badge variant="outline">Pendiente</Badge>}
+                                          </TableCell>
+                                          <TableCell className="whitespace-nowrap text-xs">
+                                            {l.mes ? etiquetaMes(l.mes) : '—'}
+                                          </TableCell>
+                                          <TableCell className="whitespace-nowrap text-xs">{l.doc || '—'}</TableCell>
+                                          <TableCell className="max-w-[24rem] text-xs">{l.desc || '—'}</TableCell>
+                                          <TableCell className="text-xs">{l.marca || '—'}</TableCell>
+                                          <TableCell className="text-right tabular-nums">{numero(l.qty)}</TableCell>
+                                          <TableCell className="text-right font-semibold tabular-nums">
+                                            {soles(l.total)}
+                                          </TableCell>
+                                          <TableCell className="text-xs capitalize">{l.condicion || '—'}</TableCell>
+                                          <TableCell>
+                                            {l.cobrado
+                                              ? <Badge variant="secondary">Cobrado</Badge>
+                                              : <Badge variant="destructive">Por cobrar</Badge>}
+                                          </TableCell>
+                                        </TableRow>
+                                      ))}
+                                      <TableRow className="font-semibold">
+                                        <TableCell colSpan={6}>Subtotal</TableCell>
+                                        <TableCell className="text-right tabular-nums">{soles(c.total)}</TableCell>
+                                        <TableCell colSpan={2} />
+                                      </TableRow>
+                                    </TableBody>
+                                  </Table>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </Fragment>
+                      )
+                    })}
                   </TableBody>
                 </Table>
               </div>

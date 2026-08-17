@@ -9,6 +9,8 @@ import { Ebitda } from '@/paginas/Ebitda'
 import { Marcas } from '@/paginas/Marcas'
 import { Corporativo } from '@/paginas/Corporativo'
 import { Ecommerce } from '@/paginas/Ecommerce'
+import { MesAMes } from '@/paginas/MesAMes'
+import { Proyectos } from '@/paginas/Proyectos'
 import { Login } from '@/paginas/Login'
 import { ProveedorSesion, usarSesion } from '@/lib/sesion'
 import { ProveedorTema } from '@/lib/tema'
@@ -30,6 +32,8 @@ function AppInterna() {
       {pagina === 'marcas' && <Marcas />}
       {pagina === 'corporativo' && <Corporativo />}
       {pagina === 'ecommerce' && <Ecommerce />}
+      {pagina === 'meses' && <MesAMes />}
+      {pagina === 'proyectos' && <Proyectos />}
     </Layout>
   )
 }
