@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import { usarSesion } from '@/lib/sesion'
+import { BotonTema } from '@/componentes/BotonTema'
 
 export type ClavePagina = 'dashboard' | 'stock'
 
@@ -72,7 +73,7 @@ export function Layout({
 
   return (
     <div className="flex min-h-dvh flex-col bg-background">
-      <header className="sticky top-0 z-50 flex h-14 items-center gap-3 bg-primary px-3 sm:px-5">
+      <header className="sticky top-0 z-50 flex h-14 items-center gap-3 border-b bg-card px-3 sm:px-5">
         {/* El cajón solo existe por debajo de lg: en escritorio la barra es fija. */}
         <Sheet open={cajonAbierto} onOpenChange={setCajonAbierto}>
           <SheetTrigger asChild>
@@ -80,7 +81,7 @@ export function Layout({
               variant="ghost"
               size="icon"
               aria-label="Abrir menú de navegación"
-              className="text-primary-foreground hover:bg-white/15 hover:text-primary-foreground lg:hidden"
+              className="lg:hidden"
             >
               <Menu className="size-5" />
             </Button>
@@ -93,15 +94,17 @@ export function Layout({
           </SheetContent>
         </Sheet>
 
+        {/* Header claro → logo en su versión oscura. El "blanco" solo sirve
+            sobre fondo navy y aquí quedaría invisible. */}
         <img
-          src="/img/logo-revionix-blanco.png"
+          src="/img/logo-revionix.png"
           alt="REVIONIX"
           className="h-6 w-auto object-contain sm:h-7"
         />
 
         {usuario && (
           <>
-            <span className="hidden text-sm text-primary-foreground/80 sm:inline">
+            <span className="hidden text-sm text-muted-foreground sm:inline">
               {usuario.nombre}
             </span>
             <Badge variant="secondary" className="uppercase">
@@ -110,10 +113,14 @@ export function Layout({
           </>
         )}
 
+        <div className="ml-auto flex items-center gap-1">
+          <BotonTema />
+        </div>
+
         <Button
           variant="ghost"
           onClick={salir}
-          className="ml-auto min-h-11 gap-2 text-primary-foreground hover:bg-white/15 hover:text-primary-foreground"
+          className="min-h-11 gap-2"
         >
           <LogOut className="size-4" />
           <span className="hidden sm:inline">Salir</span>

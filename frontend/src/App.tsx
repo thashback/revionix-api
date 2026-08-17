@@ -4,6 +4,7 @@ import { Dashboard } from '@/paginas/Dashboard'
 import { Stock } from '@/paginas/Stock'
 import { Login } from '@/paginas/Login'
 import { ProveedorSesion, usarSesion } from '@/lib/sesion'
+import { ProveedorTema } from '@/lib/tema'
 
 function AppInterna() {
   const { usuario } = usarSesion()
@@ -20,8 +21,10 @@ function AppInterna() {
 
 export default function App() {
   return (
-    <ProveedorSesion>
-      <AppInterna />
-    </ProveedorSesion>
+    <ProveedorTema>
+      <ProveedorSesion>
+        <AppInterna />
+      </ProveedorSesion>
+    </ProveedorTema>
   )
 }

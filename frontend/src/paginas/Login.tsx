@@ -4,6 +4,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { usarSesion } from '@/lib/sesion'
+import { BotonTema } from '@/componentes/BotonTema'
 
 export function Login() {
   const { entrar } = usarSesion()
@@ -26,7 +27,15 @@ export function Login() {
   }
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-primary p-4">
+    // El fondo va con el color de fondo del tema, no con el primario: el
+    // primario está pensado para botones y acentos, y usarlo en un área
+    // grande hace que la pantalla no se parezca al tema elegido.
+    <div className="relative flex min-h-dvh items-center justify-center bg-background p-4">
+      {/* El interruptor también aquí: si alguien prefiere el modo oscuro,
+          debería poder ponerlo antes de escribir su contraseña. */}
+      <div className="absolute right-3 top-3">
+        <BotonTema />
+      </div>
       <Card className="w-full max-w-sm">
         <CardContent className="pt-2">
           <div className="mb-6 text-center">

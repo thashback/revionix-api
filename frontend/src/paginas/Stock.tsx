@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { RefreshCw, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import {
   Table,
@@ -125,9 +125,13 @@ export function Stock() {
             />
           </div>
 
-          <Card>
+          <Card className="t-card-hover">
             <CardHeader className="gap-3">
               <CardTitle>Inventario Detallado</CardTitle>
+              <CardDescription>
+                {numero(filtradas.length)} de {numero(lineas.length)} líneas
+                {(busqueda || sede || marca) && ' · filtrado'}
+              </CardDescription>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -141,7 +145,7 @@ export function Stock() {
                 <select
                   value={sede}
                   onChange={(e) => setSede(e.target.value)}
-                  className="h-9 min-h-11 rounded-md border bg-transparent px-3 text-sm sm:min-h-0 sm:w-48"
+                  className="h-9 min-h-11 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:min-h-0 sm:w-48"
                 >
                   <option value="">Todas las sedes</option>
                   {sedes.map((s) => (
@@ -153,7 +157,7 @@ export function Stock() {
                 <select
                   value={marca}
                   onChange={(e) => setMarca(e.target.value)}
-                  className="h-9 min-h-11 rounded-md border bg-transparent px-3 text-sm sm:min-h-0 sm:w-48"
+                  className="h-9 min-h-11 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:min-h-0 sm:w-48"
                 >
                   <option value="">Todas las marcas</option>
                   {marcas.map((m) => (

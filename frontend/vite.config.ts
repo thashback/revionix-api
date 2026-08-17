@@ -14,6 +14,15 @@ export default defineConfig({
     // Sale directo a public/v2 para que Express la sirva sin cambios de deploy.
     outDir: path.resolve(import.meta.dirname, '../public/v2'),
     emptyOutDir: true,
+    rolldownOptions: {
+      output: {
+        // Recharts pesa más que toda la app junta. Separarlo evita que el
+        // login —que no dibuja ni un gráfico— tenga que descargarlo.
+        codeSplitting: {
+          groups: [{ name: 'graficos', test: /node_modules[\\/](recharts|d3-|victory-)/ }],
+        },
+      },
+    },
   },
   server: {
     // En desarrollo, /api va al Express real (puerto 3000 por defecto).
