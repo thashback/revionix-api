@@ -111,6 +111,8 @@ export interface Gasto {
   resp?: string
   monto: number
   tipo_doc?: string
+  /** Ruta del comprobante en PDF, si se subió uno. */
+  pdf?: string | null
 }
 
 /** Fila de planilla (clave PLANILLA_DATA). */

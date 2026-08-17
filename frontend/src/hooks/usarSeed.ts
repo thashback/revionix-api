@@ -26,11 +26,13 @@ export interface DatosSeed {
   planilla: Planilla[]
   alquileres: Fijo[]
   pagosFijos: Fijo[]
+  /** Estado de cobro por cliente, editado a mano en la aplicación anterior. */
+  estadosCorp: Record<string, string>
 }
 
 const VACIO: DatosSeed = {
   inventario: [], inventarioMeta: null, transacciones: [], ventasBillia: [],
-  ventasCorp: [], ecommerce: [], compras: [], gastos: [], planilla: [], alquileres: [], pagosFijos: [],
+  ventasCorp: [], ecommerce: [], compras: [], gastos: [], planilla: [], alquileres: [], pagosFijos: [], estadosCorp: {},
 }
 
 const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : [])
@@ -72,11 +74,50 @@ export function usarSeed() {
         }
       }
 
-      // Se descartan los registros que el usuario marcó como eliminados, igual
-      // que hace la aplicación anterior.
-      const eliminados = new Set(deAlmacen<string | number>('rv_eliminados').map(String))
+      const objAlmacen = (clave: string): Record<string, unknown> => {
+        try {
+          const v = JSON.parse(almacen[clave] ?? '{}')
+          return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {}
+        } catch {
+          return {}
+        }
+      }
+
+      // Las lápidas de borrado vienen como { gasto: {id: 1}, txn: {...} }, no
+      // como lista: la aplicación anterior las guarda así.
+      const lapidas = objAlmacen('rv_eliminados')
+      const gastosBorrados = new Set(
+        Object.keys((lapidas.gasto as Record<string, unknown>) ?? {}).map(String),
+      )
+      const txnsBorradas = new Set(
+        Object.keys((lapidas.txn as Record<string, unknown>) ?? {}).map(String),
+      )
       const vivos = <T extends { id?: string | number }>(f: T[]) =>
-        f.filter((x) => !(x?.id != null && eliminados.has(String(x.id))))
+        f.filter((x) => !(x?.id != null && gastosBorrados.has(String(x.id))))
+
+      const num = (x: unknown) => Number(x) || 0
+
+      /**
+       * Firma de una venta, idéntica a la que usa la aplicación anterior
+       * (app.js:2313). Es la clave con la que guarda cada edición, así que
+       * tiene que coincidir carácter por carácter o las ediciones se pierden.
+       */
+      const firma = (t: Transaccion) =>
+        [t.fecha || '', t.canal || '', t.modelo || '', t.marca || '',
+          num(t.venta), num(t.costo), t.serie || '', t.correlativo || ''].join('|')
+
+      const edicionesTxn = objAlmacen('rv_ediciones_txn')
+      const edicionesGasto = objAlmacen('rv_ediciones_gasto')
+
+      /** Aplica la edición guardada encima del registro original, si existe. */
+      const conEdicionTxn = (t: Transaccion): Transaccion => {
+        const e = edicionesTxn[firma(t)]
+        return e && typeof e === 'object' ? { ...t, ...(e as Partial<Transaccion>) } : t
+      }
+      const conEdicionGasto = (g: Gasto): Gasto => {
+        const e = g.id != null ? edicionesGasto[String(g.id)] : undefined
+        return e && typeof e === 'object' ? { ...g, ...(e as Partial<Gasto>) } : g
+      }
 
       // Clave de identidad de una venta: mismo documento y mismo importe. Sin
       // esto, las ventas que ya están en el snapshot se contarían dos veces.
@@ -87,21 +128,34 @@ export function usarSeed() {
       const extraVentas = deAlmacen<Transaccion>('rv_ventas').filter(
         (v) => !yaEstan.has(claveVenta(v)),
       )
+      const todasVentas = [...delSnapshot, ...extraVentas]
+        .filter((t) => !txnsBorradas.has(firma(t)))
+        .map(conEdicionTxn)
 
-      const extraGastos = vivos(deAlmacen<Gasto>('rv_gastos'))
+      const todosGastos = [...vivos(arr<Gasto>(s.GASTOS_DATA)), ...vivos(deAlmacen<Gasto>('rv_gastos'))]
+        .map(conEdicionGasto)
+
+      // Comprobantes en PDF: la aplicación anterior los indexa por 'g'+id para
+      // los que tienen id, y por 's'+posición para los del snapshot que no.
+      const pdfs = objAlmacen('rv_gastos_pdfs') as Record<string, string>
+      const gastosConPdf = todosGastos.map((g, i) => ({
+        ...g,
+        pdf: (g.id != null ? pdfs['g' + g.id] : undefined) ?? pdfs['s' + i] ?? null,
+      }))
 
       setDatos({
         inventario: arr<LineaInventario>(s.INVENTARIO_DATA),
         inventarioMeta: (s.INVENTARIO_META as MetaInventario) ?? null,
-        transacciones: [...delSnapshot, ...extraVentas],
+        transacciones: todasVentas,
         ventasBillia: arr<VentaBillia>(s.VENTAS_BILLIA_DATA),
         ventasCorp: arr<VentaCorp>(s.CORP_VENTAS_DATA),
         ecommerce: arr<Ecommerce>(s.ECOMMERCE_DATA),
         compras: arr<Compra>(s.COMPRAS_DATA),
-        gastos: [...arr<Gasto>(s.GASTOS_DATA), ...extraGastos],
+        gastos: gastosConPdf,
         planilla: arr<Planilla>(s.PLANILLA_DATA),
         alquileres: arr<Fijo>(s.ALQUILERES_DATA),
         pagosFijos: arr<Fijo>(s.PAGOS_FIJOS_DATA),
+        estadosCorp: objAlmacen('rv_corp_estados') as Record<string, string>,
       })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudieron cargar los datos')

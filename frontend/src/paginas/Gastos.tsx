@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Search } from 'lucide-react'
+import { FileText, Search } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import {
@@ -9,7 +9,7 @@ import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras, GraficoDonut, agrupar, topYResto } from '@/componentes/Graficos'
 import { usarSeed } from '@/hooks/usarSeed'
-import { numero, soles } from '@/lib/formato'
+import { numero, porcentaje, soles } from '@/lib/formato'
 
 const MES_CORTO = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 const etiquetaMes = (p: string) => {
@@ -55,7 +55,12 @@ export function Gastos() {
     const total = gastos.reduce((s, g) => s + (g.monto || 0), 0)
     const movilidad = gastos.filter((g) => g.cat === 'Movilidad').reduce((s, g) => s + (g.monto || 0), 0)
     const meses = new Set(gastos.map((g) => g.mes || String(g.fecha || '').slice(0, 7))).size
-    return { total, movilidad, meses, promedio: meses > 0 ? total / meses : 0 }
+    const conPdf = gastos.filter((g) => g.pdf).length
+    return {
+      total, movilidad, meses, conPdf,
+      promedio: meses > 0 ? total / meses : 0,
+      pctPdf: gastos.length > 0 ? (conPdf / gastos.length) * 100 : null,
+    }
   }, [gastos])
 
   if (error) return <ErrorCarga mensaje={error} alReintentar={recargar} />
@@ -77,8 +82,9 @@ export function Gastos() {
           detalle="Variables, por mes con datos" acento="azul" cargando={cargando} />
         <Kpi etiqueta="Fijos al mes" valor={cargando || fijos.total > 0 ? soles(fijos.total) : '—'}
           detalle={`Alquileres ${soles(fijos.alq)} + planilla ${soles(fijos.pla)}`} acento="rojo" cargando={cargando} />
-        <Kpi etiqueta="Movilidad" valor={hay || cargando ? soles(totales.movilidad) : '—'}
-          detalle="Del total variable" acento="morado" cargando={cargando} />
+        <Kpi etiqueta="Con comprobante" valor={hay || cargando ? numero(totales.conPdf) : '—'}
+          detalle={totales.pctPdf == null ? 'sin gastos' : `${porcentaje(totales.pctPdf, 0)} de los registros`}
+          acento="morado" cargando={cargando} />
       </div>
 
       <Card className="t-card-hover">
@@ -144,6 +150,7 @@ export function Gastos() {
                       <TableHead>Canal</TableHead>
                       <TableHead>Responsable</TableHead>
                       <TableHead className="text-right">Monto</TableHead>
+                      <TableHead className="text-center">Comprobante</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -155,6 +162,24 @@ export function Gastos() {
                         <TableCell className="whitespace-nowrap">{g.canal || '—'}</TableCell>
                         <TableCell className="whitespace-nowrap">{g.resp || '—'}</TableCell>
                         <TableCell className="text-right tabular-nums">{soles(g.monto, 2)}</TableCell>
+                        <TableCell className="text-center">
+                          {g.pdf ? (
+                            // Se abre en pestaña nueva: el PDF se sirve desde
+                            // /uploads y no necesita la sesión del CRM.
+                            <a
+                              href={g.pdf}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="Ver comprobante"
+                              className="inline-flex items-center gap-1 text-primary underline-offset-2 hover:underline"
+                            >
+                              <FileText className="size-4" />
+                              <span className="sr-only">Ver comprobante</span>
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
