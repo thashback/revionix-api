@@ -23,11 +23,23 @@ interface UsuarioFila {
   activo: number | boolean
 }
 
+/**
+ * Los roles que la aplicación conoce. En producción hay además cuentas con
+ * roles que no están aquí ('operaciones', 'pipeline'): si no se contemplan,
+ * abrir a editar a uno de esos usuarios y guardar le cambiaría el rol sin
+ * que nadie lo pidiera, porque el desplegable caería en el primero de la
+ * lista. Por eso el rol que ya tiene el usuario siempre se añade.
+ */
 const ROLES = [
   { valor: 'admin', etiqueta: 'Administrador', ayuda: 'Todo, incluida la gestión de usuarios' },
   { valor: 'tienda', etiqueta: 'Tienda', ayuda: 'Registra ventas y gastos de su canal' },
   { valor: 'visor', etiqueta: 'Visor', ayuda: 'Solo lectura: no puede modificar nada' },
 ]
+
+function rolesDisponibles(actual?: string) {
+  if (!actual || ROLES.some((r) => r.valor === actual)) return ROLES
+  return [...ROLES, { valor: actual, etiqueta: actual, ayuda: 'Rol propio de esta instalación' }]
+}
 
 const TONO_ROL: Record<string, 'default' | 'secondary' | 'outline'> = {
   admin: 'default', tienda: 'secondary', visor: 'outline',
@@ -280,10 +292,12 @@ function FormularioUsuario({
             <select id="u-role" value={form.role}
               onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
               className="h-9 min-h-11 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:min-h-0">
-              {ROLES.map((r) => <option key={r.valor} value={r.valor}>{r.etiqueta}</option>)}
+              {rolesDisponibles(usuario?.role).map((r) => (
+                <option key={r.valor} value={r.valor}>{r.etiqueta}</option>
+              ))}
             </select>
             <p className="text-xs text-muted-foreground">
-              {ROLES.find((r) => r.valor === form.role)?.ayuda}
+              {rolesDisponibles(usuario?.role).find((r) => r.valor === form.role)?.ayuda}
             </p>
           </div>
 
