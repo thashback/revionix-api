@@ -359,7 +359,13 @@ app.post('/api/mantenimiento', requireAdmin, async (req, res) => {
 app.use(async (req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
   if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) return next();
-  const esPagina = req.path === '/' || req.path.endsWith('.html');
+  // El frontend nuevo vive en /v2 y no termina en .html, así que quedaba
+  // fuera del mantenimiento: la aplicación seguía abierta ahí aunque el
+  // resto del sitio estuviera cerrado. Se cubre su punto de entrada; los
+  // archivos de /v2/assets/ siguen sirviéndose, pero sin la página no
+  // llevan a ningún lado.
+  const esEntradaV2 = req.path === '/v2' || req.path === '/v2/';
+  const esPagina = req.path === '/' || esEntradaV2 || req.path.endsWith('.html');
   if (!esPagina || req.path === '/mantenimiento.html') return next();
 
   const m = await leerMantenimiento();
