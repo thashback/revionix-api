@@ -6,10 +6,19 @@ const multer = require('multer');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { normalizarInventario } = require('./services/marcas');
+const {
+  cabecerasSeguridad, limitadorLogin, extensionPermitida, nombreSeguro,
+  nombreDentroDeCarpeta, cabecerasDeArchivo, EXTENSIONES_PERMITIDAS,
+} = require('./services/seguridad');
 
 require('dotenv').config();
 
 const app = express();
+// Railway termina el TLS en su proxy: sin esto req.secure siempre es false y
+// la IP del cliente sería la del proxy, no la real.
+app.set('trust proxy', 1);
+app.disable('x-powered-by');
+app.use(cabecerasSeguridad);
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'production';
 
@@ -84,10 +93,9 @@ async function guardarArchivoBD(nombre, mime, buffer) {
 // así que todos los endpoints existentes siguen funcionando sin cambios.
 const storage = {
   _handleFile(req, file, cb) {
-    const timestamp = Date.now();
-    const ext = path.extname(file.originalname);
-    const base = path.basename(file.originalname, ext);
-    const name = `${base}-${timestamp}${ext}`;
+    // Antes era `<nombre original>-<timestamp>.<ext>`, adivinable: quien
+    // supiera el nombre de un comprobante llegaba al archivo probando fechas.
+    const name = nombreSeguro(file.originalname);
     const finalPath = path.join(uploadsDir, name);
     const chunks = [];
     const ws = fs.createWriteStream(finalPath);
@@ -107,7 +115,16 @@ const storage = {
   }
 };
 
-const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
+const upload = multer({
+  storage,
+  limits: { fileSize: 50 * 1024 * 1024 },
+  // Solo comprobantes y órdenes de compra. Un .html o .svg servido desde el
+  // mismo dominio podría leer el token de sesión de quien lo abra.
+  fileFilter(req, file, cb) {
+    if (extensionPermitida(file.originalname)) return cb(null, true);
+    cb(new Error(`Tipo de archivo no permitido. Se aceptan: ${[...EXTENSIONES_PERMITIDAS].join(', ')}`));
+  },
+});
 
 // Middleware (límite alto: rv_ventas/rv_gastos pueden pesar varios MB)
 app.use(express.json({ limit: '50mb' }));
@@ -402,16 +419,21 @@ app.use(express.static(path.join(__dirname, 'public'), {
 // Sirve /uploads/:archivo desde disco si existe; si no (tras un redeploy),
 // lo recupera desde MySQL.
 app.get('/uploads/:nombre', async (req, res) => {
-  const nombre = req.params.nombre;
+  // path.basename corta cualquier ../ antes de tocar el disco.
+  const nombre = nombreDentroDeCarpeta(req.params.nombre);
+  if (!nombre) return res.status(400).send('Nombre de archivo inválido');
   const rutaDisco = path.join(uploadsDir, nombre);
-  if (fs.existsSync(rutaDisco)) return res.sendFile(rutaDisco);
+  if (fs.existsSync(rutaDisco)) {
+    // El tipo sale de la extensión, nunca de lo que declaró quien lo subió.
+    res.set(cabecerasDeArchivo(nombre));
+    return res.sendFile(rutaDisco);
+  }
   try {
     const conn = await pool.getConnection();
     const [rows] = await conn.execute('SELECT mime, datos FROM archivos_bin WHERE nombre = ?', [nombre]);
     conn.release();
     if (rows.length) {
-      res.setHeader('Content-Type', rows[0].mime || 'application/octet-stream');
-      res.setHeader('Content-Disposition', 'inline; filename="' + nombre + '"');
+      res.set(cabecerasDeArchivo(nombre));
       return res.send(rows[0].datos);
     }
     res.status(404).send('Archivo no encontrado');
@@ -605,6 +627,58 @@ app.get('/api/audit', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
+// RESPALDO DESCARGABLE
+// El volumen de MySQL vive en el mismo sitio que la aplicación: si se pierde,
+// se pierde todo junto. Esto permite bajar una copia completa del negocio y
+// guardarla fuera de Railway. No incluye los binarios de archivos_bin (son
+// decenas de MB) ni los hashes de contraseñas.
+// ═══════════════════════════════════════════════════════════════
+const TABLAS_RESPALDO = [
+  'seed_snapshot', 'app_storage', 'proyectos', 'compras', 'gastos', 'ventas',
+  'reg_ventas', 'reg_gastos', 'gastos_fijos', 'pagos_pendientes', 'planilla',
+];
+
+app.get('/api/respaldo', requireAdmin, async (req, res) => {
+  let conn;
+  try {
+    conn = await pool.getConnection();
+    const copia = { generado: new Date().toISOString(), origen: 'REVIONIX', tablas: {} };
+
+    for (const tabla of TABLAS_RESPALDO) {
+      try {
+        const [filas] = await conn.query(`SELECT * FROM \`${tabla}\``);
+        copia.tablas[tabla] = filas;
+      } catch (e) {
+        // Una tabla que todavía no existe no puede tumbar el respaldo entero.
+        copia.tablas[tabla] = { error: e.message };
+      }
+    }
+    // De los archivos va el inventario, no el contenido: sirve para saber qué
+    // falta si hay que reponerlos.
+    try {
+      const [arch] = await conn.query(
+        'SELECT nombre, mime, LENGTH(datos) bytes FROM archivos_bin ORDER BY nombre');
+      copia.archivos = arch;
+    } catch (e) { copia.archivos = { error: e.message }; }
+
+    // Solo quién existe y con qué rol; nunca salt ni pass_hash.
+    try {
+      const [us] = await conn.query('SELECT username, nombre, role, canal, activo FROM usuarios');
+      copia.usuarios = us;
+    } catch (e) { copia.usuarios = { error: e.message }; }
+
+    const sello = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="revionix-respaldo-${sello}.json"`);
+    res.send(JSON.stringify(copia));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
 // AUTENTICACIÓN REAL (usuarios en MySQL, contraseñas con hash scrypt)
 // ═══════════════════════════════════════════════════════════════
 function hashPass(password, salt) {
@@ -667,7 +741,7 @@ async function initUsuariosTable() {
 initUsuariosTable();
 
 // Verifica credenciales contra la BD
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', limitadorLogin, async (req, res) => {
   try {
     const username = String(req.body.username || '').trim().toLowerCase();
     const password = String(req.body.password || '');
@@ -675,10 +749,10 @@ app.post('/api/auth/login', async (req, res) => {
     const conn = await pool.getConnection();
     const [rows] = await conn.execute('SELECT * FROM usuarios WHERE username = ?', [username]);
     conn.release();
-    if (!rows.length) return res.json({ ok: false, error: 'Usuario o contraseña incorrectos' });
+    if (!rows.length) { res.locals.loginFallido = true; return res.json({ ok: false, error: 'Usuario o contraseña incorrectos' }); }
     const u = rows[0];
-    if (u.activo === 0) return res.json({ ok: false, error: 'Usuario desactivado' });
-    if (!verifyPass(password, u.salt, u.pass_hash)) return res.json({ ok: false, error: 'Usuario o contraseña incorrectos' });
+    if (u.activo === 0) { res.locals.loginFallido = true; return res.json({ ok: false, error: 'Usuario desactivado' }); }
+    if (!verifyPass(password, u.salt, u.pass_hash)) { res.locals.loginFallido = true; return res.json({ ok: false, error: 'Usuario o contraseña incorrectos' }); }
     const token = jwt.sign({ sub: u.username, role: u.role, canal: u.canal }, JWT_SECRET, { expiresIn: TOKEN_TTL });
     res.json({ ok: true, token, user: { username: u.username, nombre: u.nombre, role: u.role, canal: u.canal } });
   } catch (err) {
@@ -1453,14 +1527,16 @@ app.delete('/api/planilla/:id', async (req, res) => {
 });
 
 // Download files
-app.get('/uploads/:filename', (req, res) => {
-  const file = path.join(uploadsDir, req.params.filename);
-  res.download(file);
-});
+// (La descarga de /uploads la resuelve el manejador de más arriba, que además
+//  recupera el archivo desde MySQL cuando el disco se perdió en un redeploy.)
 
 // Preview endpoint
 app.get('/api/preview/:filename', (req, res) => {
-  const file = path.join(uploadsDir, req.params.filename);
+  const nombre = nombreDentroDeCarpeta(req.params.filename);
+  if (!nombre) return res.status(400).json({ error: 'Nombre de archivo inválido' });
+  const file = path.join(uploadsDir, nombre);
+  if (!fs.existsSync(file)) return res.status(404).json({ error: 'Archivo no encontrado' });
+  res.set(cabecerasDeArchivo(nombre));
   res.sendFile(file);
 });
 
