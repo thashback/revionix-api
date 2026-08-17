@@ -1,14 +1,5 @@
 import { useMemo } from 'react'
-import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-} from '@/components/ui/chart'
 import {
   Table,
   TableBody,
@@ -19,20 +10,9 @@ import {
 } from '@/components/ui/table'
 import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
+import { GraficoBarras, GraficoDonut } from '@/componentes/Graficos'
 import { usarInventario } from '@/hooks/usarInventario'
 import { fechaHoraLima, numero, porcentaje, soles } from '@/lib/formato'
-
-const CONFIG_SEDE = {
-  venta: { label: 'Valor venta', color: 'var(--chart-1)' },
-  costo: { label: 'Valor costo', color: 'var(--chart-3)' },
-} satisfies ChartConfig
-
-const CONFIG_MARCA = {
-  venta: { label: 'Valor venta' },
-} satisfies ChartConfig
-
-/** Los cinco tonos del tema, en orden, para las porciones del donut. */
-const TONOS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)']
 
 export function Dashboard() {
   const { lineas, meta, cargando, error, recargar } = usarInventario()
@@ -156,34 +136,14 @@ export function Dashboard() {
             ) : !hayDatos ? (
               <SinDatos mensaje="Todavía no hay inventario sincronizado desde BILLIA." />
             ) : (
-              <ChartContainer config={CONFIG_SEDE} className="h-[280px] w-full">
-                <BarChart data={porSede} margin={{ left: 4, right: 4 }}>
-                  <CartesianGrid vertical={false} />
-                  <XAxis
-                    dataKey="sede"
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={8}
-                    // Los nombres de sede son largos: se recortan para que el
-                    // eje no se convierta en un muro de texto.
-                    tickFormatter={(v: string) => String(v).split(' ').slice(0, 2).join(' ').slice(0, 14)}
-                  />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    width={58}
-                    tickFormatter={(v: number) =>
-                      v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : `${Math.round(v / 1000)}k`
-                    }
-                  />
-                  <ChartTooltip
-                    content={<ChartTooltipContent formatter={(v) => soles(Number(v))} />}
-                  />
-                  <ChartLegend content={<ChartLegendContent />} />
-                  <Bar dataKey="venta" fill="var(--color-venta)" radius={[4, 4, 0, 0]} isAnimationActive={false} />
-                  <Bar dataKey="costo" fill="var(--color-costo)" radius={[4, 4, 0, 0]} isAnimationActive={false} />
-                </BarChart>
-              </ChartContainer>
+              <GraficoBarras
+                datos={porSede}
+                ejeX="sede"
+                series={[
+                  { clave: 'venta', etiqueta: 'Valor venta' },
+                  { clave: 'costo', etiqueta: 'Valor costo' },
+                ]}
+              />
             )}
           </CardContent>
         </Card>
@@ -199,46 +159,13 @@ export function Dashboard() {
             ) : !hayDatos ? (
               <SinDatos mensaje="Sin datos de marca." />
             ) : (
-              <ChartContainer config={CONFIG_MARCA} className="h-[280px] w-full">
-                <PieChart>
-                  <ChartTooltip
-                    content={<ChartTooltipContent nameKey="marca" formatter={(v) => soles(Number(v))} />}
-                  />
-                  <Pie
-                    data={porMarca}
-                    dataKey="venta"
-                    nameKey="marca"
-                    innerRadius={58}
-                    outerRadius={100}
-                    strokeWidth={2}
-                    // recharts 3.8 deja el donut vacío si la animación de
-                    // entrada está activa: los sectores se quedan en radio 0
-                    // y nunca se emiten. Sin animación dibuja bien, y de todos
-                    // modos la tarjeta ya entra con el skeleton reveal.
-                    isAnimationActive={false}
-                  >
-                    {porMarca.map((_, i) => (
-                      <Cell key={i} fill={TONOS[i % TONOS.length]} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ChartContainer>
-            )}
-            {hayDatos && !cargando && (
-              <ul className="mt-3 space-y-1.5">
-                {porMarca.map((m, i) => (
-                  <li key={m.marca} className="flex items-center gap-2 text-sm">
-                    <span
-                      className="size-2.5 shrink-0 rounded-[3px]"
-                      style={{ background: TONOS[i % TONOS.length] }}
-                    />
-                    <span className="truncate">{m.marca}</span>
-                    <span className="ml-auto tabular-nums text-muted-foreground">
-                      {porcentaje((m.venta / totales.valorVenta) * 100, 0)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <GraficoDonut
+                datos={porMarca as unknown as Record<string, unknown>[]}
+                claveNombre="marca"
+                claveValor="venta"
+                alto={280}
+                etiquetaTotal="Valor total"
+              />
             )}
           </CardContent>
         </Card>
