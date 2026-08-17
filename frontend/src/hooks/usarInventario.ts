@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '@/lib/api'
+import { usarRecargaAlSincronizar } from '@/lib/sincronizacion'
 import type { LineaInventario, MetaInventario, SeedCompleto } from '@/lib/tipos'
 
 interface EstadoInventario {
@@ -43,6 +44,10 @@ export function usarInventario(): EstadoInventario {
   useEffect(() => {
     void cargar()
   }, [cargar])
+
+  // Cuando BILLIA empuja datos nuevos, la pantalla se pone al día sola: antes
+  // el sello de la cabecera avanzaba y las cifras se quedaban como estaban.
+  usarRecargaAlSincronizar(cargar)
 
   return { lineas, meta, cargando, error, recargar: cargar }
 }

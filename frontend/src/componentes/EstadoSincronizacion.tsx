@@ -1,19 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Check, RefreshCw, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { usarSincronizacion } from '@/lib/sincronizacion'
 import { fechaHoraLima, haceCuanto, horaLima, numero } from '@/lib/formato'
 
-interface Sincronizacion {
-  billia?: {
-    inventario?: { actualizado?: string; unidades?: number; lineas?: number | null }
-    ventas?: { actualizado?: string; comprobantes?: number | null }
-  }
-  revionix?: { transacciones?: number | null; actualizado?: string | null; claves?: number | null }
-}
+/** Cada cuánto consulta el servidor a BILLIA (server.js:249). */
+const HORAS_ENTRE_SINCRONIZACIONES = 2
 
-/** BILLIA empuja cada 2 horas; más de 6 sin noticias ya no es normal. */
+/** Tres ciclos perdidos ya no es un retraso, es que algo no va. */
 const HORAS_PARA_ALERTA = 6
 
 const horasDesde = (iso?: string | null): number | null => {
@@ -31,27 +26,25 @@ const horasDesde = (iso?: string | null): number | null => {
  * sello no había forma de saber si un número era de hoy o de anteayer.
  */
 export function EstadoSincronizacion() {
-  const [datos, setDatos] = useState<Sincronizacion | null>(null)
-  const [fallo, setFallo] = useState(false)
+  // El sondeo vive en lib/sincronizacion: uno solo para toda la aplicación,
+  // y de paso las páginas se enteran de cuándo recargar sus cifras.
+  const { datos, fallo } = usarSincronizacion()
   const [abierto, setAbierto] = useState(false)
-
-  useEffect(() => {
-    let vivo = true
-    const cargar = () =>
-      api.get<Sincronizacion>('/sincronizacion')
-        .then((d) => { if (vivo) { setDatos(d); setFallo(false) } })
-        .catch(() => { if (vivo) setFallo(true) })
-    void cargar()
-    // Se refresca solo: una pestaña abierta toda la tarde mostraría un sello
-    // congelado aunque BILLIA ya hubiera empujado dos veces.
-    const t = setInterval(cargar, 5 * 60 * 1000)
-    return () => { vivo = false; clearInterval(t) }
-  }, [])
 
   const horas = horasDesde(datos?.billia?.inventario?.actualizado)
   const atrasado = horas != null && horas > HORAS_PARA_ALERTA
   const estado: 'cargando' | 'error' | 'atrasado' | 'ok' =
     fallo ? 'error' : !datos ? 'cargando' : atrasado ? 'atrasado' : 'ok'
+
+  // Estimada: el temporizador del servidor arranca con el proceso, así que
+  // la referencia buena es el último empujón más el intervalo.
+  const proxima = (() => {
+    const iso = datos?.billia?.inventario?.actualizado
+    if (!iso) return null
+    const t = new Date(iso).getTime()
+    if (Number.isNaN(t)) return null
+    return horaLima(new Date(t + HORAS_ENTRE_SINCRONIZACIONES * 3_600_000).toISOString())
+  })()
 
   const horaBillia = horaLima(datos?.billia?.inventario?.actualizado)
   const horaRevionix = horaLima(datos?.revionix?.actualizado)
@@ -138,8 +131,10 @@ export function EstadoSincronizacion() {
             />
 
             <p className="mt-2 border-t pt-2 text-[11px] text-muted-foreground">
-              BILLIA se consulta cada 2 horas. Los cambios del CRM se ven al
-              instante.
+              BILLIA se consulta cada {HORAS_ENTRE_SINCRONIZACIONES} horas
+              {proxima ? `; la siguiente hacia las ${proxima}` : ''}. Los cambios
+              del CRM se ven al instante. Cuando entren datos nuevos, la pantalla
+              se actualiza sola.
             </p>
             {/* Recargar la página entera y no solo este panel: lo que interesa
                 refrescar son las cifras de la pantalla, no el sello. */}

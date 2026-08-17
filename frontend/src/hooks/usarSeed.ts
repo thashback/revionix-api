@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '@/lib/api'
+import { usarRecargaAlSincronizar } from '@/lib/sincronizacion'
 import { cargarRevisiones } from '@/lib/almacen'
 import type {
   Compra,
@@ -192,6 +193,10 @@ export function usarSeed() {
   useEffect(() => {
     void cargar()
   }, [cargar])
+
+  // Cuando BILLIA empuja datos nuevos, la pantalla se pone al día sola: antes
+  // el sello de la cabecera avanzaba y las cifras se quedaban como estaban.
+  usarRecargaAlSincronizar(cargar)
 
   return { ...datos, cargando, error, recargar: cargar }
 }
