@@ -382,7 +382,10 @@ app.use(async (req, res, next) => {
   // archivos de /v2/assets/ siguen sirviéndose, pero sin la página no
   // llevan a ningún lado.
   const esEntradaV2 = req.path === '/v2' || req.path === '/v2/';
-  const esPagina = req.path === '/' || esEntradaV2 || req.path.endsWith('.html');
+  // /clasico no termina en .html, así que sin nombrarlo se colaría por delante
+  // del mantenimiento y dejaría la aplicación anterior abierta al público.
+  const esPagina = req.path === '/' || req.path === '/clasico'
+    || esEntradaV2 || req.path.endsWith('.html');
   if (!esPagina || req.path === '/mantenimiento.html') return next();
 
   const m = await leerMantenimiento();
@@ -402,6 +405,34 @@ app.use(async (req, res, next) => {
   res.setHeader('Retry-After', '600');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   return res.sendFile(path.join(__dirname, 'public', 'mantenimiento.html'));
+});
+
+// ═══════════════════════════════════════════════════════════════
+// LA RAÍZ SIRVE EL DISEÑO NUEVO
+// Hasta ahora "/" caía en public/index.html (la aplicación anterior) porque
+// express.static lo resuelve solo. Ahora entrega public/v2/index.html.
+//
+// No hace falta reconstruir nada: /v2 se compila con base '/v2/', así que sus
+// enlaces a los assets son absolutos y funcionan igual servidos desde "/".
+//
+// La aplicación anterior sigue accesible en /clasico mientras se termina de
+// verificar la nueva; borrarla ahora dejaría sin salida si aparece algo que
+// solo ella sabe hacer.
+// ═══════════════════════════════════════════════════════════════
+const sinCache = (res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+};
+
+app.get('/', (req, res) => {
+  sinCache(res);
+  res.sendFile(path.join(__dirname, 'public', 'v2', 'index.html'));
+});
+
+app.get('/clasico', (req, res) => {
+  sinCache(res);
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // no-store en html/js: el navegador NUNCA guarda copia, siempre pide la última

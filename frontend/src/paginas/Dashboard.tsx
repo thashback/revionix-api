@@ -12,10 +12,26 @@ import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras, GraficoDonut } from '@/componentes/Graficos'
 import { usarInventario } from '@/hooks/usarInventario'
+import { usarSesion } from '@/lib/sesion'
 import { fechaHoraLima, numero, porcentaje, soles } from '@/lib/formato'
+
+/** Saludo según la hora, con el huso de Lima: el servidor puede estar en otro. */
+function saludo(): string {
+  const hora = Number(
+    new Intl.DateTimeFormat('es-PE', {
+      hour: 'numeric', hour12: false, timeZone: 'America/Lima',
+    }).format(new Date()),
+  )
+  if (hora < 12) return 'Buenos días'
+  if (hora < 19) return 'Buenas tardes'
+  return 'Buenas noches'
+}
 
 export function Dashboard() {
   const { lineas, meta, cargando, error, recargar } = usarInventario()
+  const { usuario } = usarSesion()
+  // El nombre completo puede ser largo; en el saludo basta el de pila.
+  const nombre = (usuario?.nombre || usuario?.username || '').trim().split(/\s+/)[0]
 
   const totales = useMemo(() => {
     const unidades = lineas.reduce((s, l) => s + (l.cant || 0), 0)
@@ -77,7 +93,10 @@ export function Dashboard() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-extrabold tracking-tight">Dashboard Ejecutivo</h1>
+        <p className="text-sm font-medium text-muted-foreground">
+          {saludo()}{nombre ? `, ${nombre}` : ''}
+        </p>
+        <h1 className="mt-0.5 text-2xl font-extrabold tracking-tight">Dashboard Ejecutivo</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {sello
             ? `Inventario real sincronizado desde BILLIA · ${sello}`

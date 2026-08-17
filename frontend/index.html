@@ -1,13 +1,79 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" href="/img/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f2540" />
     <title>REVIONIX — Sistema de Gestión</title>
+    <style>
+      /*
+        PANTALLA DE ARRANQUE
+
+        Va aquí dentro y no en un componente: React todavía no existe mientras
+        se descarga el paquete, y sin esto lo primero que se ve es un rectángulo
+        en blanco durante toda la descarga. Al montar, React reemplaza el
+        contenido de #root y esto desaparece solo.
+
+        El color se fija a mano porque las variables del tema llegan con el CSS,
+        que también está descargándose en ese momento.
+      */
+      #rv-arranque {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        background: #eef1f7;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      }
+      @media (prefers-color-scheme: dark) {
+        #rv-arranque { background: #0e0e10; }
+      }
+      #rv-arranque .marca {
+        font-size: 20px;
+        font-weight: 800;
+        letter-spacing: 0.14em;
+        color: #1c3d6e;
+      }
+      @media (prefers-color-scheme: dark) {
+        #rv-arranque .marca { color: #b9c8e4; }
+      }
+      #rv-arranque .lema {
+        font-size: 12px;
+        color: #7b8794;
+      }
+      #rv-arranque .aro {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        border: 3px solid rgba(28, 61, 110, 0.18);
+        border-top-color: #1c3d6e;
+        animation: rv-giro 0.7s linear infinite;
+      }
+      @media (prefers-color-scheme: dark) {
+        #rv-arranque .aro {
+          border-color: rgba(185, 200, 228, 0.18);
+          border-top-color: #b9c8e4;
+        }
+      }
+      @keyframes rv-giro { to { transform: rotate(360deg); } }
+      /* Quien pidió menos movimiento ve el aro quieto, no dando vueltas. */
+      @media (prefers-reduced-motion: reduce) {
+        #rv-arranque .aro { animation: none; opacity: 0.6; }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="rv-arranque" role="status" aria-live="polite">
+        <div class="marca">REVIONIX</div>
+        <div class="aro" aria-hidden="true"></div>
+        <div class="lema">Cargando tu información…</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
