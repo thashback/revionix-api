@@ -17,17 +17,23 @@
 
 /**
  * Estados de REVIONIX → etapas del pipeline de Twenty.
- * Los nombres de etapa se crean en Twenty al configurar el pipeline.
+ *
+ * Los valores son los del enum real de Twenty (NEW, SCREENING, MEETING,
+ * PROPOSAL, CUSTOMER), verificados contra el esquema de la instancia.
+ *
+ * "cancelado" queda en null a propósito: el pipeline por defecto de Twenty
+ * no tiene etapa de "perdido", y meter un proyecto cancelado en NEW lo haría
+ * pasar por una oportunidad fresca. La sincronización los omite y lo dice.
  */
 const ETAPAS = {
-  pendiente: 'Pendiente',
-  en_proceso: 'En proceso',
-  completado: 'Ganado',
-  cancelado: 'Perdido',
+  pendiente: 'NEW',
+  en_proceso: 'PROPOSAL',
+  completado: 'CUSTOMER',
+  cancelado: null,
 };
 
 /** Etapa por defecto cuando el estado no está entre los conocidos. */
-const ETAPA_POR_DEFECTO = 'Pendiente';
+const ETAPA_POR_DEFECTO = 'NEW';
 
 /**
  * Twenty maneja los importes en la unidad mínima (céntimos) para no perder
@@ -66,11 +72,17 @@ function proyectoAOportunidad(proyecto) {
   const monto = aCentimos(proyecto.monto_total);
   const ejecutado = aCentimos(proyecto.monto_ejecutado);
 
+  // Un estado conocido puede mapear a null (cancelado): eso significa
+  // "no va al pipeline", y es distinto de un estado desconocido.
+  const etapa = Object.prototype.hasOwnProperty.call(ETAPAS, proyecto.estado)
+    ? ETAPAS[proyecto.estado]
+    : ETAPA_POR_DEFECTO;
+
   return {
     // Clave estable para buscar el registro ya creado en Twenty.
     claveExterna: String(proyecto.numero_oc).trim(),
     nombre: `OC ${String(proyecto.numero_oc).trim()}`,
-    etapa: ETAPAS[proyecto.estado] || ETAPA_POR_DEFECTO,
+    etapa,
     monto: { amountMicros: monto * 10000, currencyCode: 'PEN' },
     // La fecha de la OC es lo más cercano a un cierre real que tiene REVIONIX.
     fechaCierre: proyecto.fecha_oc ? new Date(proyecto.fecha_oc).toISOString() : null,

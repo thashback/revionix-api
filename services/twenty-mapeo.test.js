@@ -54,7 +54,7 @@ test('un proyecto se convierte en oportunidad con su clave estable', () => {
 
   assert.strictEqual(op.claveExterna, 'OC-2026-001');
   assert.strictEqual(op.nombre, 'OC OC-2026-001');
-  assert.strictEqual(op.etapa, 'En proceso');
+  assert.strictEqual(op.etapa, 'PROPOSAL');
   assert.strictEqual(op.empresa, 'CERVEP');
   assert.strictEqual(op.monto.currencyCode, 'PEN');
   assert.strictEqual(op.personalizados.avancePct, 25);
@@ -63,16 +63,17 @@ test('un proyecto se convierte en oportunidad con su clave estable', () => {
 
 test('cada estado de REVIONIX cae en la etapa correcta', () => {
   const base = { numero_oc: 'X', cliente: 'A', monto_total: 100 };
-  assert.strictEqual(proyectoAOportunidad({ ...base, estado: 'pendiente' }).etapa, 'Pendiente');
-  assert.strictEqual(proyectoAOportunidad({ ...base, estado: 'completado' }).etapa, 'Ganado');
-  assert.strictEqual(proyectoAOportunidad({ ...base, estado: 'cancelado' }).etapa, 'Perdido');
+  assert.strictEqual(proyectoAOportunidad({ ...base, estado: 'pendiente' }).etapa, 'NEW');
+  assert.strictEqual(proyectoAOportunidad({ ...base, estado: 'completado' }).etapa, 'CUSTOMER');
+  // Twenty no tiene etapa de "perdido": los cancelados no entran al pipeline.
+  assert.strictEqual(proyectoAOportunidad({ ...base, estado: 'cancelado' }).etapa, null);
 });
 
 test('un estado desconocido no rompe: cae en la etapa por defecto', () => {
   const op = proyectoAOportunidad({
     numero_oc: 'X', cliente: 'A', monto_total: 100, estado: 'inventado',
   });
-  assert.strictEqual(op.etapa, 'Pendiente');
+  assert.strictEqual(op.etapa, 'NEW');
 });
 
 test('un proyecto sin numero_oc se rechaza en vez de sincronizarse mal', () => {
