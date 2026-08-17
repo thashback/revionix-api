@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { CampoBusqueda, TablaLarga, coincide } from '@/componentes/Tabla'
+import { BotonExcel } from '@/componentes/BotonExcel'
 import { usarSeed } from '@/hooks/usarSeed'
 import { etiquetaMes, numero, porcentaje, soles } from '@/lib/formato'
 
@@ -87,7 +88,27 @@ export function Detalle() {
       <Card className="t-card-hover">
         <CardHeader className="gap-3">
           <div>
+            <div className="flex items-center justify-between gap-2">
             <CardTitle>Líneas de venta</CardTitle>
+            <BotonExcel
+              nombre="detalle_ventas"
+              filas={visibles}
+              columnas={[
+              { titulo: 'Fecha', valor: (f) => f.fecha },
+              { titulo: 'Mes', valor: (f) => f.mes },
+              { titulo: 'Comprobante', valor: (f) => f.comprobante },
+              { titulo: 'Canal', valor: (f) => f.canal },
+              { titulo: 'Producto', valor: (f) => f.modelo },
+              { titulo: 'Marca', valor: (f) => f.marca },
+              { titulo: 'Cantidad', valor: (f) => Number(f.qty) || 0 },
+              { titulo: 'Venta', valor: (f) => Number(f.venta) || 0 },
+              { titulo: 'Costo', valor: (f) => f.margen == null ? '' : Number(f.costo) || 0 },
+              { titulo: 'Margen', valor: (f) => f.margen ?? '' },
+              { titulo: 'Margen %', valor: (f) => f.margenPct ?? '' },
+              { titulo: 'Medio de pago', valor: (f) => f.medio_pago },
+            ]}
+            />
+          </div>
             <CardDescription>
               Busca por producto, marca, canal, comprobante o medio de pago
             </CardDescription>

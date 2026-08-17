@@ -4,6 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras, GraficoDonut, agrupar, topYResto } from '@/componentes/Graficos'
+import { BotonExcel } from '@/componentes/BotonExcel'
 import { usarSeed } from '@/hooks/usarSeed'
 import { etiquetaMes, numero, porcentaje, soles } from '@/lib/formato'
 
@@ -91,7 +92,25 @@ export function Ecommerce() {
 
       <Card className="t-card-hover">
         <CardHeader>
-          <CardTitle>Detalle de operaciones</CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle>Detalle de operaciones</CardTitle>
+            <BotonExcel
+              nombre="ecommerce"
+              filas={ecommerce}
+              columnas={[
+              { titulo: 'Fecha', valor: (f) => f.fecha },
+              { titulo: 'Mes', valor: (f) => f.mes },
+              { titulo: 'Plataforma', valor: (f) => f.plataforma },
+              { titulo: 'Vendedor', valor: (f) => f.vendedor },
+              { titulo: 'Producto', valor: (f) => f.modelo },
+              { titulo: 'Marca', valor: (f) => f.marca },
+              { titulo: 'Cantidad', valor: (f) => Number(f.qty) || 0 },
+              { titulo: 'Precio unitario', valor: (f) => Number(f.precio_unit) || 0 },
+              { titulo: 'Total', valor: (f) => Number(f.total) || 0 },
+              { titulo: 'Costo', valor: (f) => Number(f.costo) || 0 },
+            ]}
+            />
+          </div>
           <CardDescription>{numero(ecommerce.length)} ventas registradas</CardDescription>
         </CardHeader>
         <CardContent>

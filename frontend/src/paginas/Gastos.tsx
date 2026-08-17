@@ -12,6 +12,7 @@ import {
 import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras, GraficoDonut, agrupar, topYResto } from '@/componentes/Graficos'
+import { BotonExcel } from '@/componentes/BotonExcel'
 import { usarSeed } from '@/hooks/usarSeed'
 import { etiquetaMes, numero, porcentaje, soles } from '@/lib/formato'
 
@@ -215,7 +216,23 @@ export function Gastos() {
 
       <Card className="t-card-hover">
         <CardHeader className="gap-3">
-          <CardTitle>Detalle de gastos</CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle>Detalle de gastos</CardTitle>
+            <BotonExcel
+              nombre="gastos"
+              filas={filtrados}
+              columnas={[
+              { titulo: 'Fecha', valor: (f) => f.fecha },
+              { titulo: 'Mes', valor: (f) => f.mes },
+              { titulo: 'Categoría', valor: (f) => f.cat },
+              { titulo: 'Descripción', valor: (f) => f.desc },
+              { titulo: 'Canal', valor: (f) => f.canal },
+              { titulo: 'Responsable', valor: (f) => f.resp },
+              { titulo: 'Monto', valor: (f) => Number(f.monto) || 0 },
+              { titulo: 'Comprobante', valor: (f) => f.pdf ? 'sí' : 'no' },
+            ]}
+            />
+          </div>
           <CardDescription>
             {numero(filtrados.length)} de {numero(gastos.length)} registros{busqueda && ' · filtrado'}
           </CardDescription>

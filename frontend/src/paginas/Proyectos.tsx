@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
+import { BotonExcel } from '@/componentes/BotonExcel'
 import { api } from '@/lib/api'
 import { calcularEtapas, num, type Avance, type Proyecto } from '@/lib/etapas'
 import { numero, porcentaje, soles } from '@/lib/formato'
@@ -168,7 +169,23 @@ export function Proyectos() {
 
       <Card className="t-card-hover">
         <CardHeader>
-          <CardTitle>Órdenes de compra</CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle>Órdenes de compra</CardTitle>
+            <BotonExcel
+              nombre="proyectos"
+              filas={proyectos}
+              columnas={[
+              { titulo: 'OC', valor: (p) => p.numero_oc },
+              { titulo: 'Cliente', valor: (p) => p.cliente },
+              { titulo: 'Descripción', valor: (p) => p.descripcion },
+              { titulo: 'Fecha', valor: (p) => String(p.fecha_oc ?? '').slice(0, 10) },
+              { titulo: 'Monto', valor: (p) => num(p.monto_total) },
+              { titulo: 'Ejecutado', valor: (p) => num(p.monto_ejecutado) },
+              { titulo: 'Estado', valor: (p) => p.estado },
+              { titulo: 'Condición', valor: (p) => p.condicion_pago },
+            ]}
+            />
+          </div>
           <CardDescription>{numero(proyectos.length)} registradas</CardDescription>
         </CardHeader>
         <CardContent>

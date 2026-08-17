@@ -4,6 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras, GraficoDonut, agrupar, topYResto } from '@/componentes/Graficos'
+import { BotonExcel } from '@/componentes/BotonExcel'
 import { usarSeed } from '@/hooks/usarSeed'
 import { numero, porcentaje, soles } from '@/lib/formato'
 
@@ -102,7 +103,20 @@ export function Marcas() {
 
       <Card className="t-card-hover">
         <CardHeader>
-          <CardTitle>Detalle por marca</CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle>Detalle por marca</CardTitle>
+            <BotonExcel
+              nombre="marcas"
+              filas={porMarca}
+              columnas={[
+              { titulo: 'Marca', valor: (f) => f.nombre },
+              { titulo: 'Unidades', valor: (f) => f.unidades },
+              { titulo: 'Valor al costo', valor: (f) => f.costo },
+              { titulo: 'Valor de venta', valor: (f) => f.venta },
+              { titulo: 'Margen', valor: (f) => f.venta - f.costo },
+            ]}
+            />
+          </div>
           <CardDescription>{numero(porMarca.length)} marcas con inventario</CardDescription>
         </CardHeader>
         <CardContent>

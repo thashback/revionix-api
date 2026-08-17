@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras, GraficoDonut, agrupar, topYResto } from '@/componentes/Graficos'
+import { BotonExcel } from '@/componentes/BotonExcel'
 import { usarSeed } from '@/hooks/usarSeed'
 import { etiquetaMes, numero, porcentaje, soles } from '@/lib/formato'
 import type { VentaCorp } from '@/lib/tipos'
@@ -107,7 +108,21 @@ export function Corporativo() {
 
       <Card className="t-card-hover">
         <CardHeader>
-          <CardTitle>Detalle por cliente</CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle>Detalle por cliente</CardTitle>
+            <BotonExcel
+              nombre="corporativo"
+              filas={porCliente}
+              columnas={[
+              { titulo: 'Cliente', valor: (f) => f.nombre },
+              { titulo: 'Documentos', valor: (f) => f.docs },
+              { titulo: 'Facturado', valor: (f) => f.total },
+              { titulo: 'Costo', valor: (f) => f.costo },
+              { titulo: 'Margen', valor: (f) => f.total - f.costo },
+              { titulo: 'Por cobrar', valor: (f) => f.porCobrar },
+            ]}
+            />
+          </div>
           <CardDescription>
             {numero(porCliente.length)} clientes · toca una fila para ver sus
             documentos

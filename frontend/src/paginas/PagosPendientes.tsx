@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { CampoBusqueda, coincide } from '@/componentes/Tabla'
+import { BotonExcel } from '@/componentes/BotonExcel'
 import { usarSeed } from '@/hooks/usarSeed'
 import { numero, porcentaje, soles } from '@/lib/formato'
 import type { Fijo } from '@/lib/tipos'
@@ -91,7 +92,22 @@ export function PagosPendientes() {
       <Card className="t-card-hover">
         <CardHeader className="gap-3">
           <div>
+            <div className="flex items-center justify-between gap-2">
             <CardTitle>Conceptos</CardTitle>
+            <BotonExcel
+              nombre="pagos_pendientes"
+              filas={visibles}
+              columnas={[
+              { titulo: 'Concepto', valor: (f) => f.concepto },
+              { titulo: 'Grupo', valor: (f) => f.grupo },
+              { titulo: 'Tipo', valor: (f) => f.tipo },
+              { titulo: 'Monto', valor: (f) => f.monto },
+              { titulo: 'Moneda', valor: (f) => f.soles ? 'S/.' : 'US$' },
+              { titulo: 'Cuenta / datos de pago', valor: (f) => f.cuenta },
+              { titulo: 'Estado', valor: (f) => f.estado || (f.pagado ? 'Pagado' : 'Pendiente') },
+            ]}
+            />
+          </div>
             <CardDescription>
               El estado sale de lo que se marcó en la aplicación anterior; aquí
               solo se lee.

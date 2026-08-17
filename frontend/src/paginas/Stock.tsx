@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/table'
 import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
+import { BotonExcel } from '@/componentes/BotonExcel'
 import { usarInventario } from '@/hooks/usarInventario'
 import { fechaHoraLima, numero, porcentaje, soles } from '@/lib/formato'
 
@@ -127,7 +128,23 @@ export function Stock() {
 
           <Card className="t-card-hover">
             <CardHeader className="gap-3">
-              <CardTitle>Inventario Detallado</CardTitle>
+              <div className="flex items-center justify-between gap-2">
+            <CardTitle>Inventario Detallado</CardTitle>
+            <BotonExcel
+              nombre="stock"
+              filas={filtradas}
+              columnas={[
+              { titulo: 'Sede', valor: (f) => f.sede },
+              { titulo: 'Marca', valor: (f) => f.marca },
+              { titulo: 'Producto', valor: (f) => f.producto },
+              { titulo: 'SKU', valor: (f) => f.sku },
+              { titulo: 'Cantidad', valor: (f) => Number(f.cant) || 0 },
+              { titulo: 'Costo unitario', valor: (f) => Number(f.costo) || 0 },
+              { titulo: 'Valor al costo', valor: (f) => Number(f.valor_costo) || 0 },
+              { titulo: 'Valor de venta', valor: (f) => Number(f.valor_venta) || 0 },
+            ]}
+            />
+          </div>
               <CardDescription>
                 {numero(filtradas.length)} de {numero(lineas.length)} líneas
                 {(busqueda || sede || marca) && ' · filtrado'}

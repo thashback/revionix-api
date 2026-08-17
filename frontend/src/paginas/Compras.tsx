@@ -8,6 +8,7 @@ import {
 import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras, GraficoDonut, agrupar, topYResto } from '@/componentes/Graficos'
+import { BotonExcel } from '@/componentes/BotonExcel'
 import { usarSeed } from '@/hooks/usarSeed'
 import { numero, soles } from '@/lib/formato'
 
@@ -123,7 +124,23 @@ export function Compras() {
 
       <Card className="t-card-hover">
         <CardHeader className="gap-3">
-          <CardTitle>Detalle de compras</CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle>Detalle de compras</CardTitle>
+            <BotonExcel
+              nombre="compras"
+              filas={filtradas}
+              columnas={[
+              { titulo: 'Fecha', valor: (f) => f.fecha },
+              { titulo: 'Proveedor', valor: (f) => f.prov },
+              { titulo: 'Descripción', valor: (f) => f.desc },
+              { titulo: 'Marca', valor: (f) => f.marca },
+              { titulo: 'Cantidad', valor: (f) => Number(f.cant) || 0 },
+              { titulo: 'Precio unitario S/.', valor: (f) => Number(f.sol) || 0 },
+              { titulo: 'Precio unitario US$', valor: (f) => Number(f.usd) || 0 },
+              { titulo: 'Moneda', valor: (f) => f.mon },
+            ]}
+            />
+          </div>
           <CardDescription>
             {numero(filtradas.length)} de {numero(compras.length)} líneas{busqueda && ' · filtrado'}
           </CardDescription>

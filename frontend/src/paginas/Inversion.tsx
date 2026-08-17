@@ -5,6 +5,7 @@ import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras, GraficoDonut, agrupar, topYResto } from '@/componentes/Graficos'
 import { CampoBusqueda, TablaLarga, coincide } from '@/componentes/Tabla'
+import { BotonExcel } from '@/componentes/BotonExcel'
 import { usarSeed } from '@/hooks/usarSeed'
 import { etiquetaMes, numero, porcentaje, soles } from '@/lib/formato'
 
@@ -169,7 +170,23 @@ export function Inversion() {
       <Card className="t-card-hover">
         <CardHeader className="gap-3">
           <div>
+            <div className="flex items-center justify-between gap-2">
             <CardTitle>Todas las compras</CardTitle>
+            <BotonExcel
+              nombre="inversion"
+              filas={visibles}
+              columnas={[
+              { titulo: 'Fecha', valor: (f) => f.fecha },
+              { titulo: 'Proveedor', valor: (f) => f.prov },
+              { titulo: 'Descripción', valor: (f) => f.desc },
+              { titulo: 'Marca', valor: (f) => f.marca },
+              { titulo: 'Cantidad', valor: (f) => f.cant },
+              { titulo: 'Precio unitario', valor: (f) => f.unitario },
+              { titulo: 'Total', valor: (f) => f.total },
+              { titulo: 'Moneda', valor: (f) => f.enSoles ? 'S/.' : 'US$' },
+            ]}
+            />
+          </div>
             <CardDescription>El precio unitario es por pieza, no por línea</CardDescription>
           </div>
           <CampoBusqueda valor={busqueda} alCambiar={setBusqueda}

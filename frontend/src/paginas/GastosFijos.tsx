@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoDonut, topYResto } from '@/componentes/Graficos'
+import { BotonExcel } from '@/componentes/BotonExcel'
 import { usarSeed } from '@/hooks/usarSeed'
 import { numero, porcentaje, soles } from '@/lib/formato'
 import type { Fijo } from '@/lib/tipos'
@@ -128,7 +129,20 @@ export function GastosFijos() {
 
         <Card className="t-card-hover lg:col-span-3">
           <CardHeader>
+            <div className="flex items-center justify-between gap-2">
             <CardTitle>Conceptos</CardTitle>
+            <BotonExcel
+              nombre="gastos_fijos"
+              filas={todos}
+              columnas={[
+              { titulo: 'Concepto', valor: (f) => f.concepto },
+              { titulo: 'Grupo', valor: (f) => f.grupo },
+              { titulo: 'Tipo', valor: (f) => f.tipo },
+              { titulo: 'Monto mensual', valor: (f) => importe(f) },
+              { titulo: 'Moneda', valor: (f) => enSoles(f) ? 'S/.' : 'US$' },
+            ]}
+            />
+          </div>
             <CardDescription>
               {numero(todos.length)} pagos recurrentes
             </CardDescription>

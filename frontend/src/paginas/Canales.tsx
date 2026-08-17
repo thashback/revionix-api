@@ -4,6 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras, GraficoDonut, agrupar, topYResto } from '@/componentes/Graficos'
+import { BotonExcel } from '@/componentes/BotonExcel'
 import { usarSeed } from '@/hooks/usarSeed'
 import { numero, porcentaje, soles } from '@/lib/formato'
 
@@ -109,7 +110,23 @@ export function Canales() {
 
       <Card className="t-card-hover">
         <CardHeader>
-          <CardTitle>Detalle por canal</CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle>Detalle por canal</CardTitle>
+            <BotonExcel
+              nombre="canales"
+              filas={porCanal}
+              columnas={[
+              { titulo: 'Canal', valor: (f) => f.nombre },
+              { titulo: 'Ventas', valor: (f) => f.venta },
+              { titulo: 'Costo conocido', valor: (f) => f.costo },
+              { titulo: 'Margen', valor: (f) => f.margen },
+              { titulo: 'Margen %', valor: (f) => f.margenPct },
+              { titulo: 'Ítems', valor: (f) => f.items },
+              { titulo: 'Operaciones', valor: (f) => f.operaciones },
+              { titulo: 'Ticket promedio', valor: (f) => f.ticket },
+            ]}
+            />
+          </div>
           <CardDescription>
             El margen se mide solo sobre las ventas con costo cargado
           </CardDescription>

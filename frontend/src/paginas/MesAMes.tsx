@@ -8,6 +8,7 @@ import {
 import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras } from '@/componentes/Graficos'
+import { BotonExcel } from '@/componentes/BotonExcel'
 import { usarSeed } from '@/hooks/usarSeed'
 import { etiquetaMes, mesLargo, numero, porcentaje, soles } from '@/lib/formato'
 import type { Ecommerce, Transaccion, VentaCorp } from '@/lib/tipos'
@@ -234,7 +235,25 @@ export function MesAMes() {
 
       <Card className="t-card-hover">
         <CardHeader>
-          <CardTitle>Detalle mensual</CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle>Detalle mensual</CardTitle>
+            <BotonExcel
+              nombre="mes_a_mes"
+              filas={filas}
+              columnas={[
+              { titulo: 'Mes', valor: (f) => f.periodo },
+              { titulo: 'Ventas', valor: (f) => f.venta },
+              { titulo: 'Costo', valor: (f) => f.costo },
+              { titulo: 'Margen', valor: (f) => f.margen },
+              { titulo: 'Margen %', valor: (f) => f.margenPct ?? '' },
+              { titulo: 'Tiendas', valor: (f) => f.tiendas },
+              { titulo: 'Corporativo', valor: (f) => f.corp },
+              { titulo: 'Ecommerce', valor: (f) => f.ecom },
+              { titulo: 'Facturado BILLIA', valor: (f) => f.facturado },
+              { titulo: 'Acumulado', valor: (f) => f.acumulado },
+            ]}
+            />
+          </div>
           <CardDescription>
             Ventas = tiendas + corporativo + ecommerce, sin contar dos veces los
             comprobantes corporativos que ya están en el CRM. El margen se

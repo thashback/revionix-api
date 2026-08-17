@@ -7,6 +7,7 @@ import {
 import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras, GraficoDonut, agrupar, topYResto } from '@/componentes/Graficos'
+import { BotonExcel } from '@/componentes/BotonExcel'
 import { usarSeed } from '@/hooks/usarSeed'
 import { etiquetaMes, numero, porcentaje, soles } from '@/lib/formato'
 
@@ -143,7 +144,20 @@ export function Ventas() {
 
       <Card className="t-card-hover">
         <CardHeader>
-          <CardTitle>Detalle mensual</CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle>Detalle mensual</CardTitle>
+            <BotonExcel
+              nombre="ventas_mes"
+              filas={porMes}
+              columnas={[
+              { titulo: 'Mes', valor: (f) => f.periodo },
+              { titulo: 'Registrado en CRM', valor: (f) => f.venta },
+              { titulo: 'Costo', valor: (f) => f.costo },
+              { titulo: 'Margen', valor: (f) => f.margen },
+              { titulo: 'Facturado en BILLIA', valor: (f) => f.facturado },
+            ]}
+            />
+          </div>
           <CardDescription>Con la diferencia contra lo facturado</CardDescription>
         </CardHeader>
         <CardContent>
