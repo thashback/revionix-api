@@ -30,6 +30,18 @@
   --chart-3: oklch(0.4000 0.1600 259.0900);
   --chart-4: oklch(0.4300 0.1600 259.8500);
   --chart-5: oklch(0.2900 0.0700 260.3700);
+
+  /* PALETA DE SERIES (solo gráficos)
+     Los --chart-* del tema Corporate son el mismo azul con distinta
+     luminosidad (tono 259-266): con cinco series encima no se distinguen
+     unas de otras. Estas se separan en tono manteniendo el azul corporativo
+     de primera. El tema no se toca: los KPIs siguen usando --chart-*. */
+  --serie-1: oklch(0.5500 0.2000 260);
+  --serie-2: oklch(0.6000 0.1200 195);
+  --serie-3: oklch(0.6800 0.1500 70);
+  --serie-4: oklch(0.5200 0.1900 305);
+  --serie-5: oklch(0.5800 0.1800 20);
+  --serie-6: oklch(0.5800 0.1200 150);
   --sidebar: oklch(0.9700 0 264.7000);
   --sidebar-foreground: oklch(0.2100 0.0300 264.6700);
   --sidebar-primary: oklch(0.4800 0.2000 260.4800);
@@ -85,6 +97,14 @@
   --chart-3: oklch(0.5500 0.2200 263);
   --chart-4: oklch(0.4900 0.2200 264);
   --chart-5: oklch(0.4200 0.1800 266);
+
+  /* Sobre fondo oscuro hacen falta más claras para que se lean. */
+  --serie-1: oklch(0.7000 0.1600 260);
+  --serie-2: oklch(0.7400 0.1200 195);
+  --serie-3: oklch(0.8000 0.1400 75);
+  --serie-4: oklch(0.6800 0.1700 305);
+  --serie-5: oklch(0.7000 0.1600 20);
+  --serie-6: oklch(0.7200 0.1300 150);
   --sidebar: oklch(0.2050 0 0);
   --sidebar-foreground: oklch(0.9850 0 0);
   --sidebar-primary: oklch(0.4880 0.2430 264.3760);
@@ -144,6 +164,12 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-serie-1: var(--serie-1);
+  --color-serie-2: var(--serie-2);
+  --color-serie-3: var(--serie-3);
+  --color-serie-4: var(--serie-4);
+  --color-serie-5: var(--serie-5);
+  --color-serie-6: var(--serie-6);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);

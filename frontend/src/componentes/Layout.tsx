@@ -1,12 +1,14 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Menu, LogOut, LayoutDashboard, Package, TrendingUp, ShoppingCart, Receipt,
-  Activity, Tag, Building2, Globe, CalendarRange, FolderKanban } from 'lucide-react'
+  Activity, Tag, Building2, Globe, CalendarRange, FolderKanban, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import { usarSesion } from '@/lib/sesion'
 import { BotonTema } from '@/componentes/BotonTema'
+import { EstadoSincronizacion } from '@/componentes/EstadoSincronizacion'
+import { Logo } from '@/componentes/Logo'
 
 export type ClavePagina =
   | 'dashboard' | 'ventas' | 'ebitda' | 'stock' | 'marcas'
@@ -60,6 +62,12 @@ const SECCIONES: Seccion[] = [
   },
 ]
 
+/** La sección a la que pertenece una página; sirve para abrirla sola. */
+function seccionDe(clave: ClavePagina): string {
+  return SECCIONES.find((s) => s.items.some((i) => i.clave === clave))?.titulo
+    ?? SECCIONES[0].titulo
+}
+
 function Navegacion({
   actual,
   alElegir,
@@ -67,32 +75,74 @@ function Navegacion({
   actual: ClavePagina
   alElegir: (c: ClavePagina) => void
 }) {
+  // Con doce entradas la lista completa obliga a recorrerla entera cada vez.
+  // Se deja abierta solo la sección de la página en la que se está; las demás
+  // se pliegan, y quien quiera otra la abre con un toque.
+  const [abierta, setAbierta] = useState<string>(() => seccionDe(actual))
+
+  // Al cambiar de página —incluido desde otro sitio que no sea este menú— la
+  // sección que corresponde se abre sola.
+  useEffect(() => { setAbierta(seccionDe(actual)) }, [actual])
+
   return (
     <nav className="flex flex-col gap-1 p-3">
-      {SECCIONES.map((sec) => (
-        <div key={sec.titulo} className="mb-1">
-          <p className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            {sec.titulo}
-          </p>
-          {sec.items.map(({ clave, etiqueta, icono: Icono }) => (
+      {SECCIONES.map((sec) => {
+        const abiertaEsta = abierta === sec.titulo
+        const contieneActual = sec.items.some((i) => i.clave === actual)
+        return (
+          <div key={sec.titulo} className="mb-1">
             <button
-              key={clave}
-              onClick={() => alElegir(clave)}
-              aria-current={actual === clave ? 'page' : undefined}
+              type="button"
+              onClick={() => setAbierta(abiertaEsta ? '' : sec.titulo)}
+              aria-expanded={abiertaEsta}
+              className="flex w-full min-h-9 items-center gap-1.5 rounded-md px-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {sec.titulo}
+              {/* Cuando la sección está plegada pero contiene la página en la
+                  que estás, un punto lo recuerda sin tener que desplegarla. */}
+              {!abiertaEsta && contieneActual && (
+                <span className="size-1.5 rounded-full bg-sidebar-accent-foreground" />
+              )}
+              <ChevronDown
+                className={cn(
+                  'ml-auto size-3.5 transition-transform duration-200',
+                  !abiertaEsta && '-rotate-90',
+                )}
+              />
+            </button>
+
+            {/* Se pliega con una transición de altura en vez de desaparecer de
+                golpe: así se ve de dónde salió y a dónde volvió. */}
+            <div
               className={cn(
-                // min-h-11 = 44px: mínimo táctil cómodo en teléfono.
-                'flex w-full min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors',
-                actual === clave
-                  ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                  : 'text-sidebar-foreground hover:bg-sidebar-accent/60',
+                'grid transition-[grid-template-rows,opacity] duration-200 ease-out',
+                abiertaEsta ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
               )}
             >
-              <Icono className="size-4 shrink-0" />
-              {etiqueta}
-            </button>
-          ))}
-        </div>
-      ))}
+              <div className="overflow-hidden">
+                {sec.items.map(({ clave, etiqueta, icono: Icono }) => (
+                  <button
+                    key={clave}
+                    onClick={() => alElegir(clave)}
+                    aria-current={actual === clave ? 'page' : undefined}
+                    tabIndex={abiertaEsta ? 0 : -1}
+                    className={cn(
+                      // min-h-11 = 44px: mínimo táctil cómodo en teléfono.
+                      'flex w-full min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors',
+                      actual === clave
+                        ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                        : 'text-sidebar-foreground hover:bg-sidebar-accent/60',
+                    )}
+                  >
+                    <Icono className="size-4 shrink-0" />
+                    {etiqueta}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )
+      })}
     </nav>
   )
 }
@@ -137,13 +187,9 @@ export function Layout({
           </SheetContent>
         </Sheet>
 
-        {/* Header claro → logo en su versión oscura. El "blanco" solo sirve
-            sobre fondo navy y aquí quedaría invisible. */}
-        <img
-          src="/img/logo-revionix.png"
-          alt="REVIONIX"
-          className="h-6 w-auto object-contain sm:h-7"
-        />
+        {/* El logo hereda el color del texto: oscuro sobre la cabecera clara,
+            claro en modo oscuro. Ya no hacen falta dos archivos PNG. */}
+        <Logo soloMarca className="h-6 w-auto shrink-0 text-foreground sm:h-7" />
 
         {usuario && (
           <>
@@ -156,7 +202,8 @@ export function Layout({
           </>
         )}
 
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-2">
+          <EstadoSincronizacion />
           <BotonTema />
         </div>
 

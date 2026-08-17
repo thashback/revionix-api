@@ -24,14 +24,21 @@ const sinMovimiento = () =>
   typeof window !== 'undefined' &&
   window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
 
-/** Los cinco tonos del tema, en orden. Todo gráfico tira de aquí para que
- *  al cambiar de tema los colores cambien solos. */
+/**
+ * Colores de las series.
+ *
+ * No son los --chart-* del tema: esos cinco son el mismo azul con distinta
+ * luminosidad, y con más de dos series encima resultan indistinguibles. Estos
+ * se separan en tono, empezando por el azul corporativo. El tema sigue intacto
+ * para el resto de la interfaz.
+ */
 export const TONOS = [
-  'var(--chart-1)',
-  'var(--chart-2)',
-  'var(--chart-3)',
-  'var(--chart-4)',
-  'var(--chart-5)',
+  'var(--serie-1)',
+  'var(--serie-2)',
+  'var(--serie-3)',
+  'var(--serie-4)',
+  'var(--serie-5)',
+  'var(--serie-6)',
 ]
 
 /** Miles y millones abreviados: "2200k" se lee peor que "2.2M". */

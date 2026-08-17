@@ -599,6 +599,57 @@ app.get('/api/seed/:clave', async (req, res) => {
   }
 });
 
+// Estado de sincronización, para el indicador de la cabecera.
+// Va aparte de /api/seed-all a propósito: ese devuelve el paquete completo
+// (varios MB) y aquí solo hacen falta los sellos.
+app.get('/api/sincronizacion', async (req, res) => {
+  let conn;
+  try {
+    conn = await pool.getConnection();
+    const [snap] = await conn.execute(
+      "SELECT clave, datos, registros, updated_at FROM seed_snapshot WHERE clave IN " +
+      "('INVENTARIO_META','VENTAS_BILLIA_META','INVENTARIO_DATA','VENTAS_BILLIA_DATA','TXNS_DATA')");
+    const porClave = Object.fromEntries(snap.map(r => [r.clave, r]));
+    const leer = (clave) => {
+      try { return JSON.parse(porClave[clave]?.datos ?? '{}'); } catch { return {}; }
+    };
+
+    // El CRM no tiene un "sello de sincronización": lo que sí hay es cuándo se
+    // guardó por última vez algo en el almacenamiento compartido, que es donde
+    // la aplicación anterior escribe ventas, gastos y ediciones.
+    let almacen = null;
+    try {
+      const [[a]] = await conn.execute(
+        'SELECT MAX(updated_at) ultimo, COUNT(*) claves FROM app_storage');
+      almacen = a;
+    } catch { /* la tabla puede no existir en una instalación nueva */ }
+
+    res.json({
+      billia: {
+        inventario: {
+          ...leer('INVENTARIO_META'),
+          lineas: porClave.INVENTARIO_DATA?.registros ?? null,
+          guardado: porClave.INVENTARIO_META?.updated_at ?? null,
+        },
+        ventas: {
+          ...leer('VENTAS_BILLIA_META'),
+          comprobantes: porClave.VENTAS_BILLIA_DATA?.registros ?? null,
+          guardado: porClave.VENTAS_BILLIA_META?.updated_at ?? null,
+        },
+      },
+      revionix: {
+        transacciones: porClave.TXNS_DATA?.registros ?? null,
+        actualizado: almacen?.ultimo ?? null,
+        claves: almacen?.claves ?? null,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
 app.post('/api/audit', async (req, res) => {
   try {
     const { usuario, accion, modulo, detalle } = req.body || {};

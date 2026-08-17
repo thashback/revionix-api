@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { usarSesion } from '@/lib/sesion'
 import { BotonTema } from '@/componentes/BotonTema'
+import { Logo } from '@/componentes/Logo'
 
 export function Login() {
   const { entrar } = usarSesion()
@@ -38,15 +39,11 @@ export function Login() {
       </div>
       <Card className="w-full max-w-sm">
         <CardContent className="pt-2">
-          <div className="mb-6 text-center">
-            <img
-              src="/img/logo-revionix.png"
-              alt="REVIONIX"
-              className="mx-auto h-12 w-auto object-contain"
-            />
-            <p className="mt-2 text-xs text-muted-foreground">
-              Conectamos tu mundo. Protegemos tu futuro.
-            </p>
+          {/* El logo y el eslogan van en blanco sobre el navy de la marca.
+              Antes era el PNG oscuro sobre la tarjeta, y en modo oscuro se veía
+              el recuadro blanco del archivo recortado contra el fondo. */}
+          <div className="-mx-6 -mt-2 mb-6 rounded-t-xl bg-[oklch(0.28_0.07_260)] px-6 py-7 text-center text-white">
+            <Logo className="mx-auto w-full max-w-[230px]" />
           </div>
 
           <form onSubmit={alEnviar} className="space-y-4">
