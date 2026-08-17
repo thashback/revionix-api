@@ -111,6 +111,10 @@ export function Ebitda() {
   const ult3 = conEbitda.slice(-3)
   const promedio = ult3.length ? ult3.reduce((s, f) => s + (f.ebitda || 0), 0) / ult3.length : null
   const totalSinDoc = filas.reduce((s, f) => s + f.sinDoc, 0)
+  const totalVentas = filas.reduce((s, f) => s + f.v, 0)
+  // Qué parte de todo lo vendido carece de comprobante. En porcentaje se lee
+  // mejor que en soles: dice si es una esquina del negocio o algo de fondo.
+  const pctSinDoc = totalVentas > 0 ? (totalSinDoc / totalVentas) * 100 : null
 
   if (error) return <ErrorCarga mensaje={error} alReintentar={recargar} />
 
@@ -139,12 +143,14 @@ export function Ebitda() {
       </div>
 
       {totalSinDoc > 0 && !cargando && (
-        <Card className="t-card-hover border-destructive/40">
+        <Card className="t-card-hover border-chart-3/40">
           <CardHeader>
-            <CardTitle className="text-base">Ventas sin respaldo documental</CardTitle>
+            <CardTitle className="text-base">
+              {pctSinDoc == null ? '—' : porcentaje(pctSinDoc)} de las ventas sin número de comprobante
+            </CardTitle>
             <CardDescription>
-              {soles(totalSinDoc)} en ventas sin ningún número de comprobante. No se pueden
-              rastrear ni a BILLIA ni al sistema anterior — conviene revisarlas.
+              Son ventas antiguas provenientes de sistemas anteriores. Requieren revisión
+              manual para extraer su comprobante y completar el registro.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -210,9 +216,13 @@ export function Ebitda() {
                         <TableCell className="text-right tabular-nums">{soles(f.v)}</TableCell>
                         <TableCell className="text-right tabular-nums">
                           {f.facturado > 0 ? soles(f.facturado) : '—'}
-                          {f.sinDoc > 0 && (
-                            <Badge variant="destructive" className="ml-2 text-[10px]">
-                              sin doc {soles(f.sinDoc)}
+                          {f.sinDoc > 0 && f.v > 0 && (
+                            <Badge
+                              variant="secondary"
+                              className="ml-2 text-[10px]"
+                              title={`${f.nSinDoc} ventas sin número de comprobante · pendientes de extraer del sistema anterior`}
+                            >
+                              sin doc {porcentaje((f.sinDoc / f.v) * 100, 0)}
                             </Badge>
                           )}
                         </TableCell>
