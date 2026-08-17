@@ -1,7 +1,11 @@
 import { useMemo, useState } from 'react'
-import { FileText, Search } from 'lucide-react'
+import { FileText, Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { FormularioGasto } from '@/componentes/FormularioGasto'
+import { ConflictoAlmacen, guardarAlmacen } from '@/lib/almacen'
+import type { Gasto } from '@/lib/tipos'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
@@ -18,13 +22,86 @@ const etiquetaMes = (p: string) => {
 }
 
 export function Gastos() {
-  const { gastos, alquileres, planilla, cargando, error, recargar } = usarSeed()
+  const { gastos, alquileres, planilla, crudo, cargando, error, recargar } = usarSeed()
   const [busqueda, setBusqueda] = useState('')
+  const [editando, setEditando] = useState<Gasto | null>(null)
+  const [formAbierto, setFormAbierto] = useState(false)
+  const [aviso, setAviso] = useState<string | null>(null)
+
+  /**
+   * Guarda contra el mismo almacenamiento que la aplicación anterior:
+   *  · gasto nuevo        → se añade a rv_gastos
+   *  · gasto del snapshot → la edición va a rv_ediciones_gasto por id
+   *  · gasto local        → se reemplaza dentro de rv_gastos
+   * El comprobante siempre se indexa en rv_gastos_pdfs como 'g'+id.
+   */
+  async function guardarGasto(g: Gasto) {
+    const locales = [...crudo.gastosLocales]
+    const ediciones = { ...crudo.edicionesGasto }
+    const pdfs = { ...crudo.pdfs }
+    const cambios: Record<string, unknown> = {}
+
+    let id = g.id
+    if (id == null) {
+      // Mismo formato de id que usa la aplicación anterior.
+      id = Date.now() + Math.random()
+      locales.push({ ...g, id })
+      cambios.rv_gastos = locales
+    } else {
+      const i = locales.findIndex((x) => String(x.id) === String(id))
+      if (i >= 0) {
+        locales[i] = { ...locales[i], ...g }
+        cambios.rv_gastos = locales
+      } else {
+        // Vive en el snapshot: no se puede tocar, la edición va aparte.
+        const { pdf: _pdf, ...campos } = g
+        ediciones[String(id)] = campos
+        cambios.rv_ediciones_gasto = ediciones
+      }
+    }
+
+    if (g.pdf) {
+      pdfs['g' + id] = g.pdf
+      cambios.rv_gastos_pdfs = pdfs
+    }
+
+    await aplicar(cambios)
+  }
+
+  async function borrarGasto(g: Gasto) {
+    if (g.id == null) return
+    if (!confirm(`¿Eliminar este gasto?\n\n${g.cat} · ${g.desc} · ${soles(g.monto, 2)}`)) return
+    const lap = { ...crudo.lapidas }
+    const gasto = { ...((lap.gasto as Record<string, number>) ?? {}) }
+    gasto[String(g.id)] = 1
+    lap.gasto = gasto
+    await aplicar({ rv_eliminados: lap })
+  }
+
+  async function aplicar(cambios: Record<string, unknown>) {
+    try {
+      await guardarAlmacen(cambios)
+      setAviso(null)
+      await recargar()
+    } catch (e) {
+      if (e instanceof ConflictoAlmacen) {
+        // No se fuerza la escritura: se recarga para no pisar a otra sesión.
+        await recargar()
+        setAviso(e.message)
+        return
+      }
+      throw e
+    }
+  }
 
   const filtrados = useMemo(() => {
     const t = busqueda.toLowerCase().trim()
-    if (!t) return gastos
-    return gastos.filter((g) => `${g.desc} ${g.cat} ${g.canal ?? ''} ${g.resp ?? ''}`.toLowerCase().includes(t))
+    const base = t
+      ? gastos.filter((g) => `${g.desc} ${g.cat} ${g.canal ?? ''} ${g.resp ?? ''}`.toLowerCase().includes(t))
+      : gastos
+    // Lo más reciente primero: al registrar un gasto hoy tiene que verse sin
+    // buscarlo, y la tabla solo muestra las primeras 300 filas.
+    return [...base].sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')))
   }, [gastos, busqueda])
 
   const porMes = useMemo(
@@ -68,12 +145,30 @@ export function Gastos() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-extrabold tracking-tight">Gastos</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Gastos variables de operación, junto a los fijos mensuales
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-extrabold tracking-tight">Gastos</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Gastos variables de operación, junto a los fijos mensuales
+          </p>
+        </div>
+        <Button onClick={() => { setEditando(null); setFormAbierto(true) }} className="gap-2">
+          <Plus className="size-4" /> Nuevo gasto
+        </Button>
       </div>
+
+      {aviso && (
+        <Card className="border-chart-3/40">
+          <CardHeader><CardDescription>{aviso}</CardDescription></CardHeader>
+        </Card>
+      )}
+
+      <FormularioGasto
+        abierto={formAbierto}
+        gasto={editando}
+        onCerrar={() => setFormAbierto(false)}
+        onGuardar={guardarGasto}
+      />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi etiqueta="Gastos variables" valor={hay || cargando ? soles(totales.total) : '—'}
@@ -151,6 +246,7 @@ export function Gastos() {
                       <TableHead>Responsable</TableHead>
                       <TableHead className="text-right">Monto</TableHead>
                       <TableHead className="text-center">Comprobante</TableHead>
+                      <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -179,6 +275,18 @@ export function Gastos() {
                           ) : (
                             <span className="text-muted-foreground">—</span>
                           )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button variant="ghost" size="icon" aria-label="Editar gasto"
+                              onClick={() => { setEditando(g); setFormAbierto(true) }}>
+                              <Pencil className="size-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" aria-label="Eliminar gasto"
+                              onClick={() => void borrarGasto(g)}>
+                              <Trash2 className="size-4 text-destructive" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}

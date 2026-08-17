@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '@/lib/api'
+import { cargarRevisiones } from '@/lib/almacen'
 import type {
   Compra,
   Ecommerce,
@@ -28,11 +29,24 @@ export interface DatosSeed {
   pagosFijos: Fijo[]
   /** Estado de cobro por cliente, editado a mano en la aplicación anterior. */
   estadosCorp: Record<string, string>
+  /**
+   * Lo que hace falta para ESCRIBIR: al guardar hay que reenviar la clave
+   * entera, no solo el registro tocado, así que se conserva tal cual vino.
+   */
+  crudo: {
+    gastosLocales: Gasto[]
+    edicionesGasto: Record<string, unknown>
+    edicionesTxn: Record<string, unknown>
+    pdfs: Record<string, string>
+    lapidas: Record<string, unknown>
+    ventasLocales: Transaccion[]
+  }
 }
 
 const VACIO: DatosSeed = {
   inventario: [], inventarioMeta: null, transacciones: [], ventasBillia: [],
   ventasCorp: [], ecommerce: [], compras: [], gastos: [], planilla: [], alquileres: [], pagosFijos: [], estadosCorp: {},
+  crudo: { gastosLocales: [], edicionesGasto: {}, edicionesTxn: {}, pdfs: {}, lapidas: {}, ventasLocales: [] },
 }
 
 const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : [])
@@ -63,6 +77,8 @@ export function usarSeed() {
       const [s, almacen] = await Promise.all([
         api.get<SeedCompleto>('/seed-all'),
         api.get<Record<string, string>>('/storage').catch(() => ({}) as Record<string, string>),
+        // Las revisiones hacen falta para poder escribir con bloqueo optimista.
+        cargarRevisiones(),
       ])
 
       const deAlmacen = <T,>(clave: string): T[] => {
@@ -156,6 +172,14 @@ export function usarSeed() {
         alquileres: arr<Fijo>(s.ALQUILERES_DATA),
         pagosFijos: arr<Fijo>(s.PAGOS_FIJOS_DATA),
         estadosCorp: objAlmacen('rv_corp_estados') as Record<string, string>,
+        crudo: {
+          gastosLocales: deAlmacen<Gasto>('rv_gastos'),
+          edicionesGasto,
+          edicionesTxn,
+          pdfs,
+          lapidas,
+          ventasLocales: deAlmacen<Transaccion>('rv_ventas'),
+        },
       })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudieron cargar los datos')
