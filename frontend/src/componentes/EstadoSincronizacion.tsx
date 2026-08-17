@@ -3,7 +3,7 @@ import { Check, RefreshCw, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { fechaHoraLima, numero } from '@/lib/formato'
+import { fechaHoraLima, haceCuanto, horaLima, numero } from '@/lib/formato'
 
 interface Sincronizacion {
   billia?: {
@@ -53,6 +53,9 @@ export function EstadoSincronizacion() {
   const estado: 'cargando' | 'error' | 'atrasado' | 'ok' =
     fallo ? 'error' : !datos ? 'cargando' : atrasado ? 'atrasado' : 'ok'
 
+  const horaBillia = horaLima(datos?.billia?.inventario?.actualizado)
+  const horaRevionix = horaLima(datos?.revionix?.actualizado)
+
   const TEXTO = {
     cargando: 'Comprobando…',
     error: 'Sin conexión',
@@ -78,11 +81,18 @@ export function EstadoSincronizacion() {
         {estado === 'ok' ? <Check className="size-3.5" />
           : estado === 'cargando' ? <RefreshCw className="size-3.5 animate-spin" />
           : <TriangleAlert className="size-3.5" />}
-        {/* En teléfono solo cabe el punto y el icono; el texto vuelve en sm. */}
+        {/* En teléfono solo cabe el icono y la hora; el resto vuelve en sm. */}
         <span className="hidden sm:inline">{TEXTO}</span>
         <span className="hidden text-[10px] font-semibold tracking-wide opacity-70 md:inline">
           BILLIA · REVIONIX
         </span>
+        {/* La hora a la vista: es lo primero que se pregunta al mirar una
+            cifra, y tenerla que buscar dentro del panel era un clic de más. */}
+        {horaBillia && (
+          <span className="font-semibold tabular-nums" title={`Último dato de BILLIA: ${fechaHoraLima(datos?.billia?.inventario?.actualizado) ?? '—'}`}>
+            {horaBillia}
+          </span>
+        )}
       </button>
 
       {abierto && (
@@ -97,6 +107,8 @@ export function EstadoSincronizacion() {
             <Fuente
               nombre="BILLIA"
               detalle="Inventario y comprobantes"
+              hora={horaBillia}
+              relativo={haceCuanto(datos?.billia?.inventario?.actualizado)}
               lineas={[
                 datos?.billia?.inventario?.actualizado
                   ? `Stock: ${fechaHoraLima(datos.billia.inventario.actualizado)}`
@@ -113,6 +125,8 @@ export function EstadoSincronizacion() {
             <Fuente
               nombre="REVIONIX"
               detalle="app.revionix.pe · ventas y gastos del CRM"
+              hora={horaRevionix}
+              relativo={haceCuanto(datos?.revionix?.actualizado)}
               lineas={[
                 datos?.revionix?.transacciones != null
                   ? `${numero(datos.revionix.transacciones)} transacciones registradas`
@@ -148,15 +162,32 @@ export function EstadoSincronizacion() {
 function Fuente({
   nombre,
   detalle,
+  hora,
+  relativo,
   lineas,
 }: {
   nombre: string
   detalle: string
+  hora?: string | null
+  /** "hace 12 min": la hora sola no dice si es de hoy. */
+  relativo?: string | null
   lineas: (string | null)[]
 }) {
   return (
     <div className="mb-3 last:mb-0">
-      <p className="text-sm font-semibold">{nombre}</p>
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-sm font-semibold">{nombre}</p>
+        {hora && (
+          <p className="text-sm font-semibold tabular-nums">
+            {hora}
+            {relativo && (
+              <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">
+                {relativo}
+              </span>
+            )}
+          </p>
+        )}
+      </div>
       <p className="text-[11px] text-muted-foreground">{detalle}</p>
       <ul className="mt-1 space-y-0.5">
         {lineas.filter(Boolean).map((l) => (

@@ -37,6 +37,36 @@ export function mesLargo(periodo: string): string {
   return m ? `${LARGO[Number(m) - 1]} ${a}` : String(periodo ?? '—')
 }
 
+/** Solo la hora, en Lima. Para el sello corto de la cabecera. */
+export function horaLima(iso: string | undefined | null): string | null {
+  if (!iso) return null
+  const f = new Date(iso)
+  if (Number.isNaN(f.getTime())) return null
+  return f.toLocaleTimeString('es-PE', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'America/Lima',
+  })
+}
+
+/**
+ * "hace 12 min", "hace 3 h". Acompaña a la hora exacta: la hora sola no dice
+ * si el dato es de recién o de anteayer a la misma hora.
+ */
+export function haceCuanto(iso: string | undefined | null): string | null {
+  if (!iso) return null
+  const t = new Date(iso).getTime()
+  if (Number.isNaN(t)) return null
+  const min = Math.max(0, Math.round((Date.now() - t) / 60_000))
+  if (min < 1) return 'recién'
+  if (min < 60) return `hace ${min} min`
+  const h = Math.round(min / 60)
+  if (h < 24) return `hace ${h} h`
+  const d = Math.round(h / 24)
+  return `hace ${d} ${d === 1 ? 'día' : 'días'}`
+}
+
 /** Fecha y hora en horario de Lima, para el sello de sincronización. */
 export function fechaHoraLima(iso: string | undefined | null): string | null {
   if (!iso) return null
