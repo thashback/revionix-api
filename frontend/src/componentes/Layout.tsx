@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { Menu, LogOut, LayoutDashboard, Package } from 'lucide-react'
+import { Menu, LogOut, LayoutDashboard, Package, TrendingUp, ShoppingCart, Receipt } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 import { usarSesion } from '@/lib/sesion'
 import { BotonTema } from '@/componentes/BotonTema'
 
-export type ClavePagina = 'dashboard' | 'stock'
+export type ClavePagina = 'dashboard' | 'stock' | 'ventas' | 'compras' | 'gastos'
 
 interface ItemNav {
   clave: ClavePagina
@@ -18,7 +18,10 @@ interface ItemNav {
 // Solo las páginas ya migradas. Se irán sumando conforme avance la migración.
 const NAV: ItemNav[] = [
   { clave: 'dashboard', etiqueta: 'Dashboard', icono: LayoutDashboard },
+  { clave: 'ventas', etiqueta: 'Ventas', icono: TrendingUp },
   { clave: 'stock', etiqueta: 'Stock Disponible', icono: Package },
+  { clave: 'compras', etiqueta: 'Compras Mayoristas', icono: ShoppingCart },
+  { clave: 'gastos', etiqueta: 'Gastos', icono: Receipt },
 ]
 
 function Navegacion({

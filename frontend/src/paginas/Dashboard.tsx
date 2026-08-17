@@ -180,8 +180,8 @@ export function Dashboard() {
                     content={<ChartTooltipContent formatter={(v) => soles(Number(v))} />}
                   />
                   <ChartLegend content={<ChartLegendContent />} />
-                  <Bar dataKey="venta" fill="var(--color-venta)" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="costo" fill="var(--color-costo)" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="venta" fill="var(--color-venta)" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                  <Bar dataKey="costo" fill="var(--color-costo)" radius={[4, 4, 0, 0]} isAnimationActive={false} />
                 </BarChart>
               </ChartContainer>
             )}
@@ -204,7 +204,19 @@ export function Dashboard() {
                   <ChartTooltip
                     content={<ChartTooltipContent nameKey="marca" formatter={(v) => soles(Number(v))} />}
                   />
-                  <Pie data={porMarca} dataKey="venta" nameKey="marca" innerRadius={58} strokeWidth={2}>
+                  <Pie
+                    data={porMarca}
+                    dataKey="venta"
+                    nameKey="marca"
+                    innerRadius={58}
+                    outerRadius={100}
+                    strokeWidth={2}
+                    // recharts 3.8 deja el donut vacío si la animación de
+                    // entrada está activa: los sectores se quedan en radio 0
+                    // y nunca se emiten. Sin animación dibuja bien, y de todos
+                    // modos la tarjeta ya entra con el skeleton reveal.
+                    isAnimationActive={false}
+                  >
                     {porMarca.map((_, i) => (
                       <Cell key={i} fill={TONOS[i % TONOS.length]} />
                     ))}

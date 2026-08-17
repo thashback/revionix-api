@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { NumeroAnimado } from '@/componentes/NumeroAnimado'
@@ -38,21 +38,20 @@ export function Kpi({
   // Skeleton reveal: el esqueleto y el contenido viven apilados y se cruzan
   // con desenfoque. `revelado` va un tick por detrás de `cargando` para que
   // el navegador alcance a pintar el estado inicial y la transición ocurra.
+  //
+  // Se usa un temporizador y no requestAnimationFrame: el rAF quedaba
+  // cancelado por la limpieza del efecto cuando el componente se volvía a
+  // renderizar antes del siguiente cuadro, y la tarjeta se quedaba clavada
+  // en el esqueleto con el dato ya cargado debajo.
   const [revelado, setRevelado] = useState(!cargando)
-  const yaRevelado = useRef(!cargando)
 
   useEffect(() => {
     if (cargando) {
       setRevelado(false)
-      yaRevelado.current = false
       return
     }
-    if (yaRevelado.current) return
-    const id = requestAnimationFrame(() => {
-      yaRevelado.current = true
-      setRevelado(true)
-    })
-    return () => cancelAnimationFrame(id)
+    const id = setTimeout(() => setRevelado(true), 30)
+    return () => clearTimeout(id)
   }, [cargando])
 
   return (

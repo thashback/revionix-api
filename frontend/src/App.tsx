@@ -2,6 +2,9 @@ import { useState } from 'react'
 import { Layout, type ClavePagina } from '@/componentes/Layout'
 import { Dashboard } from '@/paginas/Dashboard'
 import { Stock } from '@/paginas/Stock'
+import { Ventas } from '@/paginas/Ventas'
+import { Compras } from '@/paginas/Compras'
+import { Gastos } from '@/paginas/Gastos'
 import { Login } from '@/paginas/Login'
 import { ProveedorSesion, usarSesion } from '@/lib/sesion'
 import { ProveedorTema } from '@/lib/tema'
@@ -14,7 +17,11 @@ function AppInterna() {
 
   return (
     <Layout pagina={pagina} alCambiarPagina={setPagina}>
-      {pagina === 'dashboard' ? <Dashboard /> : <Stock />}
+      {pagina === 'dashboard' && <Dashboard />}
+      {pagina === 'ventas' && <Ventas />}
+      {pagina === 'stock' && <Stock />}
+      {pagina === 'compras' && <Compras />}
+      {pagina === 'gastos' && <Gastos />}
     </Layout>
   )
 }
