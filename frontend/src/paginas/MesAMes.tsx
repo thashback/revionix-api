@@ -353,7 +353,14 @@ export function MesAMes() {
                         </TableCell>
                         <TableCell className="text-xs">{l.cliente}</TableCell>
                         <TableCell className="whitespace-nowrap text-xs">{l.doc}</TableCell>
-                        <TableCell className="max-w-[22rem] text-xs">{l.producto}</TableCell>
+                        <TableCell className="text-xs">
+                          {/* En un div, no en la celda: una celda de tabla
+                              ignora max-width y el texto invade la columna
+                              vecina. El nombre completo va en el title. */}
+                          <div className="max-w-[22rem] truncate" title={String(l.producto ?? '')}>
+                            {l.producto}
+                          </div>
+                        </TableCell>
                         <TableCell className="text-xs">{l.marca}</TableCell>
                         <TableCell className="text-right tabular-nums">{numero(l.qty)}</TableCell>
                         <TableCell className="text-right font-semibold tabular-nums">{soles(l.venta)}</TableCell>

@@ -11,6 +11,13 @@ import { Corporativo } from '@/paginas/Corporativo'
 import { Ecommerce } from '@/paginas/Ecommerce'
 import { MesAMes } from '@/paginas/MesAMes'
 import { Proyectos } from '@/paginas/Proyectos'
+import { Canales } from '@/paginas/Canales'
+import { Detalle } from '@/paginas/Detalle'
+import { Inversion } from '@/paginas/Inversion'
+import { GastosFijos } from '@/paginas/GastosFijos'
+import { PagosPendientes } from '@/paginas/PagosPendientes'
+import { CargaVentas } from '@/paginas/CargaVentas'
+import { Usuarios } from '@/paginas/Usuarios'
 import { Login } from '@/paginas/Login'
 import { ProveedorSesion, usarSesion } from '@/lib/sesion'
 import { ProveedorTema } from '@/lib/tema'
@@ -34,6 +41,13 @@ function AppInterna() {
       {pagina === 'ecommerce' && <Ecommerce />}
       {pagina === 'meses' && <MesAMes />}
       {pagina === 'proyectos' && <Proyectos />}
+      {pagina === 'canales' && <Canales />}
+      {pagina === 'detalle' && <Detalle />}
+      {pagina === 'inversion' && <Inversion />}
+      {pagina === 'gastos-fijos' && <GastosFijos />}
+      {pagina === 'pagos-pendientes' && <PagosPendientes />}
+      {pagina === 'carga' && <CargaVentas />}
+      {pagina === 'usuarios' && <Usuarios />}
     </Layout>
   )
 }

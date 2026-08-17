@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Check, RefreshCw, TriangleAlert } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { fechaHoraLima, numero } from '@/lib/formato'
@@ -126,6 +127,17 @@ export function EstadoSincronizacion() {
               BILLIA se consulta cada 2 horas. Los cambios del CRM se ven al
               instante.
             </p>
+            {/* Recargar la página entera y no solo este panel: lo que interesa
+                refrescar son las cifras de la pantalla, no el sello. */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2 w-full gap-2"
+              onClick={() => window.location.reload()}
+            >
+              <RefreshCw className="size-3.5" />
+              Recargar los datos
+            </Button>
           </div>
         </>
       )}

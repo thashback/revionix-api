@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Menu, LogOut, LayoutDashboard, Package, TrendingUp, ShoppingCart, Receipt,
-  Activity, Tag, Building2, Globe, CalendarRange, FolderKanban, ChevronDown } from 'lucide-react'
+  Activity, Tag, Building2, Globe, CalendarRange, FolderKanban, ChevronDown,
+  Store, ListTree, Landmark, CalendarClock, Upload, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
@@ -13,7 +14,8 @@ import { Logo } from '@/componentes/Logo'
 export type ClavePagina =
   | 'dashboard' | 'ventas' | 'ebitda' | 'stock' | 'marcas'
   | 'compras' | 'gastos' | 'corporativo' | 'ecommerce'
-  | 'meses' | 'proyectos'
+  | 'meses' | 'proyectos' | 'canales' | 'detalle' | 'inversion'
+  | 'gastos-fijos' | 'pagos-pendientes' | 'carga' | 'usuarios'
 
 interface ItemNav {
   clave: ClavePagina
@@ -43,6 +45,7 @@ const SECCIONES: Seccion[] = [
       { clave: 'meses', etiqueta: 'Mes a Mes', icono: CalendarRange },
       { clave: 'corporativo', etiqueta: 'Corporativo', icono: Building2 },
       { clave: 'ecommerce', etiqueta: 'Ecommerce', icono: Globe },
+      { clave: 'canales', etiqueta: 'Canales', icono: Store },
       { clave: 'proyectos', etiqueta: 'Proyectos', icono: FolderKanban },
     ],
   },
@@ -52,12 +55,23 @@ const SECCIONES: Seccion[] = [
       { clave: 'stock', etiqueta: 'Stock Disponible', icono: Package },
       { clave: 'marcas', etiqueta: 'Por Marca', icono: Tag },
       { clave: 'compras', etiqueta: 'Compras Mayoristas', icono: ShoppingCart },
+      { clave: 'detalle', etiqueta: 'Detalle por Producto', icono: ListTree },
+      { clave: 'inversion', etiqueta: 'Inversión', icono: Landmark },
     ],
   },
   {
     titulo: 'Costos',
     items: [
       { clave: 'gastos', etiqueta: 'Gastos', icono: Receipt },
+      { clave: 'gastos-fijos', etiqueta: 'Gastos Fijos', icono: Landmark },
+      { clave: 'pagos-pendientes', etiqueta: 'Pagos Pendientes', icono: CalendarClock },
+    ],
+  },
+  {
+    titulo: 'Administración',
+    items: [
+      { clave: 'carga', etiqueta: 'Carga de Ventas', icono: Upload },
+      { clave: 'usuarios', etiqueta: 'Usuarios', icono: Users },
     ],
   },
 ]

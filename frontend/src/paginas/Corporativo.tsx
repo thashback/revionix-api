@@ -194,7 +194,14 @@ export function Corporativo() {
                                             {l.mes ? etiquetaMes(l.mes) : '—'}
                                           </TableCell>
                                           <TableCell className="whitespace-nowrap text-xs">{l.doc || '—'}</TableCell>
-                                          <TableCell className="max-w-[24rem] text-xs">{l.desc || '—'}</TableCell>
+                                          <TableCell className="text-xs">
+                          {/* En un div, no en la celda: una celda de tabla
+                              ignora max-width y el texto invade la columna
+                              vecina. El nombre completo va en el title. */}
+                          <div className="max-w-[24rem] truncate" title={String(l.desc ?? '')}>
+                            {l.desc || '—'}
+                          </div>
+                        </TableCell>
                                           <TableCell className="text-xs">{l.marca || '—'}</TableCell>
                                           <TableCell className="text-right tabular-nums">{numero(l.qty)}</TableCell>
                                           <TableCell className="text-right font-semibold tabular-nums">
