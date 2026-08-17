@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
-import { Menu, LogOut, LayoutDashboard, Package, TrendingUp, ShoppingCart, Receipt } from 'lucide-react'
+import { Menu, LogOut, LayoutDashboard, Package, TrendingUp, ShoppingCart, Receipt,
+  Activity, Tag, Building2, Globe, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
@@ -7,7 +8,9 @@ import { cn } from '@/lib/utils'
 import { usarSesion } from '@/lib/sesion'
 import { BotonTema } from '@/componentes/BotonTema'
 
-export type ClavePagina = 'dashboard' | 'stock' | 'ventas' | 'compras' | 'gastos'
+export type ClavePagina =
+  | 'dashboard' | 'ventas' | 'ebitda' | 'stock' | 'marcas'
+  | 'compras' | 'gastos' | 'corporativo' | 'ecommerce' | 'planilla'
 
 interface ItemNav {
   clave: ClavePagina
@@ -15,13 +18,44 @@ interface ItemNav {
   icono: typeof LayoutDashboard
 }
 
-// Solo las páginas ya migradas. Se irán sumando conforme avance la migración.
-const NAV: ItemNav[] = [
-  { clave: 'dashboard', etiqueta: 'Dashboard', icono: LayoutDashboard },
-  { clave: 'ventas', etiqueta: 'Ventas', icono: TrendingUp },
-  { clave: 'stock', etiqueta: 'Stock Disponible', icono: Package },
-  { clave: 'compras', etiqueta: 'Compras Mayoristas', icono: ShoppingCart },
-  { clave: 'gastos', etiqueta: 'Gastos', icono: Receipt },
+interface Seccion {
+  titulo: string
+  items: ItemNav[]
+}
+
+// Agrupado por tema: con diez entradas, una lista plana obliga a leerlas
+// todas para encontrar una.
+const SECCIONES: Seccion[] = [
+  {
+    titulo: 'Resumen',
+    items: [
+      { clave: 'dashboard', etiqueta: 'Dashboard', icono: LayoutDashboard },
+      { clave: 'ebitda', etiqueta: 'EBITDA', icono: Activity },
+    ],
+  },
+  {
+    titulo: 'Comercial',
+    items: [
+      { clave: 'ventas', etiqueta: 'Ventas', icono: TrendingUp },
+      { clave: 'corporativo', etiqueta: 'Corporativo', icono: Building2 },
+      { clave: 'ecommerce', etiqueta: 'Ecommerce', icono: Globe },
+    ],
+  },
+  {
+    titulo: 'Inventario',
+    items: [
+      { clave: 'stock', etiqueta: 'Stock Disponible', icono: Package },
+      { clave: 'marcas', etiqueta: 'Por Marca', icono: Tag },
+      { clave: 'compras', etiqueta: 'Compras Mayoristas', icono: ShoppingCart },
+    ],
+  },
+  {
+    titulo: 'Costos',
+    items: [
+      { clave: 'gastos', etiqueta: 'Gastos', icono: Receipt },
+      { clave: 'planilla', etiqueta: 'Planilla y Fijos', icono: Users },
+    ],
+  },
 ]
 
 function Navegacion({
@@ -33,25 +67,29 @@ function Navegacion({
 }) {
   return (
     <nav className="flex flex-col gap-1 p-3">
-      <p className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-        Principal
-      </p>
-      {NAV.map(({ clave, etiqueta, icono: Icono }) => (
-        <button
-          key={clave}
-          onClick={() => alElegir(clave)}
-          aria-current={actual === clave ? 'page' : undefined}
-          className={cn(
-            // min-h-11 = 44px: mínimo táctil cómodo en teléfono.
-            'flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors',
-            actual === clave
-              ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-              : 'text-sidebar-foreground hover:bg-sidebar-accent/60',
-          )}
-        >
-          <Icono className="size-4 shrink-0" />
-          {etiqueta}
-        </button>
+      {SECCIONES.map((sec) => (
+        <div key={sec.titulo} className="mb-1">
+          <p className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            {sec.titulo}
+          </p>
+          {sec.items.map(({ clave, etiqueta, icono: Icono }) => (
+            <button
+              key={clave}
+              onClick={() => alElegir(clave)}
+              aria-current={actual === clave ? 'page' : undefined}
+              className={cn(
+                // min-h-11 = 44px: mínimo táctil cómodo en teléfono.
+                'flex w-full min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors',
+                actual === clave
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                  : 'text-sidebar-foreground hover:bg-sidebar-accent/60',
+              )}
+            >
+              <Icono className="size-4 shrink-0" />
+              {etiqueta}
+            </button>
+          ))}
+        </div>
       ))}
     </nav>
   )

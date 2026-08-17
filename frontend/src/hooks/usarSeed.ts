@@ -3,6 +3,7 @@ import { api } from '@/lib/api'
 import type {
   Compra,
   Ecommerce,
+  Fijo,
   Gasto,
   LineaInventario,
   MetaInventario,
@@ -23,12 +24,13 @@ export interface DatosSeed {
   compras: Compra[]
   gastos: Gasto[]
   planilla: Planilla[]
-  alquileres: { concepto: string; monto_mensual: number; moneda: string }[]
+  alquileres: Fijo[]
+  pagosFijos: Fijo[]
 }
 
 const VACIO: DatosSeed = {
   inventario: [], inventarioMeta: null, transacciones: [], ventasBillia: [],
-  ventasCorp: [], ecommerce: [], compras: [], gastos: [], planilla: [], alquileres: [],
+  ventasCorp: [], ecommerce: [], compras: [], gastos: [], planilla: [], alquileres: [], pagosFijos: [],
 }
 
 const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : [])
@@ -98,7 +100,8 @@ export function usarSeed() {
         compras: arr<Compra>(s.COMPRAS_DATA),
         gastos: [...arr<Gasto>(s.GASTOS_DATA), ...extraGastos],
         planilla: arr<Planilla>(s.PLANILLA_DATA),
-        alquileres: arr(s.ALQUILERES_DATA),
+        alquileres: arr<Fijo>(s.ALQUILERES_DATA),
+        pagosFijos: arr<Fijo>(s.PAGOS_FIJOS_DATA),
       })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudieron cargar los datos')

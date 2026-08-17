@@ -128,6 +128,17 @@ export interface Planilla {
   essalud?: number
 }
 
+/** Alquiler o pago fijo mensual (ALQUILERES_DATA / PAGOS_FIJOS_DATA). */
+export interface Fijo {
+  concepto: string
+  tipo?: string
+  monto_mensual?: number
+  monto?: number
+  moneda?: string
+  cuenta?: string
+  estado?: string
+}
+
 /** Respuesta de /api/seed-all: cada clave es un bloque de datos del servidor. */
 export interface SeedCompleto {
   INVENTARIO_DATA?: LineaInventario[]
