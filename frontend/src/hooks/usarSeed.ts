@@ -10,6 +10,7 @@ import type {
   LineaInventario,
   MetaInventario,
   Planilla,
+  PlanillaMes,
   SeedCompleto,
   Transaccion,
   VentaBillia,
@@ -26,6 +27,12 @@ export interface DatosSeed {
   compras: Compra[]
   gastos: Gasto[]
   planilla: Planilla[]
+  /**
+   * Planilla mes a mes (rv_planilla). PLANILLA_DATA es una foto de un solo
+   * mes sin periodo; esta lleva año y mes, y es la que tiene los 65 registros
+   * cargados de abril a julio.
+   */
+  planillaMensual: PlanillaMes[]
   alquileres: Fijo[]
   pagosFijos: Fijo[]
   /** Estado de cobro por cliente, editado a mano en la aplicación anterior. */
@@ -46,7 +53,7 @@ export interface DatosSeed {
 
 const VACIO: DatosSeed = {
   inventario: [], inventarioMeta: null, transacciones: [], ventasBillia: [],
-  ventasCorp: [], ecommerce: [], compras: [], gastos: [], planilla: [], alquileres: [], pagosFijos: [], estadosCorp: {},
+  ventasCorp: [], ecommerce: [], compras: [], gastos: [], planilla: [], planillaMensual: [], alquileres: [], pagosFijos: [], estadosCorp: {},
   crudo: { gastosLocales: [], edicionesGasto: {}, edicionesTxn: {}, pdfs: {}, lapidas: {}, ventasLocales: [] },
 }
 
@@ -170,6 +177,7 @@ export function usarSeed() {
         compras: arr<Compra>(s.COMPRAS_DATA),
         gastos: gastosConPdf,
         planilla: arr<Planilla>(s.PLANILLA_DATA),
+        planillaMensual: deAlmacen<PlanillaMes>('rv_planilla'),
         alquileres: arr<Fijo>(s.ALQUILERES_DATA),
         pagosFijos: arr<Fijo>(s.PAGOS_FIJOS_DATA),
         estadosCorp: objAlmacen('rv_corp_estados') as Record<string, string>,

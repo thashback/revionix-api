@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Menu, LogOut, LayoutDashboard, Package, TrendingUp, ShoppingCart, Receipt,
   Activity, Tag, Building2, Globe, CalendarRange, FolderKanban, ChevronDown,
-  Store, ListTree, Landmark, CalendarClock, Upload, Users } from 'lucide-react'
+  Store, ListTree, Landmark, CalendarClock, Upload, Users, Wallet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
@@ -15,7 +15,7 @@ export type ClavePagina =
   | 'dashboard' | 'ventas' | 'ebitda' | 'stock' | 'marcas'
   | 'compras' | 'gastos' | 'corporativo' | 'ecommerce'
   | 'meses' | 'proyectos' | 'canales' | 'detalle' | 'inversion'
-  | 'gastos-fijos' | 'pagos-pendientes' | 'carga' | 'usuarios'
+  | 'gastos-fijos' | 'pagos-pendientes' | 'planilla' | 'carga' | 'usuarios'
 
 interface ItemNav {
   clave: ClavePagina
@@ -65,6 +65,7 @@ const SECCIONES: Seccion[] = [
       { clave: 'gastos', etiqueta: 'Gastos', icono: Receipt },
       { clave: 'gastos-fijos', etiqueta: 'Gastos Fijos', icono: Landmark },
       { clave: 'pagos-pendientes', etiqueta: 'Pagos Pendientes', icono: CalendarClock },
+      { clave: 'planilla', etiqueta: 'Planilla', icono: Wallet },
     ],
   },
   {

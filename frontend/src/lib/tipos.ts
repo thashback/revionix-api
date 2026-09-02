@@ -134,6 +134,37 @@ export interface Planilla {
   essalud?: number
 }
 
+/**
+ * Planilla mensual por trabajador (rv_planilla en el almacén compartido).
+ *
+ * No es lo mismo que `Planilla`: aquella es PLANILLA_DATA, una foto de un solo
+ * mes sin campo de periodo. Esta lleva año y mes, que es lo que permite ver
+ * la planilla de cada mes por separado.
+ */
+export interface PlanillaMes {
+  id?: string
+  ano: number
+  mes: number
+  trabajador: string
+  cargo?: string
+  fecha_ingreso?: string
+  dias?: number
+  remuneracion: number
+  bono?: number
+  adelantos?: number
+  vacaciones?: number
+  liquidacion?: number
+  gratif?: number
+  total?: number
+  sistema?: string
+  desc_pension?: number
+  desc_otros?: number
+  total_descuentos?: number
+  neto?: number
+  essalud?: number
+  n_cuenta?: string
+}
+
 /** Alquiler o pago fijo mensual (ALQUILERES_DATA / PAGOS_FIJOS_DATA). */
 export interface Fijo {
   concepto: string

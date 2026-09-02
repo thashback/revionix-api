@@ -16,6 +16,7 @@ import { Detalle } from '@/paginas/Detalle'
 import { Inversion } from '@/paginas/Inversion'
 import { GastosFijos } from '@/paginas/GastosFijos'
 import { PagosPendientes } from '@/paginas/PagosPendientes'
+import { Planilla } from '@/paginas/Planilla'
 import { CargaVentas } from '@/paginas/CargaVentas'
 import { Usuarios } from '@/paginas/Usuarios'
 import { Login } from '@/paginas/Login'
@@ -46,6 +47,7 @@ function AppInterna() {
       {pagina === 'inversion' && <Inversion />}
       {pagina === 'gastos-fijos' && <GastosFijos />}
       {pagina === 'pagos-pendientes' && <PagosPendientes />}
+      {pagina === 'planilla' && <Planilla />}
       {pagina === 'carga' && <CargaVentas />}
       {pagina === 'usuarios' && <Usuarios />}
     </Layout>
