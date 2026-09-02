@@ -1,27 +1,29 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras, GraficoDonut, agrupar, topYResto } from '@/componentes/Graficos'
 import { BotonExcel } from '@/componentes/BotonExcel'
+import { FormularioEcommerce } from '@/componentes/FormularioEcommerce'
 import { usarSeed } from '@/hooks/usarSeed'
+import { guardarAlmacen, ConflictoAlmacen } from '@/lib/almacen'
+import { Plus } from 'lucide-react'
 import { etiquetaMes, numero, porcentaje, soles } from '@/lib/formato'
 import type { Ecommerce as VentaEcommerce, Transaccion } from '@/lib/tipos'
 
 /** Una venta de ecommerce, sepamos o no de qué plataforma vino. */
-type Linea = VentaEcommerce & { origen: 'Plataforma' | 'Carga de ventas' }
+type Linea = VentaEcommerce & { origen: 'Precargada' | 'Registrada' }
 
 const SIN_PLATAFORMA = 'Sin plataforma'
 
 /**
- * Una venta cargada por "Carga de ventas" con canal Ecommerce, traída a la
- * forma de esta pantalla.
- *
- * No trae plataforma ni vendedor: la plantilla de carga no tiene esas
- * columnas. Se marca como "Sin plataforma" en vez de adivinar si fue
- * MercadoLibre o Falabella.
+ * Una venta con canal Ecommerce de rv_ventas, traída a la forma de esta
+ * pantalla. Puede venir del formulario de aquí (trae plataforma) o de "Carga
+ * de ventas" (no la trae: esa plantilla no tiene esa columna). Sin plataforma
+ * se marca como tal, en vez de adivinar entre MercadoLibre y Falabella.
  */
 function desdeVenta(t: Transaccion): Linea {
   const qty = Number(t.qty) || 1
@@ -29,7 +31,7 @@ function desdeVenta(t: Transaccion): Linea {
   return {
     fecha: t.fecha,
     mes: t.mes || String(t.fecha || '').slice(0, 7),
-    plataforma: SIN_PLATAFORMA,
+    plataforma: t.plataforma?.trim() || SIN_PLATAFORMA,
     vendedor: '',
     qty,
     modelo: t.modelo,
@@ -37,12 +39,14 @@ function desdeVenta(t: Transaccion): Linea {
     precio_unit: qty > 0 ? total / qty : total,
     total,
     costo: Number(t.costo) || 0,
-    origen: 'Carga de ventas',
+    origen: 'Registrada',
   }
 }
 
 export function Ecommerce() {
-  const { ecommerce, transacciones, cargando, error, recargar } = usarSeed()
+  const { ecommerce, transacciones, crudo, cargando, error, recargar } = usarSeed()
+  const [abierto, setAbierto] = useState(false)
+  const [aviso, setAviso] = useState<string | null>(null)
 
   /**
    * Las dos fuentes juntas.
@@ -53,7 +57,7 @@ export function Ecommerce() {
    * esta pantalla no las leía y parecía que el canal se había apagado.
    */
   const lineas = useMemo<Linea[]>(() => {
-    const precargadas: Linea[] = ecommerce.map((e) => ({ ...e, origen: 'Plataforma' }))
+    const precargadas: Linea[] = ecommerce.map((e) => ({ ...e, origen: 'Precargada' }))
     const cargadas = transacciones
       .filter((t) => /ecommerce/i.test(String(t.canal ?? '')))
       .map(desdeVenta)
@@ -61,7 +65,39 @@ export function Ecommerce() {
       String(b.fecha ?? '').localeCompare(String(a.fecha ?? '')))
   }, [ecommerce, transacciones])
 
-  const nCargadas = useMemo(() => lineas.filter((l) => l.origen === 'Carga de ventas').length, [lineas])
+  const nCargadas = useMemo(
+    () => lineas.filter((l) => l.plataforma === SIN_PLATAFORMA).length,
+    [lineas],
+  )
+
+  /** Comprobantes ya registrados, para avisar de una carga repetida. */
+  const firmas = useMemo(
+    () => new Set(transacciones.map((t) =>
+      `${t.serie ?? ''}-${t.correlativo ?? ''}-${t.fecha ?? ''}-${Number(t.venta) || 0}`)),
+    [transacciones],
+  )
+
+  /**
+   * Se escribe en rv_ventas con canal Ecommerce, no en ECOMMERCE_DATA.
+   *
+   * ECOMMERCE_DATA es una lista precargada que ningún módulo suma al EBITDA;
+   * guardar ahí dejaría la venta visible solo en esta pantalla. rv_ventas es
+   * por donde ya entran las ventas del sistema.
+   */
+  async function guardar(venta: Transaccion) {
+    setAviso(null)
+    try {
+      await guardarAlmacen({ rv_ventas: [...crudo.ventasLocales, venta] })
+      await recargar()
+      setAviso('Venta registrada.')
+    } catch (e) {
+      if (e instanceof ConflictoAlmacen) {
+        await recargar()
+        throw new Error(`${e.message} Vuelve a ingresarla.`)
+      }
+      throw e
+    }
+  }
 
   const porMes = useMemo(
     () =>
@@ -101,19 +137,38 @@ export function Ecommerce() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-extrabold tracking-tight">Ecommerce</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Ventas por plataforma de venta en línea</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-extrabold tracking-tight">Ecommerce</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Ventas por plataforma de venta en línea</p>
+        </div>
+        <Button onClick={() => setAbierto(true)}>
+          <Plus className="mr-1.5 size-4" />
+          Nueva venta
+        </Button>
       </div>
+
+      {aviso && (
+        <Card className="border-chart-2/40 bg-chart-2/5">
+          <CardContent className="py-3 text-sm">{aviso}</CardContent>
+        </Card>
+      )}
+
+      <FormularioEcommerce
+        abierto={abierto}
+        onCerrar={() => setAbierto(false)}
+        onGuardar={guardar}
+        firmasExistentes={firmas}
+      />
 
       {nCargadas > 0 && (
         <Card className="border-chart-3/40 bg-chart-3/5">
           <CardContent className="py-3 text-sm">
             <strong>{numero(nCargadas)}</strong> de estas ventas entraron por{' '}
-            <strong>Carga de ventas</strong> con canal Ecommerce, no desde la lista
-            precargada por plataforma. Aparecen como{' '}
-            <Badge variant="secondary">{SIN_PLATAFORMA}</Badge> porque la plantilla de
-            carga no tiene columna de plataforma.
+            <strong>Carga de ventas</strong> con canal Ecommerce. Aparecen como{' '}
+            <Badge variant="secondary">{SIN_PLATAFORMA}</Badge> porque esa plantilla no
+            tiene columna de plataforma. Las que registres con{' '}
+            <strong>Nueva venta</strong> sí la llevan.
           </CardContent>
         </Card>
       )}

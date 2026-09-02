@@ -34,6 +34,12 @@ export interface Transaccion {
   costo: number
   margen?: number
   medio_pago?: string
+  /**
+   * Solo en ventas de ecommerce cargadas desde su propia pantalla. Las que
+   * entran por "Carga de ventas" no la traen: esa plantilla no tiene columna
+   * de plataforma.
+   */
+  plataforma?: string
 }
 
 /** Comprobante facturado en BILLIA (clave VENTAS_BILLIA_DATA). */
