@@ -6,6 +6,7 @@ const multer = require('multer');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { normalizarInventario } = require('./services/marcas');
+const { puedeEscribir } = require('./services/permisos');
 const {
   cabecerasSeguridad, limitadorLogin, extensionPermitida, nombreSeguro,
   nombreDentroDeCarpeta, cabecerasDeArchivo, EXTENSIONES_PERMITIDAS,
@@ -166,7 +167,9 @@ function requireAdmin(req, res, next) {
 // 'visor' es de solo lectura; antes esto solo se ocultaba en la UI, no se
 // exigía en el servidor (con el token de un visor se podía escribir igual).
 function blockVisorWrites(req, res, next) {
-  if (req.user && req.user.role === 'visor' && req.method !== 'GET') {
+  // La regla vive en services/permisos.js para poder probarla: si se rompe,
+  // no se nota hasta que alguien de solo lectura modifica lo que no debía.
+  if (!puedeEscribir(req.user, req.method, req.path)) {
     return res.status(403).json({ error: 'Usuario de solo lectura' });
   }
   next();
@@ -550,6 +553,34 @@ async function initAuditoriaTable() {
 }
 initAuditoriaTable();
 
+// Solicitudes de mejora: lo que la gente que usa el sistema echa en falta.
+// Vive en su propia tabla y no en app_storage porque hay que consultarla por
+// autor y por estado, y un blob JSON obligaría a leerlo entero para eso.
+async function initSolicitudesTable() {
+  try {
+    const conn = await pool.getConnection();
+    await conn.query(`CREATE TABLE IF NOT EXISTS solicitudes_mejora (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      usuario VARCHAR(80) NOT NULL,
+      titulo VARCHAR(160) NOT NULL,
+      detalle TEXT,
+      modulo VARCHAR(60),
+      prioridad ENUM('baja','media','alta') DEFAULT 'media',
+      estado ENUM('pendiente','en_revision','aceptada','descartada','hecha') DEFAULT 'pendiente',
+      respuesta TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_usuario (usuario),
+      INDEX idx_estado (estado)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+    conn.release();
+    console.log('✓ Tabla solicitudes_mejora lista');
+  } catch (err) {
+    console.error('✗ initSolicitudesTable:', err.message);
+  }
+}
+initSolicitudesTable();
+
 // Snapshot de los datos PRECARGADOS (respaldo en BD). No se auto-carga en el
 // navegador (a diferencia de app_storage); es solo respaldo/consulta.
 async function initSeedSnapshotTable() {
@@ -674,6 +705,78 @@ app.get('/api/sincronizacion', async (req, res) => {
         claves: almacen?.claves ?? null,
       },
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// SOLICITUDES DE MEJORA
+// Quien usa el sistema todos los días es quien nota lo que falta. Cada quien
+// ve y crea las suyas; el administrador las ve todas y responde.
+// ═══════════════════════════════════════════════════════════════
+const ESTADOS_SOLICITUD = ['pendiente', 'en_revision', 'aceptada', 'descartada', 'hecha'];
+const PRIORIDADES = ['baja', 'media', 'alta'];
+
+app.get('/api/solicitudes', async (req, res) => {
+  let conn;
+  try {
+    conn = await pool.getConnection();
+    const esAdmin = req.user && req.user.role === 'admin';
+    // Nadie ve las peticiones de otro: son opiniones sobre el trabajo propio.
+    const [filas] = esAdmin
+      ? await conn.execute('SELECT * FROM solicitudes_mejora ORDER BY created_at DESC LIMIT 500')
+      : await conn.execute(
+          'SELECT * FROM solicitudes_mejora WHERE usuario = ? ORDER BY created_at DESC LIMIT 500',
+          [String(req.user && req.user.username || '')]);
+    res.json(filas);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+app.post('/api/solicitudes', async (req, res) => {
+  let conn;
+  try {
+    const titulo = String(req.body.titulo || '').trim();
+    if (!titulo) return res.status(400).json({ error: 'Falta el título' });
+    const prioridad = PRIORIDADES.includes(req.body.prioridad) ? req.body.prioridad : 'media';
+    conn = await pool.getConnection();
+    const [r] = await conn.execute(
+      'INSERT INTO solicitudes_mejora (usuario, titulo, detalle, modulo, prioridad) VALUES (?, ?, ?, ?, ?)',
+      // El autor sale de la sesión, nunca del cuerpo: si viniera del cliente,
+      // cualquiera podría firmar una solicitud con el nombre de otro.
+      [String(req.user && req.user.username || 'desconocido').slice(0, 80),
+       titulo.slice(0, 160),
+       String(req.body.detalle || '').slice(0, 5000),
+       String(req.body.modulo || '').slice(0, 60),
+       prioridad]);
+    const [[fila]] = await conn.execute('SELECT * FROM solicitudes_mejora WHERE id = ?', [r.insertId]);
+    res.json(fila);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+// Cambiar el estado o responder es cosa de quien mantiene el sistema.
+app.put('/api/solicitudes/:id', requireAdmin, async (req, res) => {
+  let conn;
+  try {
+    const estado = ESTADOS_SOLICITUD.includes(req.body.estado) ? req.body.estado : null;
+    if (!estado) return res.status(400).json({ error: 'Estado no válido' });
+    conn = await pool.getConnection();
+    await conn.execute(
+      'UPDATE solicitudes_mejora SET estado = ?, respuesta = ? WHERE id = ?',
+      [estado, String(req.body.respuesta || '').slice(0, 5000), Number(req.params.id)]);
+    const [[fila]] = await conn.execute('SELECT * FROM solicitudes_mejora WHERE id = ?', [Number(req.params.id)]);
+    if (!fila) return res.status(404).json({ error: 'No existe esa solicitud' });
+    res.json(fila);
   } catch (err) {
     res.status(500).json({ error: err.message });
   } finally {

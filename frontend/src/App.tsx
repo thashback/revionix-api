@@ -19,6 +19,7 @@ import { PagosPendientes } from '@/paginas/PagosPendientes'
 import { Planilla } from '@/paginas/Planilla'
 import { CargaVentas } from '@/paginas/CargaVentas'
 import { Usuarios } from '@/paginas/Usuarios'
+import { Solicitudes } from '@/paginas/Solicitudes'
 import { Login } from '@/paginas/Login'
 import { ProveedorSesion, usarSesion } from '@/lib/sesion'
 import { ProveedorTema } from '@/lib/tema'
@@ -50,6 +51,7 @@ function AppInterna() {
       {pagina === 'planilla' && <Planilla />}
       {pagina === 'carga' && <CargaVentas />}
       {pagina === 'usuarios' && <Usuarios />}
+      {pagina === 'solicitudes' && <Solicitudes />}
     </Layout>
   )
 }

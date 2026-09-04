@@ -1,7 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Menu, LogOut, LayoutDashboard, Package, TrendingUp, ShoppingCart, Receipt,
   Activity, Tag, Building2, Globe, CalendarRange, FolderKanban, ChevronDown,
-  Store, ListTree, Landmark, CalendarClock, Upload, Users, Wallet } from 'lucide-react'
+  Store, ListTree, Landmark, CalendarClock, Upload, Users, Lightbulb, Wallet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
@@ -16,9 +16,16 @@ export type ClavePagina =
   | 'compras' | 'gastos' | 'corporativo' | 'ecommerce'
   | 'meses' | 'proyectos' | 'canales' | 'detalle' | 'inversion'
   | 'gastos-fijos' | 'pagos-pendientes' | 'planilla' | 'carga' | 'usuarios'
+  | 'solicitudes'
 
 interface ItemNav {
   clave: ClavePagina
+  /**
+   * Quién ve la entrada. Sin esto el menú enseñaba todo a todo el mundo, y
+   * pantallas como Usuarios solo se defendían por dentro: se veían, se
+   * entraba y recién ahí decían que no. Ahora ni aparecen.
+   */
+  visible?: (u: { username: string; role: string } | null) => boolean
   etiqueta: string
   icono: typeof LayoutDashboard
 }
@@ -71,8 +78,16 @@ const SECCIONES: Seccion[] = [
   {
     titulo: 'Administración',
     items: [
-      { clave: 'carga', etiqueta: 'Carga de Ventas', icono: Upload },
-      { clave: 'usuarios', etiqueta: 'Usuarios', icono: Users },
+      // Un visor no puede escribir: el servidor le rechaza la importación, así
+      // que enseñarle la pantalla solo le hace perder el viaje.
+      { clave: 'carga', etiqueta: 'Carga de Ventas', icono: Upload,
+        visible: (u) => u?.role !== 'visor' },
+      { clave: 'usuarios', etiqueta: 'Usuarios', icono: Users,
+        visible: (u) => u?.role === 'admin' },
+      // Pedida para JMOLINA. El administrador también la ve, porque si no
+      // las solicitudes se quedarían en un cajón que nadie abre.
+      { clave: 'solicitudes', etiqueta: 'Solicitudes de Mejora', icono: Lightbulb,
+        visible: (u) => u?.role === 'admin' || u?.username === 'jmolina' },
     ],
   },
 ]
@@ -90,6 +105,16 @@ function Navegacion({
   actual: ClavePagina
   alElegir: (c: ClavePagina) => void
 }) {
+  const { usuario } = usarSesion()
+  // Las secciones que se quedan sin ninguna entrada visible desaparecen: un
+  // título solo, sin nada debajo, parece que algo se rompió.
+  const secciones = useMemo(
+    () =>
+      SECCIONES
+        .map((s) => ({ ...s, items: s.items.filter((i) => !i.visible || i.visible(usuario)) }))
+        .filter((s) => s.items.length > 0),
+    [usuario],
+  )
   // Con doce entradas la lista completa obliga a recorrerla entera cada vez.
   // Se deja abierta solo la sección de la página en la que se está; las demás
   // se pliegan, y quien quiera otra la abre con un toque.
@@ -101,7 +126,7 @@ function Navegacion({
 
   return (
     <nav className="flex flex-col gap-1 p-3">
-      {SECCIONES.map((sec) => {
+      {secciones.map((sec) => {
         const abiertaEsta = abierta === sec.titulo
         const contieneActual = sec.items.some((i) => i.clave === actual)
         return (
