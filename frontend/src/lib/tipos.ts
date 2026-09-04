@@ -40,6 +40,13 @@ export interface Transaccion {
    * de plataforma.
    */
   plataforma?: string
+  /**
+   * Venta de servicio (mano de obra, instalación, mantenimiento). Su costo es
+   * cero A PROPÓSITO: la mano de obra ya está en planilla y gastos, y ponerle
+   * costo a la línea contaría el mismo desembolso dos veces. Se distingue de
+   * una venta a la que simplemente le falta el costo.
+   */
+  es_servicio?: boolean
 }
 
 /** Comprobante facturado en BILLIA (clave VENTAS_BILLIA_DATA). */

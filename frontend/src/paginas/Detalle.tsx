@@ -20,8 +20,10 @@ export function Detalle() {
   const filas = useMemo(
     () =>
       transacciones.map((t) => {
-        const conCosto = (t.costo || 0) > 0
-        const margen = conCosto ? (t.venta || 0) - t.costo : null
+        // Los servicios cuentan como costeados: su costo es cero a propósito
+        // porque la mano de obra ya está en planilla y gastos.
+        const conCosto = t.es_servicio || (t.costo || 0) > 0
+        const margen = conCosto ? (t.venta || 0) - (t.costo || 0) : null
         return {
           ...t,
           comprobante: [t.serie, t.correlativo].filter(Boolean).join('-') || '—',

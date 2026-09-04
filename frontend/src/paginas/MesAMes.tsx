@@ -72,7 +72,8 @@ export function MesAMes() {
       marca: t.marca || '—',
       qty: t.qty || 0,
       venta: t.venta || 0,
-      costo: t.costo > 0 ? t.costo : null,
+      // Un servicio cuesta 0 por definición, no por falta de dato.
+      costo: t.es_servicio ? 0 : t.costo > 0 ? t.costo : null,
       medioPago: t.medio_pago || '—',
     })
     const deCorp = (v: VentaCorp): LineaVenta => ({
