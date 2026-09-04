@@ -330,7 +330,10 @@ export function MesAMes() {
       </Card>
 
       <Sheet open={mesAbierto != null} onOpenChange={(v) => !v && setMesAbierto(null)}>
-        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-3xl">
+        {/* 10 columnas no entran en un panel de 3xl: Costo y Margen, que son
+            las dos últimas, quedaban fuera de la vista y parecía que no se
+            habían cargado. */}
+        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-[min(96vw,72rem)]">
           <SheetHeader>
             <SheetTitle>{mesAbierto ? mesLargo(mesAbierto) : ''}</SheetTitle>
             <SheetDescription>
@@ -338,6 +341,28 @@ export function MesAMes() {
               {totDetalle.sinCosto > 0 && ` · ${numero(totDetalle.sinCosto)} sin costo cargado`}
             </SheetDescription>
           </SheetHeader>
+
+          <div className="px-4">
+            <BotonExcel
+              nombre={`ventas_${mesAbierto ?? 'mes'}`}
+              filas={detalle}
+              columnas={[
+                { titulo: 'Fecha', valor: (l) => l.fecha },
+                { titulo: 'Origen', valor: (l) => l.origen },
+                { titulo: 'Canal / Cliente', valor: (l) => l.cliente, ancho: 30 },
+                { titulo: 'Documento', valor: (l) => l.doc },
+                { titulo: 'Producto', valor: (l) => l.producto, ancho: 44 },
+                { titulo: 'Marca', valor: (l) => l.marca },
+                { titulo: 'Cantidad', valor: (l) => l.qty },
+                { titulo: 'Venta', valor: (l) => l.venta },
+                // null y no 0: una venta sin costo cargado no es una venta con
+                // costo cero, y en Excel esa diferencia cambia cualquier suma.
+                { titulo: 'Costo', valor: (l) => l.costo },
+                { titulo: 'Margen', valor: (l) => (l.costo == null ? null : l.venta - l.costo) },
+                { titulo: 'Medio de pago', valor: (l) => l.medioPago },
+              ]}
+            />
+          </div>
 
           <div className="grid grid-cols-3 gap-3 px-4">
             <Kpi etiqueta="Venta" valor={soles(totDetalle.venta)} acento="navy" />
