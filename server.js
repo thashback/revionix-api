@@ -568,11 +568,20 @@ async function initSolicitudesTable() {
       prioridad ENUM('baja','media','alta') DEFAULT 'media',
       estado ENUM('pendiente','en_revision','aceptada','descartada','hecha') DEFAULT 'pendiente',
       respuesta TEXT,
+      fecha_estimada DATE NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       INDEX idx_usuario (usuario),
       INDEX idx_estado (estado)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+    // La tabla ya se creó en producción sin esta columna, así que se añade
+    // aparte. MySQL 8 no admite IF NOT EXISTS en ADD COLUMN.
+    try {
+      await conn.query('ALTER TABLE solicitudes_mejora ADD COLUMN fecha_estimada DATE NULL AFTER respuesta');
+      console.log('✓ Columna solicitudes_mejora.fecha_estimada agregada');
+    } catch (e) {
+      if (e.code !== 'ER_DUP_FIELDNAME') console.error('migrar fecha_estimada:', e.message);
+    }
     conn.release();
     console.log('✓ Tabla solicitudes_mejora lista');
   } catch (err) {
@@ -770,10 +779,19 @@ app.put('/api/solicitudes/:id', requireAdmin, async (req, res) => {
   try {
     const estado = ESTADOS_SOLICITUD.includes(req.body.estado) ? req.body.estado : null;
     if (!estado) return res.status(400).json({ error: 'Estado no válido' });
+
+    // Para cuándo estará. Vacío la borra: un compromiso que ya no se sostiene
+    // es peor que no haber dado ninguno.
+    const cruda = String(req.body.fecha_estimada || '').trim();
+    if (cruda && !/^\d{4}-\d{2}-\d{2}$/.test(cruda)) {
+      return res.status(400).json({ error: 'La fecha debe venir como AAAA-MM-DD' });
+    }
+    const fecha = cruda || null;
+
     conn = await pool.getConnection();
     await conn.execute(
-      'UPDATE solicitudes_mejora SET estado = ?, respuesta = ? WHERE id = ?',
-      [estado, String(req.body.respuesta || '').slice(0, 5000), Number(req.params.id)]);
+      'UPDATE solicitudes_mejora SET estado = ?, respuesta = ?, fecha_estimada = ? WHERE id = ?',
+      [estado, String(req.body.respuesta || '').slice(0, 5000), fecha, Number(req.params.id)]);
     const [[fila]] = await conn.execute('SELECT * FROM solicitudes_mejora WHERE id = ?', [Number(req.params.id)]);
     if (!fila) return res.status(404).json({ error: 'No existe esa solicitud' });
     res.json(fila);

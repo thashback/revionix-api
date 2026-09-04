@@ -24,6 +24,8 @@ interface Solicitud {
   prioridad: 'baja' | 'media' | 'alta'
   estado: 'pendiente' | 'en_revision' | 'aceptada' | 'descartada' | 'hecha'
   respuesta: string | null
+  /** Para cuándo se estima que estará. AAAA-MM-DD, o null si no hay fecha. */
+  fecha_estimada: string | null
   created_at: string
 }
 
@@ -48,12 +50,36 @@ const MODULOS = [
   'Inversión', 'Gastos', 'Gastos Fijos', 'Pagos Pendientes', 'Planilla', 'Otro',
 ]
 
+/** Hoy en Lima, como AAAA-MM-DD: comparar plazos con el reloj del navegador
+ *  daría un día de diferencia para quien abra la página desde otro huso. */
+const hoyLima = () =>
+  new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' })
+
+/**
+ * El plazo en palabras. La fecha sola obliga a hacer la cuenta mentalmente, y
+ * lo que la persona quiere saber es si falta mucho o si ya se pasó.
+ */
+function plazo(fecha: string | null, estado: Solicitud['estado']) {
+  if (!fecha) return null
+  const dia = String(fecha).slice(0, 10)
+  const dias = Math.round(
+    (new Date(dia + 'T00:00:00').getTime() - new Date(hoyLima() + 'T00:00:00').getTime()) / 86_400_000,
+  )
+  const cerrada = estado === 'hecha' || estado === 'descartada'
+  if (cerrada) return { dia, texto: '', tono: 'text-muted-foreground' }
+  if (dias < 0) return { dia, texto: `atrasada ${Math.abs(dias)} ${Math.abs(dias) === 1 ? 'día' : 'días'}`, tono: 'text-destructive font-medium' }
+  if (dias === 0) return { dia, texto: 'es hoy', tono: 'text-chart-3 font-medium' }
+  if (dias === 1) return { dia, texto: 'mañana', tono: 'text-chart-3' }
+  return { dia, texto: `en ${dias} días`, tono: 'text-muted-foreground' }
+}
+
 export function Solicitudes() {
   const { usuario } = usarSesion()
   const [filas, setFilas] = useState<Solicitud[]>([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [abierto, setAbierto] = useState(false)
+  const [respondiendo, setRespondiendo] = useState<Solicitud | null>(null)
 
   const esAdmin = usuario?.role === 'admin'
 
@@ -79,6 +105,10 @@ export function Solicitudes() {
       total: filas.length,
       pendientes: por('pendiente') + por('en_revision'),
       hechas: por('hecha'),
+      vencidas: filas.filter((f) => {
+        const p = plazo(f.fecha_estimada, f.estado)
+        return p != null && p.texto.startsWith('atrasada')
+      }).length,
       altas: filas.filter((f) => f.prioridad === 'alta' && f.estado !== 'hecha' && f.estado !== 'descartada').length,
     }
   }, [filas])
@@ -109,8 +139,13 @@ export function Solicitudes() {
         <Kpi etiqueta="Prioridad alta" valor={numero(totales.altas)}
           detalle="Abiertas y urgentes"
           acento={totales.altas > 0 ? 'rojo' : 'verde'} cargando={cargando} />
-        <Kpi etiqueta="Ya hechas" valor={numero(totales.hechas)}
-          detalle="Aplicadas al sistema" acento="verde" cargando={cargando} />
+        {totales.vencidas > 0 ? (
+          <Kpi etiqueta="Fuera de plazo" valor={numero(totales.vencidas)}
+            detalle="Pasó la fecha estimada" acento="rojo" cargando={cargando} />
+        ) : (
+          <Kpi etiqueta="Ya hechas" valor={numero(totales.hechas)}
+            detalle="Aplicadas al sistema" acento="verde" cargando={cargando} />
+        )}
       </div>
 
       <Card className="t-card-hover">
@@ -138,7 +173,9 @@ export function Solicitudes() {
                       <TableHead>Módulo</TableHead>
                       <TableHead>Prioridad</TableHead>
                       <TableHead>Estado</TableHead>
+                      <TableHead>Para cuándo</TableHead>
                       <TableHead>Respuesta</TableHead>
+                      {esAdmin && <TableHead />}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -163,9 +200,28 @@ export function Solicitudes() {
                         <TableCell>
                           <Badge variant={ESTADO[f.estado].tono}>{ESTADO[f.estado].texto}</Badge>
                         </TableCell>
+                        <TableCell className="whitespace-nowrap text-xs">
+                          {(() => {
+                            const pl = plazo(f.fecha_estimada, f.estado)
+                            if (!pl) return <span className="text-muted-foreground">sin fecha</span>
+                            return (
+                              <span className={pl.tono}>
+                                {pl.dia}
+                                {pl.texto && <span className="ml-1 opacity-80">· {pl.texto}</span>}
+                              </span>
+                            )
+                          })()}
+                        </TableCell>
                         <TableCell className="max-w-[18rem] text-xs">
                           {f.respuesta || <span className="text-muted-foreground">—</span>}
                         </TableCell>
+                        {esAdmin && (
+                          <TableCell className="text-right">
+                            <Button variant="ghost" size="sm" onClick={() => setRespondiendo(f)}>
+                              Responder
+                            </Button>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -179,6 +235,12 @@ export function Solicitudes() {
         abierto={abierto}
         onCerrar={() => setAbierto(false)}
         onEnviado={() => { setAbierto(false); void cargar() }}
+      />
+
+      <PanelRespuesta
+        solicitud={respondiendo}
+        onCerrar={() => setRespondiendo(null)}
+        onGuardado={() => { setRespondiendo(null); void cargar() }}
       />
     </div>
   )
@@ -273,6 +335,114 @@ function FormularioSolicitud({
               {enviando ? 'Enviando…' : 'Enviar solicitud'}
             </Button>
             <Button type="button" variant="outline" onClick={onCerrar} disabled={enviando}>
+              Cancelar
+            </Button>
+          </SheetFooter>
+        </form>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+/**
+ * Panel del administrador: responder, mover el estado y comprometer una fecha.
+ * Es lo único que un visor no puede hacer sobre su propia solicitud.
+ */
+function PanelRespuesta({
+  solicitud,
+  onCerrar,
+  onGuardado,
+}: {
+  solicitud: Solicitud | null
+  onCerrar: () => void
+  onGuardado: () => void
+}) {
+  const [form, setForm] = useState({ estado: 'pendiente', respuesta: '', fecha_estimada: '' })
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!solicitud) return
+    setError(null)
+    setForm({
+      estado: solicitud.estado,
+      respuesta: solicitud.respuesta ?? '',
+      // La fecha puede llegar con hora; el input date solo admite AAAA-MM-DD.
+      fecha_estimada: String(solicitud.fecha_estimada ?? '').slice(0, 10),
+    })
+  }, [solicitud])
+
+  async function guardar(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    setGuardando(true)
+    try {
+      await api.put(`/solicitudes/${solicitud!.id}`, form)
+      onGuardado()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  const campo = 'min-h-11 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:min-h-9'
+
+  return (
+    <Sheet open={solicitud != null} onOpenChange={(v) => !v && onCerrar()}>
+      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
+        <SheetHeader>
+          <SheetTitle>Responder solicitud</SheetTitle>
+          <SheetDescription>
+            {solicitud ? `${solicitud.titulo} — pedida por ${solicitud.usuario}` : ''}
+          </SheetDescription>
+        </SheetHeader>
+
+        {solicitud?.detalle && (
+          <p className="mx-4 rounded-md border bg-muted/40 p-3 text-xs whitespace-pre-line text-muted-foreground">
+            {solicitud.detalle}
+          </p>
+        )}
+
+        <form onSubmit={guardar} className="space-y-4 px-4 pb-4">
+          <div className="space-y-2">
+            <Label htmlFor="r-estado">Estado</Label>
+            <select id="r-estado" value={form.estado} className={campo}
+              onChange={(e) => setForm((f) => ({ ...f, estado: e.target.value }))}>
+              <option value="pendiente">Pendiente</option>
+              <option value="en_revision">En revisión</option>
+              <option value="aceptada">Aceptada</option>
+              <option value="hecha">Hecha</option>
+              <option value="descartada">Descartada</option>
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="r-fecha">¿Para cuándo estará?</Label>
+            <Input id="r-fecha" type="date" value={form.fecha_estimada}
+              onChange={(e) => setForm((f) => ({ ...f, fecha_estimada: e.target.value }))} />
+            <p className="text-xs text-muted-foreground">
+              Quien la pidió ve esta fecha. Déjala en blanco si todavía no hay
+              un compromiso: mejor sin fecha que con una que no se va a cumplir.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="r-respuesta">Respuesta</Label>
+            <textarea id="r-respuesta" rows={4} value={form.respuesta}
+              onChange={(e) => setForm((f) => ({ ...f, respuesta: e.target.value }))}
+              placeholder="Qué se va a hacer, o por qué no"
+              className={campo + ' py-2'} />
+          </div>
+
+          {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
+
+          <SheetFooter className="px-0">
+            <Button type="submit" disabled={guardando} className="gap-2">
+              {guardando && <Loader2 className="size-4 animate-spin" />}
+              {guardando ? 'Guardando…' : 'Guardar'}
+            </Button>
+            <Button type="button" variant="outline" onClick={onCerrar} disabled={guardando}>
               Cancelar
             </Button>
           </SheetFooter>
