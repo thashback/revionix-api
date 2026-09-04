@@ -13,6 +13,7 @@ import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras, GraficoDonut, agrupar, topYResto } from '@/componentes/Graficos'
 import { BotonExcel } from '@/componentes/BotonExcel'
+import { AvisoAdmin } from '@/componentes/AvisoAdmin'
 import { usarSeed } from '@/hooks/usarSeed'
 import { etiquetaMes, numero, porcentaje, soles } from '@/lib/formato'
 
@@ -154,9 +155,7 @@ export function Gastos() {
       </div>
 
       {aviso && (
-        <Card className="border-chart-3/40">
-          <CardHeader><CardDescription>{aviso}</CardDescription></CardHeader>
-        </Card>
+        <AvisoAdmin>{aviso}</AvisoAdmin>
       )}
 
       <FormularioGasto

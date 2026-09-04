@@ -6,6 +6,7 @@ import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoDonut, topYResto } from '@/componentes/Graficos'
 import { BotonExcel } from '@/componentes/BotonExcel'
+import { AvisoAdmin } from '@/componentes/AvisoAdmin'
 import { usarSeed } from '@/hooks/usarSeed'
 import { numero, porcentaje, soles } from '@/lib/formato'
 import type { Fijo } from '@/lib/tipos'
@@ -104,13 +105,11 @@ export function GastosFijos() {
       </div>
 
       {totales.enDolares > 0 && (
-        <Card className="border-chart-3/40 bg-chart-3/5">
-          <CardContent className="py-3 text-sm">
+        <AvisoAdmin>
             <strong>{numero(totales.enDolares)}</strong> conceptos están en dólares
             (US$ {numero(Math.round(totales.montoDolares))}). No se suman al total en
             soles porque no hay un tipo de cambio guardado con el que convertirlos.
-          </CardContent>
-        </Card>
+        </AvisoAdmin>
       )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">

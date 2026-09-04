@@ -8,6 +8,7 @@ import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras, GraficoDonut, agrupar, topYResto } from '@/componentes/Graficos'
 import { BotonExcel } from '@/componentes/BotonExcel'
 import { FormularioEcommerce } from '@/componentes/FormularioEcommerce'
+import { AvisoAdmin } from '@/componentes/AvisoAdmin'
 import { usarSeed } from '@/hooks/usarSeed'
 import { guardarAlmacen, ConflictoAlmacen } from '@/lib/almacen'
 import { Plus } from 'lucide-react'
@@ -162,15 +163,13 @@ export function Ecommerce() {
       />
 
       {nCargadas > 0 && (
-        <Card className="border-chart-3/40 bg-chart-3/5">
-          <CardContent className="py-3 text-sm">
+        <AvisoAdmin>
             <strong>{numero(nCargadas)}</strong> de estas ventas entraron por{' '}
             <strong>Carga de ventas</strong> con canal Ecommerce. Aparecen como{' '}
             <Badge variant="secondary">{SIN_PLATAFORMA}</Badge> porque esa plantilla no
             tiene columna de plataforma. Las que registres con{' '}
             <strong>Nueva venta</strong> sí la llevan.
-          </CardContent>
-        </Card>
+        </AvisoAdmin>
       )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">

@@ -7,6 +7,7 @@ import {
 import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras } from '@/componentes/Graficos'
+import { usarVeAvisos } from '@/componentes/AvisoAdmin'
 import { usarSeed } from '@/hooks/usarSeed'
 import { etiquetaMes, numero, porcentaje, soles } from '@/lib/formato'
 
@@ -27,6 +28,7 @@ export function Ebitda() {
     transacciones, ventasBillia, gastos, planilla, alquileres,
     cargando, error, recargar,
   } = usarSeed()
+  const veAvisos = usarVeAvisos()
 
   /** Costos fijos: alquileres + planilla. Son los mismos todos los meses. */
   const fijos = useMemo(() => {
@@ -137,7 +139,9 @@ export function Ebitda() {
         )}
       </div>
 
-      {totalSinDoc > 0 && !cargando && (
+      {/* Solo el administrador: quien viene a consultar una cifra no puede
+          arreglar esto, y leerlo solo le hace dudar del número. */}
+      {veAvisos && totalSinDoc > 0 && !cargando && (
         <Card className="t-card-hover border-chart-3/40">
           <CardHeader>
             <CardTitle className="text-base">
