@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -7,7 +7,9 @@ import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras } from '@/componentes/Graficos'
 import { BotonExcel } from '@/componentes/BotonExcel'
+import { FileText, Loader2, Paperclip } from 'lucide-react'
 import { usarSeed } from '@/hooks/usarSeed'
+import { guardarAlmacen, subirArchivo, ConflictoAlmacen } from '@/lib/almacen'
 import { etiquetaMes, mesLargo, numero, soles } from '@/lib/formato'
 import type { PlanillaMes } from '@/lib/tipos'
 
@@ -35,8 +37,39 @@ const bruto = (p: PlanillaMes) =>
 const costoEmpresa = (p: PlanillaMes) => bruto(p) + n(p.essalud)
 
 export function Planilla() {
-  const { planillaMensual, cargando, error, recargar } = usarSeed()
+  const { planillaMensual, planillaPdfs, crudo, cargando, error, recargar } = usarSeed()
   const [mesElegido, setMesElegido] = useState<string | null>(null)
+  const [subiendo, setSubiendo] = useState<string | null>(null)
+  const [avisoPdf, setAvisoPdf] = useState<string | null>(null)
+  /** Un input por fila: compartir uno solo obliga a rastrear a quién pertenece. */
+  const inputs = useRef<Record<string, HTMLInputElement | null>>({})
+
+  /**
+   * Adjunta el recibo por honorarios de un trabajador.
+   *
+   * Se guarda en rv_planilla_pdfs, indexado por el id del registro, igual que
+   * los comprobantes de gasto en rv_gastos_pdfs. Así el archivo queda atado al
+   * mes concreto: un mismo trabajador tiene un recibo distinto cada mes.
+   */
+  async function adjuntar(id: string, archivo: File) {
+    setAvisoPdf(null)
+    setSubiendo(id)
+    try {
+      const ruta = await subirArchivo(archivo)
+      await guardarAlmacen({ rv_planilla_pdfs: { ...crudo.planillaPdfs, [id]: ruta } })
+      await recargar()
+      setAvisoPdf('Recibo adjuntado.')
+    } catch (e) {
+      setAvisoPdf(
+        e instanceof ConflictoAlmacen
+          ? e.message + ' Vuelve a adjuntarlo.'
+          : e instanceof Error ? e.message : 'No se pudo adjuntar el recibo',
+      )
+      if (e instanceof ConflictoAlmacen) await recargar()
+    } finally {
+      setSubiendo(null)
+    }
+  }
 
   /** Los periodos con planilla cargada, del más reciente al más antiguo. */
   const periodos = useMemo(
@@ -88,6 +121,12 @@ export function Planilla() {
           Planilla mensual por trabajador · elige el mes para ver el suyo
         </p>
       </div>
+
+      {avisoPdf && (
+        <Card className="border-chart-2/40 bg-chart-2/5">
+          <CardContent className="py-3 text-sm">{avisoPdf}</CardContent>
+        </Card>
+      )}
 
       {/* Un botón por mes: con cuatro meses seguidos, una lista corrida
           obliga a buscar dónde empieza cada uno. */}
@@ -166,6 +205,7 @@ export function Planilla() {
                 { titulo: 'EsSalud', valor: (p) => n(p.essalud) },
                 { titulo: 'Costo empresa', valor: (p) => costoEmpresa(p) },
                 { titulo: 'N° de cuenta', valor: (p) => p.n_cuenta ?? '', ancho: 46 },
+                { titulo: 'Recibo', valor: (p) => (p.id && planillaPdfs[String(p.id)] ? 'sí' : 'no') },
               ]}
             />
           </div>
@@ -195,6 +235,7 @@ export function Planilla() {
                     <TableHead className="text-right">Neto a pagar</TableHead>
                     <TableHead className="text-right">EsSalud</TableHead>
                     <TableHead className="text-right">Costo empresa</TableHead>
+                    <TableHead className="text-center">Recibo</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -224,6 +265,50 @@ export function Planilla() {
                       <TableCell className="text-right font-semibold tabular-nums">
                         {soles(costoEmpresa(p))}
                       </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const id = String(p.id ?? '')
+                          const pdf = id ? planillaPdfs[id] : undefined
+                          if (!id) return <span className="text-muted-foreground">—</span>
+                          return (
+                            <div className="flex items-center justify-center gap-1">
+                              {pdf && (
+                                // Pestaña nueva: /uploads se sirve sin la sesión
+                                // del CRM, igual que los comprobantes de gasto.
+                                <a href={pdf} target="_blank" rel="noopener noreferrer"
+                                  title="Ver recibo por honorarios"
+                                  className="text-primary inline-flex items-center">
+                                  <FileText className="size-4" />
+                                  <span className="sr-only">Ver recibo</span>
+                                </a>
+                              )}
+                              <input
+                                ref={(el) => { inputs.current[id] = el }}
+                                type="file"
+                                accept=".pdf,image/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0]
+                                  if (f) void adjuntar(id, f)
+                                  e.target.value = ''
+                                }}
+                              />
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="size-7 p-0"
+                                disabled={subiendo === id}
+                                title={pdf ? 'Reemplazar el recibo' : 'Adjuntar recibo por honorarios'}
+                                onClick={() => inputs.current[id]?.click()}
+                              >
+                                {subiendo === id
+                                  ? <Loader2 className="size-4 animate-spin" />
+                                  : <Paperclip className="size-4" />}
+                              </Button>
+                            </div>
+                          )
+                        })()}
+                      </TableCell>
                     </TableRow>
                   ))}
                   <TableRow className="border-t-2 bg-muted/40 font-bold">
@@ -236,6 +321,9 @@ export function Planilla() {
                     <TableCell className="text-right tabular-nums">{soles(totales.neto)}</TableCell>
                     <TableCell className="text-right tabular-nums">{soles(totales.essalud)}</TableCell>
                     <TableCell className="text-right tabular-nums">{soles(totales.costo)}</TableCell>
+                    <TableCell className="text-center font-normal text-xs text-muted-foreground">
+                      {numero(filas.filter((p) => p.id && planillaPdfs[String(p.id)]).length)}/{numero(filas.length)}
+                    </TableCell>
                   </TableRow>
                 </TableBody>
               </Table>

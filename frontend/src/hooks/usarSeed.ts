@@ -33,6 +33,8 @@ export interface DatosSeed {
    * cargados de abril a julio.
    */
   planillaMensual: PlanillaMes[]
+  /** Recibo por honorarios de cada registro de planilla, indexado por su id. */
+  planillaPdfs: Record<string, string>
   alquileres: Fijo[]
   pagosFijos: Fijo[]
   /** Estado de cobro por cliente, editado a mano en la aplicación anterior. */
@@ -46,6 +48,7 @@ export interface DatosSeed {
     edicionesGasto: Record<string, unknown>
     edicionesTxn: Record<string, unknown>
     pdfs: Record<string, string>
+    planillaPdfs: Record<string, string>
     lapidas: Record<string, unknown>
     ventasLocales: Transaccion[]
   }
@@ -53,8 +56,8 @@ export interface DatosSeed {
 
 const VACIO: DatosSeed = {
   inventario: [], inventarioMeta: null, transacciones: [], ventasBillia: [],
-  ventasCorp: [], ecommerce: [], compras: [], gastos: [], planilla: [], planillaMensual: [], alquileres: [], pagosFijos: [], estadosCorp: {},
-  crudo: { gastosLocales: [], edicionesGasto: {}, edicionesTxn: {}, pdfs: {}, lapidas: {}, ventasLocales: [] },
+  ventasCorp: [], ecommerce: [], compras: [], gastos: [], planilla: [], planillaMensual: [], planillaPdfs: {}, alquileres: [], pagosFijos: [], estadosCorp: {},
+  crudo: { gastosLocales: [], edicionesGasto: {}, edicionesTxn: {}, pdfs: {}, planillaPdfs: {}, lapidas: {}, ventasLocales: [] },
 }
 
 const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : [])
@@ -178,6 +181,7 @@ export function usarSeed() {
         gastos: gastosConPdf,
         planilla: arr<Planilla>(s.PLANILLA_DATA),
         planillaMensual: deAlmacen<PlanillaMes>('rv_planilla'),
+        planillaPdfs: objAlmacen('rv_planilla_pdfs') as Record<string, string>,
         alquileres: arr<Fijo>(s.ALQUILERES_DATA),
         pagosFijos: arr<Fijo>(s.PAGOS_FIJOS_DATA),
         estadosCorp: objAlmacen('rv_corp_estados') as Record<string, string>,
@@ -186,6 +190,7 @@ export function usarSeed() {
           edicionesGasto,
           edicionesTxn,
           pdfs,
+          planillaPdfs: objAlmacen('rv_planilla_pdfs') as Record<string, string>,
           lapidas,
           ventasLocales: deAlmacen<Transaccion>('rv_ventas'),
         },
