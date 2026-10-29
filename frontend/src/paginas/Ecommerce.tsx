@@ -12,7 +12,7 @@ import { AvisoAdmin } from '@/componentes/AvisoAdmin'
 import { usarSeed } from '@/hooks/usarSeed'
 import { guardarAlmacen, ConflictoAlmacen } from '@/lib/almacen'
 import { Plus } from 'lucide-react'
-import { etiquetaMes, numero, porcentaje, soles } from '@/lib/formato'
+import { etiquetaMes, numero, porcentaje, sinIgv, soles } from '@/lib/formato'
 import type { Ecommerce as VentaEcommerce, Transaccion } from '@/lib/tipos'
 
 /** Una venta de ecommerce, sepamos o no de qué plataforma vino. */
@@ -103,7 +103,7 @@ export function Ecommerce() {
   const porMes = useMemo(
     () =>
       agrupar(lineas, (e) => e.mes || String(e.fecha || '').slice(0, 7), {
-        total: (e) => e.total || 0,
+        totalSinIgv: (e) => sinIgv(e.total || 0),
         costo: (e) => e.costo || 0,
       })
         .sort((a, b) => a.nombre.localeCompare(b.nombre))
@@ -124,9 +124,10 @@ export function Ecommerce() {
     const total = lineas.reduce((s, e) => s + (e.total || 0), 0)
     const costo = lineas.reduce((s, e) => s + (e.costo || 0), 0)
     const unidades = lineas.reduce((s, e) => s + (e.qty || 0), 0)
+    const base = sinIgv(total)
     return {
-      total, costo, unidades, margen: total - costo,
-      margenPct: total > 0 ? ((total - costo) / total) * 100 : null,
+      total, costo, unidades, margen: base - costo,
+      margenPct: base > 0 ? ((base - costo) / base) * 100 : null,
       plataformas: new Set(
         lineas.filter((e) => e.plataforma !== SIN_PLATAFORMA).map((e) => e.plataforma),
       ).size,
@@ -177,8 +178,8 @@ export function Ecommerce() {
           detalle={`${numero(lineas.length)} operaciones`} acento="navy" cargando={cargando} />
         <Kpi etiqueta="Unidades" valor={hay || cargando ? numero(totales.unidades) : '—'}
           detalle="Piezas despachadas" acento="azul" cargando={cargando} />
-        <Kpi etiqueta="Margen" valor={hay || cargando ? soles(totales.margen) : '—'}
-          detalle={totales.margenPct == null ? 'sin base' : `${porcentaje(totales.margenPct)} sobre venta`}
+        <Kpi etiqueta="Margen sin IGV" valor={hay || cargando ? soles(totales.margen) : '—'}
+          detalle={totales.margenPct == null ? 'sin base' : `${porcentaje(totales.margenPct)} sobre venta sin IGV`}
           acento="verde" cargando={cargando} />
         <Kpi etiqueta="Plataformas" valor={hay || cargando ? numero(totales.plataformas) : '—'}
           detalle="Con ventas registradas" acento="morado" cargando={cargando} />
@@ -188,12 +189,12 @@ export function Ecommerce() {
         <Card className="t-card-hover lg:col-span-3">
           <CardHeader>
             <CardTitle>Ventas por mes</CardTitle>
-            <CardDescription>Con su costo asociado</CardDescription>
+            <CardDescription>Con su costo asociado, ambos sin IGV</CardDescription>
           </CardHeader>
           <CardContent>
             {cargando ? <SinDatos mensaje="Cargando…" /> : !hay ? <SinDatos mensaje="Sin ventas de ecommerce." />
               : <GraficoBarras datos={porMes} ejeX="nombre"
-                  series={[{ clave: 'total', etiqueta: 'Venta' }, { clave: 'costo', etiqueta: 'Costo' }]} />}
+                  series={[{ clave: 'totalSinIgv', etiqueta: 'Venta sin IGV' }, { clave: 'costo', etiqueta: 'Costo' }]} />}
           </CardContent>
         </Card>
         <Card className="t-card-hover lg:col-span-2">
@@ -226,7 +227,7 @@ export function Ecommerce() {
               { titulo: 'Cantidad', valor: (f) => Number(f.qty) || 0 },
               { titulo: 'Precio unitario', valor: (f) => Number(f.precio_unit) || 0 },
               { titulo: 'Total', valor: (f) => Number(f.total) || 0 },
-              { titulo: 'Costo', valor: (f) => Number(f.costo) || 0 },
+              { titulo: 'Costo sin IGV', valor: (f) => Number(f.costo) || 0 },
               { titulo: 'Origen', valor: (f) => f.origen },
             ]}
             />
@@ -247,7 +248,7 @@ export function Ecommerce() {
                       <TableHead className="text-right">Cant</TableHead>
                       <TableHead className="text-right">Precio</TableHead>
                       <TableHead className="text-right">Total</TableHead>
-                      <TableHead className="text-right">Margen</TableHead>
+                      <TableHead className="text-right">Margen sin IGV</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -265,7 +266,7 @@ export function Ecommerce() {
                         <TableCell className="text-right tabular-nums">{soles(e.precio_unit, 2)}</TableCell>
                         <TableCell className="text-right tabular-nums">{soles(e.total)}</TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {e.costo > 0 ? soles((e.total || 0) - (e.costo || 0)) : '—'}
+                          {e.costo > 0 ? soles(sinIgv(e.total || 0) - (e.costo || 0)) : '—'}
                         </TableCell>
                       </TableRow>
                     ))}
