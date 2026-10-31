@@ -70,6 +70,29 @@
         .barra span { animation: none; width: 100%; }
       }
 
+      /* La fecha de regreso: es lo que el usuario viene a buscar */
+      .regreso {
+        display: inline-block;
+        margin: 0 auto 28px;
+        padding: 14px 22px;
+        border-radius: 12px;
+        background: rgba(127, 209, 160, 0.12);
+        border: 1px solid rgba(127, 209, 160, 0.34);
+        color: #e8eef5;
+        font-size: 16px;
+        line-height: 1.5;
+      }
+      .regreso .rotulo {
+        display: block;
+        font-size: 11.5px;
+        letter-spacing: 1.4px;
+        text-transform: uppercase;
+        color: #7fd1a0;
+        margin-bottom: 5px;
+      }
+      .regreso .cuando { font-size: 19px; font-weight: 700; }
+      .regreso[hidden] { display: none; }
+
       .pie {
         font-size: 13px;
         color: #7d97b3;
@@ -82,6 +105,8 @@
         .logo { padding: 20px 24px; }
         h1 { font-size: 22px; }
         p.frase { font-size: 15px; }
+        .regreso { padding: 12px 18px; }
+        .regreso .cuando { font-size: 17px; }
       }
     </style>
   </head>
@@ -92,7 +117,12 @@
       </div>
 
       <h1>Estamos en mantenimiento</h1>
-      <p class="frase">Estamos trabajando para mejorar para ti.<br />Volvemos en unos minutos.</p>
+      <p class="frase" id="frase">Estamos trabajando para mejorar para ti.</p>
+
+      <div class="regreso" id="regreso" hidden>
+        <span class="rotulo">Servicio disponible</span>
+        <span class="cuando" id="cuando"></span>
+      </div>
 
       <div class="barra"><span></span></div>
 
@@ -103,14 +133,35 @@
     </div>
 
     <script>
-      // Reintenta sola: cuando el mantenimiento termina, la página entra al
-      // sistema sin que el usuario tenga que recargar.
-      setInterval(function () {
+      // El mensaje lo escribe el administrador desde el sistema: la primera
+      // línea es la frase y, si hay una segunda, es la fecha de regreso.
+      function pintar(d) {
+        if (!d) return;
+        if (d.activo === false) return location.replace("/");
+        var partes = String(d.mensaje || "").split("|");
+        var frase = (partes[0] || "").trim();
+        var cuando = (partes[1] || "").trim();
+        if (frase) document.getElementById("frase").textContent = frase;
+        var caja = document.getElementById("regreso");
+        if (cuando) {
+          // La hora no se parte en dos líneas en el móvil
+          document.getElementById("cuando").textContent =
+            cuando.replace(/(\d)\s*(a\.?\s*m\.?|p\.?\s*m\.?)/i, function (_, d, s) {
+              return d + "\u00a0" + s.replace(/\s+/g, "\u00a0");
+            });
+          caja.hidden = false;
+        } else caja.hidden = true;
+      }
+      function consultar() {
         fetch("/api/mantenimiento", { cache: "no-store" })
           .then(function (r) { return r.json(); })
-          .then(function (d) { if (d && d.activo === false) location.replace("/"); })
+          .then(pintar)
           .catch(function () {});
-      }, 20000);
+      }
+      consultar();
+      // Reintenta sola: cuando el mantenimiento termina, la página entra al
+      // sistema sin que el usuario tenga que recargar.
+      setInterval(consultar, 20000);
     </script>
   </body>
 </html>
