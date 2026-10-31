@@ -13,7 +13,7 @@ import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras, GraficoDonut } from '@/componentes/Graficos'
 import { usarInventario } from '@/hooks/usarInventario'
 import { usarSesion } from '@/lib/sesion'
-import { fechaHoraLima, numero, porcentaje, soles } from '@/lib/formato'
+import { fechaHoraLima, numero, porcentaje, sinIgv, soles } from '@/lib/formato'
 
 /** Saludo según la hora, con el huso de Lima: el servidor puede estar en otro. */
 function saludo(): string {
@@ -44,14 +44,14 @@ export function Dashboard() {
     // 41.9% donde el real es 40.3%.
     const conCosto = lineas.filter((l) => (l.costo || 0) > 0)
     const ventaConCosto = conCosto.reduce((s, l) => s + (l.valor_venta || 0), 0)
-    const margen = ventaConCosto - valorCosto
+    const margen = sinIgv(ventaConCosto) - valorCosto
 
     return {
       unidades,
       valorVenta,
       valorCosto,
       margen,
-      margenPct: ventaConCosto > 0 ? (margen / ventaConCosto) * 100 : null,
+      margenPct: ventaConCosto > 0 ? (margen / sinIgv(ventaConCosto)) * 100 : null,
       sedes: new Set(lineas.map((l) => l.sede)).size,
       // Qué parte del inventario tiene costo conocido: sin esto, el margen
       // se leería como si aplicara a todo el stock.
@@ -60,13 +60,14 @@ export function Dashboard() {
   }, [lineas])
 
   const porSede = useMemo(() => {
-    const mapa = new Map<string, { sede: string; lineas: number; unidades: number; venta: number; costo: number }>()
+    const mapa = new Map<string, { sede: string; lineas: number; unidades: number; venta: number; ventaSinIgv: number; costo: number }>()
     for (const l of lineas) {
       const clave = l.sede || '—'
-      const acc = mapa.get(clave) ?? { sede: clave, lineas: 0, unidades: 0, venta: 0, costo: 0 }
+      const acc = mapa.get(clave) ?? { sede: clave, lineas: 0, unidades: 0, venta: 0, ventaSinIgv: 0, costo: 0 }
       acc.lineas += 1
       acc.unidades += l.cant || 0
       acc.venta += l.valor_venta || 0
+      acc.ventaSinIgv += sinIgv(l.valor_venta || 0)
       acc.costo += l.valor_costo || 0
       mapa.set(clave, acc)
     }
@@ -115,7 +116,7 @@ export function Dashboard() {
         <Kpi
           etiqueta="Inventario a Precio de Venta"
           valor={hayDatos || cargando ? soles(totales.valorVenta) : '—'}
-          detalle="Valorizado a precio de lista"
+          detalle="Valorizado a precio de lista, con IGV"
           acento="azul"
           cargando={cargando}
         />
@@ -131,7 +132,7 @@ export function Dashboard() {
           cargando={cargando}
         />
         <Kpi
-          etiqueta="Margen Potencial"
+          etiqueta="Margen Potencial sin IGV"
           valor={hayDatos || cargando ? soles(totales.margen) : '—'}
           detalle={
             totales.margenPct == null
@@ -147,7 +148,7 @@ export function Dashboard() {
         <Card className="t-card-hover lg:col-span-3">
           <CardHeader>
             <CardTitle>Valor por Sede</CardTitle>
-            <CardDescription>Precio de venta contra costo, por local</CardDescription>
+            <CardDescription>Precio de venta contra costo por local, ambos sin IGV</CardDescription>
           </CardHeader>
           <CardContent>
             {cargando ? (
@@ -159,7 +160,7 @@ export function Dashboard() {
                 datos={porSede}
                 ejeX="sede"
                 series={[
-                  { clave: 'venta', etiqueta: 'Valor venta' },
+                  { clave: 'ventaSinIgv', etiqueta: 'Valor venta sin IGV' },
                   { clave: 'costo', etiqueta: 'Valor costo' },
                 ]}
               />
@@ -208,9 +209,9 @@ export function Dashboard() {
                     <TableHead>Sede</TableHead>
                     <TableHead className="text-right">Líneas</TableHead>
                     <TableHead className="text-right">Unidades</TableHead>
-                    <TableHead className="text-right">Valor Venta</TableHead>
-                    <TableHead className="text-right">Valor Costo</TableHead>
-                    <TableHead className="text-right">Margen</TableHead>
+                    <TableHead className="text-right">Valor Venta con IGV</TableHead>
+                    <TableHead className="text-right">Valor Costo sin IGV</TableHead>
+                    <TableHead className="text-right">Margen sin IGV</TableHead>
                     <TableHead className="text-right">% del Inventario</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -225,7 +226,7 @@ export function Dashboard() {
                         {s.costo > 0 ? soles(s.costo) : '—'}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {s.costo > 0 ? soles(s.venta - s.costo) : '—'}
+                        {s.costo > 0 ? soles(s.ventaSinIgv - s.costo) : '—'}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {totales.valorVenta > 0

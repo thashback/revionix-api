@@ -11,6 +11,15 @@ export function soles(n: number | null | undefined, decimales = 0): string {
   )
 }
 
+/**
+ * Una venta con IGV llevada a la base del costo. En REVIONIX los costos están
+ * en soles SIN IGV (BILLIA, ParametrosCosteo.costos_sin_igv), y las ventas
+ * —el total del comprobante, el precio de lista del inventario— llegan CON
+ * IGV. Restarlos tal cual inflaba el margen en ~18 % de la venta.
+ */
+export const IGV = 1.18
+export const sinIgv = (conIgv: number) => conIgv / IGV
+
 export function numero(n: number | null | undefined): string {
   if (n == null || Number.isNaN(n)) return '—'
   return n.toLocaleString('es-PE')

@@ -6,7 +6,7 @@ import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras, GraficoDonut, agrupar, topYResto } from '@/componentes/Graficos'
 import { BotonExcel } from '@/componentes/BotonExcel'
 import { usarSeed } from '@/hooks/usarSeed'
-import { numero, porcentaje, soles } from '@/lib/formato'
+import { numero, porcentaje, sinIgv, soles } from '@/lib/formato'
 
 export function Canales() {
   const { transacciones, cargando, error, recargar } = usarSeed()
@@ -32,8 +32,9 @@ export function Canales() {
         ventaCosteada: c.ventaCosteada,
         items: c.items,
         operaciones: c.operaciones,
-        margen: c.ventaCosteada - c.costo,
-        margenPct: c.ventaCosteada > 0 ? ((c.ventaCosteada - c.costo) / c.ventaCosteada) * 100 : null,
+        ventaSinIgv: sinIgv(c.venta),
+        margen: sinIgv(c.ventaCosteada) - c.costo,
+        margenPct: c.ventaCosteada > 0 ? ((sinIgv(c.ventaCosteada) - c.costo) / sinIgv(c.ventaCosteada)) * 100 : null,
         ticket: c.operaciones > 0 ? c.venta / c.operaciones : 0,
       }))
       .sort((a, b) => b.venta - a.venta)
@@ -47,8 +48,8 @@ export function Canales() {
     const mejor = porCanal[0] ?? null
     return {
       venta, costo, ops, mejor,
-      margen: costeada - costo,
-      margenPct: costeada > 0 ? ((costeada - costo) / costeada) * 100 : null,
+      margen: sinIgv(costeada) - costo,
+      margenPct: costeada > 0 ? ((sinIgv(costeada) - costo) / sinIgv(costeada)) * 100 : null,
       ticket: ops > 0 ? venta / ops : 0,
     }
   }, [porCanal])
@@ -70,8 +71,8 @@ export function Canales() {
           detalle={`${numero(porCanal.length)} canales activos`} acento="navy" cargando={cargando} />
         <Kpi etiqueta="Canal líder" valor={totales.mejor ? soles(totales.mejor.venta) : '—'}
           detalle={totales.mejor?.nombre ?? ''} acento="azul" cargando={cargando} />
-        <Kpi etiqueta="Margen" valor={totales.margenPct == null ? '—' : soles(totales.margen)}
-          detalle={totales.margenPct == null ? 'sin costo cargado' : `${porcentaje(totales.margenPct)} sobre lo costeado`}
+        <Kpi etiqueta="Margen sin IGV" valor={totales.margenPct == null ? '—' : soles(totales.margen)}
+          detalle={totales.margenPct == null ? 'sin costo cargado' : `${porcentaje(totales.margenPct)} sobre lo costeado sin IGV`}
           acento="verde" cargando={cargando} />
         <Kpi etiqueta="Ticket promedio" valor={hay || cargando ? soles(totales.ticket) : '—'}
           detalle={`${numero(totales.ops)} operaciones`} acento="morado" cargando={cargando} />
@@ -81,7 +82,7 @@ export function Canales() {
         <Card className="t-card-hover lg:col-span-3">
           <CardHeader>
             <CardTitle>Venta contra costo</CardTitle>
-            <CardDescription>Por canal, de mayor a menor</CardDescription>
+            <CardDescription>Por canal, de mayor a menor, ambos sin IGV</CardDescription>
           </CardHeader>
           <CardContent>
             {cargando ? <SinDatos mensaje="Cargando…" />
@@ -89,7 +90,7 @@ export function Canales() {
               : <GraficoBarras datos={topYResto(porCanal, 'venta', 7) as Record<string, unknown>[]}
                   ejeX="nombre"
                   series={[
-                    { clave: 'venta', etiqueta: 'Venta' },
+                    { clave: 'ventaSinIgv', etiqueta: 'Venta sin IGV' },
                     { clave: 'costo', etiqueta: 'Costo conocido' },
                   ]} />}
           </CardContent>
@@ -119,7 +120,7 @@ export function Canales() {
               { titulo: 'Canal', valor: (f) => f.nombre },
               { titulo: 'Ventas', valor: (f) => f.venta },
               { titulo: 'Costo conocido', valor: (f) => f.costo },
-              { titulo: 'Margen', valor: (f) => f.margen },
+              { titulo: 'Margen sin IGV', valor: (f) => f.margen },
               { titulo: 'Margen %', valor: (f) => f.margenPct },
               { titulo: 'Ítems', valor: (f) => f.items },
               { titulo: 'Operaciones', valor: (f) => f.operaciones },
@@ -142,7 +143,7 @@ export function Canales() {
                       <TableHead>Canal</TableHead>
                       <TableHead className="text-right">Ventas</TableHead>
                       <TableHead className="text-right">Costo conocido</TableHead>
-                      <TableHead className="text-right">Margen</TableHead>
+                      <TableHead className="text-right">Margen sin IGV</TableHead>
                       <TableHead className="text-right">Margen %</TableHead>
                       <TableHead className="text-right">Ítems</TableHead>
                       <TableHead className="text-right">Operaciones</TableHead>
