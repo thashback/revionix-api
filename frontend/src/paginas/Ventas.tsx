@@ -9,7 +9,7 @@ import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras, GraficoDonut, agrupar, topYResto } from '@/componentes/Graficos'
 import { BotonExcel } from '@/componentes/BotonExcel'
 import { usarSeed } from '@/hooks/usarSeed'
-import { etiquetaMes, numero, porcentaje, soles } from '@/lib/formato'
+import { etiquetaMes, numero, porcentaje, sinIgv, soles } from '@/lib/formato'
 
 export function Ventas() {
   const { transacciones, ventasBillia, ventasCorp, ecommerce, cargando, error, recargar } = usarSeed()
@@ -37,7 +37,7 @@ export function Ventas() {
         periodo: m,
         venta: c?.venta ?? 0,
         costo: c?.costo ?? 0,
-        margen: (c?.venta ?? 0) - (c?.costo ?? 0),
+        margen: sinIgv(c?.venta ?? 0) - (c?.costo ?? 0),
         facturado: b?.facturado ?? 0,
       }
     })
@@ -48,6 +48,7 @@ export function Ventas() {
       topYResto(
         agrupar(transacciones, (t) => t.canal, {
           venta: (t) => t.venta || 0,
+          ventaSinIgv: (t) => sinIgv(t.venta || 0),
           costo: (t) => t.costo || 0,
         }),
         'venta',
@@ -62,9 +63,10 @@ export function Ventas() {
     const corp = ventasCorp.reduce((s, v) => s + (v.total || 0), 0)
     const ecom = ecommerce.reduce((s, v) => s + (v.total || 0), 0)
     const porCobrar = ventasCorp.filter((v) => !v.cobrado).reduce((s, v) => s + (v.total || 0), 0)
+    const base = sinIgv(venta)
     return {
-      venta, costo, margen: venta - costo,
-      margenPct: venta > 0 ? ((venta - costo) / venta) * 100 : null,
+      venta, costo, margen: base - costo,
+      margenPct: base > 0 ? ((base - costo) / base) * 100 : null,
       facturado, corp, ecom, porCobrar,
     }
   }, [transacciones, ventasBillia, ventasCorp, ecommerce])
@@ -86,8 +88,8 @@ export function Ventas() {
           detalle={`${numero(transacciones.length)} transacciones`} acento="navy" cargando={cargando} />
         <Kpi etiqueta="Facturado en BILLIA" valor={cargando || ventasBillia.length ? soles(totales.facturado) : '—'}
           detalle={`${numero(ventasBillia.length)} comprobantes`} acento="azul" cargando={cargando} />
-        <Kpi etiqueta="Margen bruto" valor={hay || cargando ? soles(totales.margen) : '—'}
-          detalle={totales.margenPct == null ? 'sin base' : `${porcentaje(totales.margenPct)} sobre venta`}
+        <Kpi etiqueta="Margen bruto sin IGV" valor={hay || cargando ? soles(totales.margen) : '—'}
+          detalle={totales.margenPct == null ? 'sin base' : `${porcentaje(totales.margenPct)} sobre venta sin IGV`}
           acento="verde" cargando={cargando} />
         <Kpi etiqueta="Por cobrar (corporativo)" valor={cargando || ventasCorp.length ? soles(totales.porCobrar) : '—'}
           detalle={`de ${soles(totales.corp)} facturados`} acento="rojo" cargando={cargando} />
@@ -116,14 +118,14 @@ export function Ventas() {
         <Card className="t-card-hover lg:col-span-3">
           <CardHeader>
             <CardTitle>Margen por canal</CardTitle>
-            <CardDescription>Venta contra costo en cada punto</CardDescription>
+            <CardDescription>Venta contra costo en cada punto, ambos sin IGV</CardDescription>
           </CardHeader>
           <CardContent>
             {cargando ? <SinDatos mensaje="Cargando…" />
               : !hay ? <SinDatos mensaje="Sin datos de canal." />
               : <GraficoBarras datos={porCanal as Record<string, unknown>[]} ejeX="nombre"
                   series={[
-                    { clave: 'venta', etiqueta: 'Venta' },
+                    { clave: 'ventaSinIgv', etiqueta: 'Venta sin IGV' },
                     { clave: 'costo', etiqueta: 'Costo' },
                   ]} />}
           </CardContent>
@@ -152,8 +154,8 @@ export function Ventas() {
               columnas={[
               { titulo: 'Mes', valor: (f) => f.periodo },
               { titulo: 'Registrado en CRM', valor: (f) => f.venta },
-              { titulo: 'Costo', valor: (f) => f.costo },
-              { titulo: 'Margen', valor: (f) => f.margen },
+              { titulo: 'Costo sin IGV', valor: (f) => f.costo },
+              { titulo: 'Margen sin IGV', valor: (f) => f.margen },
               { titulo: 'Facturado en BILLIA', valor: (f) => f.facturado },
             ]}
             />
@@ -170,8 +172,8 @@ export function Ventas() {
                     <TableRow>
                       <TableHead>Mes</TableHead>
                       <TableHead className="text-right">Venta CRM</TableHead>
-                      <TableHead className="text-right">Costo</TableHead>
-                      <TableHead className="text-right">Margen</TableHead>
+                      <TableHead className="text-right">Costo sin IGV</TableHead>
+                      <TableHead className="text-right">Margen sin IGV</TableHead>
                       <TableHead className="text-right">MB %</TableHead>
                       <TableHead className="text-right">Facturado BILLIA</TableHead>
                       <TableHead className="text-right">Diferencia</TableHead>
@@ -189,7 +191,7 @@ export function Ventas() {
                           <TableCell className="text-right tabular-nums">{m.costo > 0 ? soles(m.costo) : '—'}</TableCell>
                           <TableCell className="text-right tabular-nums">{m.costo > 0 ? soles(m.margen) : '—'}</TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {m.venta > 0 && m.costo > 0 ? porcentaje((m.margen / m.venta) * 100) : '—'}
+                            {m.venta > 0 && m.costo > 0 ? porcentaje((m.margen / sinIgv(m.venta)) * 100) : '—'}
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
                             {m.facturado > 0 ? soles(m.facturado) : '—'}

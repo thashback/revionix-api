@@ -10,7 +10,7 @@ import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras } from '@/componentes/Graficos'
 import { BotonExcel } from '@/componentes/BotonExcel'
 import { usarSeed } from '@/hooks/usarSeed'
-import { etiquetaMes, mesLargo, numero, porcentaje, soles } from '@/lib/formato'
+import { etiquetaMes, mesLargo, numero, porcentaje, sinIgv, soles } from '@/lib/formato'
 import type { Ecommerce, Transaccion, VentaCorp } from '@/lib/tipos'
 
 /**
@@ -149,8 +149,8 @@ export function MesAMes() {
         nombre: etiquetaMes(m),
         venta,
         costo,
-        margen: ventaConCosto - costo,
-        margenPct: ventaConCosto > 0 ? ((ventaConCosto - costo) / ventaConCosto) * 100 : null,
+        margen: sinIgv(ventaConCosto) - costo,
+        margenPct: ventaConCosto > 0 ? ((sinIgv(ventaConCosto) - costo) / sinIgv(ventaConCosto)) * 100 : null,
         cobertura: venta > 0 ? (ventaConCosto / venta) * 100 : 0,
         tiendas: canal('Tiendas'),
         corp: canal('Corporativo'),
@@ -185,7 +185,7 @@ export function MesAMes() {
     const conCosto = detalle.filter((l) => l.costo != null)
     const costo = conCosto.reduce((s, l) => s + (l.costo || 0), 0)
     const ventaConCosto = conCosto.reduce((s, l) => s + l.venta, 0)
-    return { venta, costo, margen: ventaConCosto - costo, n: detalle.length, sinCosto: detalle.length - conCosto.length }
+    return { venta, costo, margen: sinIgv(ventaConCosto) - costo, n: detalle.length, sinCosto: detalle.length - conCosto.length }
   }, [detalle])
 
   if (error) return <ErrorCarga mensaje={error} alReintentar={recargar} />
@@ -244,8 +244,8 @@ export function MesAMes() {
               columnas={[
               { titulo: 'Mes', valor: (f) => f.periodo },
               { titulo: 'Ventas', valor: (f) => f.venta },
-              { titulo: 'Costo', valor: (f) => f.costo },
-              { titulo: 'Margen', valor: (f) => f.margen },
+              { titulo: 'Costo sin IGV', valor: (f) => f.costo },
+              { titulo: 'Margen sin IGV', valor: (f) => f.margen },
               { titulo: 'Margen %', valor: (f) => f.margenPct ?? '' },
               { titulo: 'Tiendas', valor: (f) => f.tiendas },
               { titulo: 'Corporativo', valor: (f) => f.corp },
@@ -271,8 +271,8 @@ export function MesAMes() {
                     <TableRow>
                       <TableHead>Mes</TableHead>
                       <TableHead className="text-right">Ventas</TableHead>
-                      <TableHead className="text-right">Costo conocido</TableHead>
-                      <TableHead className="text-right">Margen</TableHead>
+                      <TableHead className="text-right">Costo conocido sin IGV</TableHead>
+                      <TableHead className="text-right">Margen sin IGV</TableHead>
                       <TableHead className="text-right">Margen %</TableHead>
                       <TableHead className="text-right">Tiendas</TableHead>
                       <TableHead className="text-right">Corp.</TableHead>
@@ -358,8 +358,8 @@ export function MesAMes() {
                 { titulo: 'Venta', valor: (l) => l.venta },
                 // null y no 0: una venta sin costo cargado no es una venta con
                 // costo cero, y en Excel esa diferencia cambia cualquier suma.
-                { titulo: 'Costo', valor: (l) => l.costo },
-                { titulo: 'Margen', valor: (l) => (l.costo == null ? null : l.venta - l.costo) },
+                { titulo: 'Costo sin IGV', valor: (l) => l.costo },
+                { titulo: 'Margen sin IGV', valor: (l) => (l.costo == null ? null : sinIgv(l.venta) - l.costo) },
                 { titulo: 'Medio de pago', valor: (l) => l.medioPago },
               ]}
             />
@@ -367,8 +367,8 @@ export function MesAMes() {
 
           <div className="grid grid-cols-3 gap-3 px-4">
             <Kpi etiqueta="Venta" valor={soles(totDetalle.venta)} acento="navy" />
-            <Kpi etiqueta="Costo" valor={totDetalle.costo > 0 ? soles(totDetalle.costo) : '—'} acento="rojo" />
-            <Kpi etiqueta="Margen" valor={totDetalle.costo > 0 ? soles(totDetalle.margen) : '—'} acento="verde" />
+            <Kpi etiqueta="Costo sin IGV" valor={totDetalle.costo > 0 ? soles(totDetalle.costo) : '—'} acento="rojo" />
+            <Kpi etiqueta="Margen sin IGV" valor={totDetalle.costo > 0 ? soles(totDetalle.margen) : '—'} acento="verde" />
           </div>
 
           <div className="overflow-x-auto px-4 pb-6">
@@ -385,8 +385,8 @@ export function MesAMes() {
                       <TableHead>Marca</TableHead>
                       <TableHead className="text-right">Cant.</TableHead>
                       <TableHead className="text-right">Venta</TableHead>
-                      <TableHead className="text-right">Costo</TableHead>
-                      <TableHead className="text-right">Margen</TableHead>
+                      <TableHead className="text-right">Costo sin IGV</TableHead>
+                      <TableHead className="text-right">Margen sin IGV</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -413,7 +413,7 @@ export function MesAMes() {
                           {l.costo == null ? '—' : soles(l.costo)}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {l.costo == null ? '—' : soles(l.venta - l.costo)}
+                          {l.costo == null ? '—' : soles(sinIgv(l.venta) - l.costo)}
                         </TableCell>
                       </TableRow>
                     ))}

@@ -7,7 +7,7 @@ import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { CampoBusqueda, TablaLarga, coincide } from '@/componentes/Tabla'
 import { BotonExcel } from '@/componentes/BotonExcel'
 import { usarSeed } from '@/hooks/usarSeed'
-import { etiquetaMes, numero, porcentaje, soles } from '@/lib/formato'
+import { etiquetaMes, numero, porcentaje, sinIgv, soles } from '@/lib/formato'
 
 /** Columnas por las que se puede ordenar. */
 type Orden = 'fecha' | 'venta' | 'margen'
@@ -23,12 +23,12 @@ export function Detalle() {
         // Los servicios cuentan como costeados: su costo es cero a propósito
         // porque la mano de obra ya está en planilla y gastos.
         const conCosto = t.es_servicio || (t.costo || 0) > 0
-        const margen = conCosto ? (t.venta || 0) - (t.costo || 0) : null
+        const margen = conCosto ? sinIgv(t.venta || 0) - (t.costo || 0) : null
         return {
           ...t,
           comprobante: [t.serie, t.correlativo].filter(Boolean).join('-') || '—',
           margen,
-          margenPct: conCosto && t.venta > 0 ? (margen! / t.venta) * 100 : null,
+          margenPct: conCosto && t.venta > 0 ? (margen! / sinIgv(t.venta)) * 100 : null,
         }
       }),
     [transacciones],
@@ -52,8 +52,8 @@ export function Detalle() {
     const ventaCosteada = conCosto.reduce((s, f) => s + (f.venta || 0), 0)
     return {
       venta, costo,
-      margen: ventaCosteada - costo,
-      margenPct: ventaCosteada > 0 ? ((ventaCosteada - costo) / ventaCosteada) * 100 : null,
+      margen: sinIgv(ventaCosteada) - costo,
+      margenPct: ventaCosteada > 0 ? ((sinIgv(ventaCosteada) - costo) / sinIgv(ventaCosteada)) * 100 : null,
       sinCosto: visibles.length - conCosto.length,
     }
   }, [visibles])
@@ -78,7 +78,7 @@ export function Detalle() {
         <Kpi etiqueta="Costo conocido" valor={totales.costo > 0 ? soles(totales.costo) : '—'}
           detalle={totales.sinCosto > 0 ? `${numero(totales.sinCosto)} líneas sin costo` : 'todas con costo'}
           acento="rojo" cargando={cargando} />
-        <Kpi etiqueta="Margen" valor={totales.margenPct == null ? '—' : soles(totales.margen)}
+        <Kpi etiqueta="Margen sin IGV" valor={totales.margenPct == null ? '—' : soles(totales.margen)}
           detalle={totales.margenPct == null ? 'sin base de costo' : `${porcentaje(totales.margenPct)} sobre lo costeado`}
           acento="verde" cargando={cargando} />
         <Kpi etiqueta="Marcas distintas"
@@ -104,8 +104,8 @@ export function Detalle() {
               { titulo: 'Marca', valor: (f) => f.marca },
               { titulo: 'Cantidad', valor: (f) => Number(f.qty) || 0 },
               { titulo: 'Venta', valor: (f) => Number(f.venta) || 0 },
-              { titulo: 'Costo', valor: (f) => f.margen == null ? '' : Number(f.costo) || 0 },
-              { titulo: 'Margen', valor: (f) => f.margen ?? '' },
+              { titulo: 'Costo sin IGV', valor: (f) => f.margen == null ? '' : Number(f.costo) || 0 },
+              { titulo: 'Margen sin IGV', valor: (f) => f.margen ?? '' },
               { titulo: 'Margen %', valor: (f) => f.margenPct ?? '' },
               { titulo: 'Medio de pago', valor: (f) => f.medio_pago },
             ]}
@@ -162,8 +162,8 @@ export function Detalle() {
                       <TableHead>Marca</TableHead>
                       <TableHead className="text-right">Cant.</TableHead>
                       <TableHead className="text-right">Venta</TableHead>
-                      <TableHead className="text-right">Costo</TableHead>
-                      <TableHead className="text-right">Margen</TableHead>
+                      <TableHead className="text-right">Costo sin IGV</TableHead>
+                      <TableHead className="text-right">Margen sin IGV</TableHead>
                       <TableHead className="text-right">%</TableHead>
                       <TableHead>Medio de pago</TableHead>
                     </TableRow>

@@ -11,7 +11,7 @@ import { SinDatos } from '@/componentes/Estados'
 import { TablaLarga } from '@/componentes/Tabla'
 import { usarSeed } from '@/hooks/usarSeed'
 import { guardarAlmacen, ConflictoAlmacen } from '@/lib/almacen'
-import { numero, soles } from '@/lib/formato'
+import { numero, sinIgv, soles } from '@/lib/formato'
 import type { Transaccion } from '@/lib/tipos'
 
 /**
@@ -102,7 +102,7 @@ export function CargaVentas() {
     const conCosto = nuevas.filter((t) => (t.costo || 0) > 0)
     const costo = conCosto.reduce((s, t) => s + t.costo, 0)
     const ventaCosteada = conCosto.reduce((s, t) => s + (t.venta || 0), 0)
-    return { venta, costo, margen: ventaCosteada - costo, sinCosto: nuevas.length - conCosto.length }
+    return { venta, costo, margen: sinIgv(ventaCosteada) - costo, sinCosto: nuevas.length - conCosto.length }
   }, [nuevas])
 
   async function descargarPlantilla() {
@@ -253,7 +253,7 @@ export function CargaVentas() {
             <Kpi etiqueta="Costo declarado" valor={totales.costo > 0 ? soles(totales.costo) : '—'}
               detalle={totales.sinCosto > 0 ? `${numero(totales.sinCosto)} sin costo` : 'todas con costo'}
               acento="rojo" />
-            <Kpi etiqueta="Margen estimado"
+            <Kpi etiqueta="Margen estimado sin IGV"
               valor={totales.costo > 0 ? soles(totales.margen) : '—'}
               detalle="solo sobre las que traen costo" acento="verde" />
           </div>

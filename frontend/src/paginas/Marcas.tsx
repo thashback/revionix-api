@@ -6,7 +6,7 @@ import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras, GraficoDonut, agrupar, topYResto } from '@/componentes/Graficos'
 import { BotonExcel } from '@/componentes/BotonExcel'
 import { usarSeed } from '@/hooks/usarSeed'
-import { numero, porcentaje, soles } from '@/lib/formato'
+import { numero, porcentaje, sinIgv, soles } from '@/lib/formato'
 
 export function Marcas() {
   const { inventario, transacciones, cargando, error, recargar } = usarSeed()
@@ -15,6 +15,7 @@ export function Marcas() {
     const inv = agrupar(inventario, (l) => l.marca, {
       unidades: (l) => l.cant || 0,
       venta: (l) => l.valor_venta || 0,
+      ventaSinIgv: (l) => sinIgv(l.valor_venta || 0),
       costo: (l) => l.valor_costo || 0,
       lineas: () => 1,
       conCosto: (l) => ((l.costo || 0) > 0 ? l.valor_venta || 0 : 0),
@@ -24,7 +25,7 @@ export function Marcas() {
     // TypeScript ensancha las claves y pierde los campos concretos.
     type Fila = {
       nombre: string; lineas: number; unidades: number
-      venta: number; costo: number; vendido: number; margen: number | null
+      venta: number; ventaSinIgv: number; costo: number; vendido: number; margen: number | null
     }
     return inv
       .map<Fila>((m) => ({
@@ -32,10 +33,11 @@ export function Marcas() {
         lineas: m.lineas,
         unidades: m.unidades,
         venta: m.venta,
+        ventaSinIgv: m.ventaSinIgv,
         costo: m.costo,
         vendido: vendido.find((v) => v.nombre === m.nombre)?.vendido ?? 0,
         // El margen solo se calcula sobre lo que tiene costo conocido.
-        margen: m.conCosto > 0 ? m.conCosto - m.costo : null,
+        margen: m.conCosto > 0 ? sinIgv(m.conCosto) - m.costo : null,
       }))
       .sort((a, b) => b.venta - a.venta)
   }, [inventario, transacciones])
@@ -47,7 +49,7 @@ export function Marcas() {
       .reduce((s, l) => s + (l.valor_venta || 0), 0)
     return {
       venta, costo, marcas: new Set(inventario.map((l) => l.marca)).size,
-      margen: conCosto - costo,
+      margen: sinIgv(conCosto) - costo,
       cobertura: venta > 0 ? (conCosto / venta) * 100 : null,
     }
   }, [inventario])
@@ -68,11 +70,11 @@ export function Marcas() {
         <Kpi etiqueta="Marcas" valor={hay || cargando ? numero(totales.marcas) : '—'}
           detalle={`${numero(inventario.length)} líneas de inventario`} acento="navy" cargando={cargando} />
         <Kpi etiqueta="Valor en stock" valor={hay || cargando ? soles(totales.venta) : '—'}
-          detalle="A precio de lista" acento="azul" cargando={cargando} />
+          detalle="A precio de lista, con IGV" acento="azul" cargando={cargando} />
         <Kpi etiqueta="Valor a costo" valor={hay || cargando ? soles(totales.costo) : '—'}
           detalle={totales.cobertura == null ? 'sin costos' : `${porcentaje(totales.cobertura, 0)} con costo`}
           acento="naranja" cargando={cargando} />
-        <Kpi etiqueta="Margen potencial" valor={hay || cargando ? soles(totales.margen) : '—'}
+        <Kpi etiqueta="Margen potencial sin IGV" valor={hay || cargando ? soles(totales.margen) : '—'}
           detalle="Sobre el stock costeado" acento="verde" cargando={cargando} />
       </div>
 
@@ -80,12 +82,12 @@ export function Marcas() {
         <Card className="t-card-hover lg:col-span-3">
           <CardHeader>
             <CardTitle>Valor en stock por marca</CardTitle>
-            <CardDescription>Precio de venta contra costo</CardDescription>
+            <CardDescription>Precio de venta contra costo, ambos sin IGV</CardDescription>
           </CardHeader>
           <CardContent>
             {cargando ? <SinDatos mensaje="Cargando…" /> : !hay ? <SinDatos mensaje="Sin inventario." />
               : <GraficoBarras datos={topYResto(porMarca, 'venta', 7) as Record<string, unknown>[]} ejeX="nombre"
-                  series={[{ clave: 'venta', etiqueta: 'Venta' }, { clave: 'costo', etiqueta: 'Costo' }]} />}
+                  series={[{ clave: 'ventaSinIgv', etiqueta: 'Venta sin IGV' }, { clave: 'costo', etiqueta: 'Costo' }]} />}
           </CardContent>
         </Card>
         <Card className="t-card-hover lg:col-span-2">
@@ -111,9 +113,9 @@ export function Marcas() {
               columnas={[
               { titulo: 'Marca', valor: (f) => f.nombre },
               { titulo: 'Unidades', valor: (f) => f.unidades },
-              { titulo: 'Valor al costo', valor: (f) => f.costo },
-              { titulo: 'Valor de venta', valor: (f) => f.venta },
-              { titulo: 'Margen', valor: (f) => f.venta - f.costo },
+              { titulo: 'Valor al costo sin IGV', valor: (f) => f.costo },
+              { titulo: 'Valor de venta con IGV', valor: (f) => f.venta },
+              { titulo: 'Margen sin IGV', valor: (f) => f.margen ?? '' },
             ]}
             />
           </div>
@@ -129,9 +131,9 @@ export function Marcas() {
                       <TableHead>Marca</TableHead>
                       <TableHead className="text-right">Líneas</TableHead>
                       <TableHead className="text-right">Unidades</TableHead>
-                      <TableHead className="text-right">Valor venta</TableHead>
-                      <TableHead className="text-right">Valor costo</TableHead>
-                      <TableHead className="text-right">Margen</TableHead>
+                      <TableHead className="text-right">Valor venta con IGV</TableHead>
+                      <TableHead className="text-right">Valor costo sin IGV</TableHead>
+                      <TableHead className="text-right">Margen sin IGV</TableHead>
                       <TableHead className="text-right">Vendido</TableHead>
                       <TableHead className="text-right">% inventario</TableHead>
                     </TableRow>

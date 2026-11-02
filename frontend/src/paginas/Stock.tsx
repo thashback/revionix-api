@@ -15,7 +15,7 @@ import { Kpi } from '@/componentes/Kpi'
 import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { BotonExcel } from '@/componentes/BotonExcel'
 import { usarInventario } from '@/hooks/usarInventario'
-import { fechaHoraLima, numero, porcentaje, soles } from '@/lib/formato'
+import { fechaHoraLima, numero, porcentaje, sinIgv, soles } from '@/lib/formato'
 
 export function Stock() {
   const { lineas, meta, cargando, error, recargar } = usarInventario()
@@ -54,8 +54,8 @@ export function Stock() {
       unidades,
       valorVenta,
       valorCosto,
-      margen: valorVenta - valorCosto,
-      margenPct: valorVenta > 0 ? ((valorVenta - valorCosto) / valorVenta) * 100 : null,
+      margen: sinIgv(valorVenta) - valorCosto,
+      margenPct: valorVenta > 0 ? ((sinIgv(valorVenta) - valorCosto) / sinIgv(valorVenta)) * 100 : null,
       conCosto,
       sedes: new Set(filtradas.map((l) => l.sede)).size,
     }
@@ -107,12 +107,12 @@ export function Stock() {
               cargando={cargando}
             />
             <Kpi
-              etiqueta="Margen Potencial"
+              etiqueta="Margen Potencial sin IGV"
               valor={hayDatos || cargando ? soles(totales.margen) : '—'}
               detalle={
                 totales.margenPct == null
                   ? 'sin base de venta'
-                  : `${porcentaje(totales.margenPct)} sobre venta`
+                  : `${porcentaje(totales.margenPct)} sobre venta sin IGV`
               }
               acento="naranja"
               cargando={cargando}
@@ -204,11 +204,11 @@ export function Stock() {
                         <TableHead>Producto</TableHead>
                         <TableHead>SKU</TableHead>
                         <TableHead className="text-right">Cant.</TableHead>
-                        <TableHead className="text-right">Precio</TableHead>
-                        <TableHead className="text-right">Costo</TableHead>
+                        <TableHead className="text-right">Precio con IGV</TableHead>
+                        <TableHead className="text-right">Costo sin IGV</TableHead>
                         <TableHead className="text-right">Valor Venta</TableHead>
                         <TableHead className="text-right">Valor Costo</TableHead>
-                        <TableHead className="text-right">Margen</TableHead>
+                        <TableHead className="text-right">Margen sin IGV</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -236,7 +236,7 @@ export function Stock() {
                             {l.valor_costo > 0 ? soles(l.valor_costo) : '—'}
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {l.valor_costo > 0 ? soles(l.valor_venta - l.valor_costo) : '—'}
+                            {l.valor_costo > 0 ? soles(sinIgv(l.valor_venta) - l.valor_costo) : '—'}
                           </TableCell>
                         </TableRow>
                       ))}

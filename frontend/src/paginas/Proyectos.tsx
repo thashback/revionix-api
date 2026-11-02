@@ -8,7 +8,7 @@ import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { BotonExcel } from '@/componentes/BotonExcel'
 import { api } from '@/lib/api'
 import { calcularEtapas, num, type Avance, type Proyecto } from '@/lib/etapas'
-import { numero, porcentaje, soles } from '@/lib/formato'
+import { numero, porcentaje, sinIgv, soles } from '@/lib/formato'
 
 const CERRADOS = new Set(['completado', 'cancelado', 'entregado'])
 
@@ -89,7 +89,7 @@ export function Proyectos() {
     const atrasados = proyectos.filter((p) => calcularEtapas(p)?.atrasado).length
     return {
       total, ejecutado, costo, activos, atrasados,
-      margen: costo > 0 ? ejecutado - costo : null,
+      margen: costo > 0 ? sinIgv(ejecutado) - costo : null,
       avancePct: total > 0 ? (ejecutado / total) * 100 : null,
     }
   }, [proyectos])
@@ -114,8 +114,8 @@ export function Proyectos() {
         <Kpi etiqueta="Ejecutado" valor={hay || cargando ? soles(totales.ejecutado) : '—'}
           detalle={totales.avancePct == null ? 'sin órdenes' : `${porcentaje(totales.avancePct)} de avance`}
           acento="verde" cargando={cargando} />
-        <Kpi etiqueta="Margen" valor={totales.margen == null ? '—' : soles(totales.margen)}
-          detalle={totales.margen == null ? 'sin costo cargado' : `sobre ${soles(totales.costo)} de costo`}
+        <Kpi etiqueta="Margen sin IGV" valor={totales.margen == null ? '—' : soles(totales.margen)}
+          detalle={totales.margen == null ? 'sin costo cargado' : `ejecutado sin IGV menos ${soles(totales.costo)} de costo`}
           acento={totales.atrasados > 0 ? 'rojo' : 'morado'} cargando={cargando} />
       </div>
 

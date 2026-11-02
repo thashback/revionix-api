@@ -8,7 +8,7 @@ import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras, GraficoDonut, agrupar, topYResto } from '@/componentes/Graficos'
 import { BotonExcel } from '@/componentes/BotonExcel'
 import { usarSeed } from '@/hooks/usarSeed'
-import { etiquetaMes, numero, porcentaje, soles } from '@/lib/formato'
+import { etiquetaMes, numero, porcentaje, sinIgv, soles } from '@/lib/formato'
 import type { VentaCorp } from '@/lib/tipos'
 
 export function Corporativo() {
@@ -49,9 +49,10 @@ export function Corporativo() {
     const total = ventasCorp.reduce((s, v) => s + (v.total || 0), 0)
     const costo = ventasCorp.reduce((s, v) => s + (v.costo || 0), 0)
     const porCobrar = ventasCorp.filter((v) => !v.cobrado).reduce((s, v) => s + (v.total || 0), 0)
+    const base = sinIgv(total)
     return {
-      total, costo, margen: total - costo, porCobrar,
-      margenPct: total > 0 ? ((total - costo) / total) * 100 : null,
+      total, costo, margen: base - costo, porCobrar,
+      margenPct: base > 0 ? ((base - costo) / base) * 100 : null,
       clientes: new Set(ventasCorp.map((v) => v.cliente)).size,
     }
   }, [ventasCorp])
@@ -73,8 +74,8 @@ export function Corporativo() {
           detalle={`${numero(ventasCorp.length)} documentos`} acento="navy" cargando={cargando} />
         <Kpi etiqueta="Clientes" valor={hay || cargando ? numero(totales.clientes) : '—'}
           detalle="Con ventas registradas" acento="azul" cargando={cargando} />
-        <Kpi etiqueta="Margen" valor={hay || cargando ? soles(totales.margen) : '—'}
-          detalle={totales.margenPct == null ? 'sin base' : `${porcentaje(totales.margenPct)} sobre venta`}
+        <Kpi etiqueta="Margen sin IGV" valor={hay || cargando ? soles(totales.margen) : '—'}
+          detalle={totales.margenPct == null ? 'sin base' : `${porcentaje(totales.margenPct)} sobre venta sin IGV`}
           acento="verde" cargando={cargando} />
         <Kpi etiqueta="Por cobrar" valor={hay || cargando ? soles(totales.porCobrar) : '—'}
           detalle={totales.total > 0 ? `${porcentaje((totales.porCobrar / totales.total) * 100, 0)} de lo facturado` : ''}
@@ -117,8 +118,8 @@ export function Corporativo() {
               { titulo: 'Cliente', valor: (f) => f.nombre },
               { titulo: 'Documentos', valor: (f) => f.docs },
               { titulo: 'Facturado', valor: (f) => f.total },
-              { titulo: 'Costo', valor: (f) => f.costo },
-              { titulo: 'Margen', valor: (f) => f.total - f.costo },
+              { titulo: 'Costo sin IGV', valor: (f) => f.costo },
+              { titulo: 'Margen sin IGV', valor: (f) => sinIgv(f.total) - f.costo },
               { titulo: 'Por cobrar', valor: (f) => f.porCobrar },
             ]}
             />
@@ -139,8 +140,8 @@ export function Corporativo() {
                       <TableHead>Cliente</TableHead>
                       <TableHead className="text-right">Docs</TableHead>
                       <TableHead className="text-right">Facturado</TableHead>
-                      <TableHead className="text-right">Costo</TableHead>
-                      <TableHead className="text-right">Margen</TableHead>
+                      <TableHead className="text-right">Costo sin IGV</TableHead>
+                      <TableHead className="text-right">Margen sin IGV</TableHead>
                       <TableHead className="text-right">Por cobrar</TableHead>
                       <TableHead>Estado</TableHead>
                     </TableRow>
@@ -169,7 +170,7 @@ export function Corporativo() {
                             <TableCell className="text-right tabular-nums">{soles(c.total)}</TableCell>
                             <TableCell className="text-right tabular-nums">{c.costo > 0 ? soles(c.costo) : '—'}</TableCell>
                             <TableCell className="text-right tabular-nums">
-                              {c.costo > 0 ? soles(c.total - c.costo) : '—'}
+                              {c.costo > 0 ? soles(sinIgv(c.total) - c.costo) : '—'}
                             </TableCell>
                             <TableCell className="text-right tabular-nums">
                               {c.porCobrar > 0 ? soles(c.porCobrar) : '—'}

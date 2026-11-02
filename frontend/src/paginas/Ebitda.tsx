@@ -9,7 +9,7 @@ import { ErrorCarga, SinDatos } from '@/componentes/Estados'
 import { GraficoBarras } from '@/componentes/Graficos'
 import { usarVeAvisos } from '@/componentes/AvisoAdmin'
 import { usarSeed } from '@/hooks/usarSeed'
-import { etiquetaMes, numero, porcentaje, soles } from '@/lib/formato'
+import { etiquetaMes, numero, porcentaje, sinIgv, soles } from '@/lib/formato'
 
 
 /** El tipo de cambio con el que el sistema convierte importes en dólares. */
@@ -88,14 +88,14 @@ export function Ebitda() {
       // Se deja en null en vez de calcularlo con costo cero, que mostraría
       // un margen del 100%.
       const hayCosto = c > 0
-      const margen = hayCosto ? v - c : null
+      const margen = hayCosto ? sinIgv(v) - c : null
       const ebitda = margen === null ? null : margen - fijos.total - vars - mov
       const sd = sinDoc.get(p)
       return {
         periodo: p, nombre: etiquetaMes(p), v, c, margen,
-        mbPct: hayCosto && v > 0 ? ((v - c) / v) * 100 : null,
+        mbPct: hayCosto && v > 0 ? (margen! / sinIgv(v)) * 100 : null,
         fijos: fijos.total, vars, mov, ebitda,
-        ebitdaPct: ebitda !== null && v > 0 ? (ebitda / v) * 100 : null,
+        ebitdaPct: ebitda !== null && v > 0 ? (ebitda / sinIgv(v)) * 100 : null,
         facturado: facturado.get(p) || 0,
         heredado: heredado.get(p) || 0,
         sinDoc: sd?.monto || 0,
@@ -120,7 +120,7 @@ export function Ebitda() {
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight">EBITDA Mensual</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Ventas − costo de lo vendido − gastos fijos − gastos variables − movilidad
+          Ventas sin IGV − costo de lo vendido − gastos fijos − gastos variables − movilidad
         </p>
       </div>
 
@@ -128,7 +128,7 @@ export function Ebitda() {
         {ult3.slice().reverse().map((f) => (
           <Kpi key={f.periodo} etiqueta={`EBITDA ${f.nombre}`}
             valor={soles(f.ebitda || 0)}
-            detalle={f.ebitdaPct != null ? `${porcentaje(f.ebitdaPct)} sobre ventas` : 'sin base'}
+            detalle={f.ebitdaPct != null ? `${porcentaje(f.ebitdaPct)} sobre ventas sin IGV` : 'sin base'}
             acento={(f.ebitda || 0) >= 0 ? 'verde' : 'rojo'}
             cargando={cargando} />
         )).concat(
@@ -169,7 +169,7 @@ export function Ebitda() {
                 datos={conEbitda.map((f) => ({ nombre: f.nombre, margen: f.margen || 0, ebitda: f.ebitda || 0 }))}
                 ejeX="nombre" alto={300}
                 series={[
-                  { clave: 'margen', etiqueta: 'Margen bruto' },
+                  { clave: 'margen', etiqueta: 'Margen bruto sin IGV' },
                   { clave: 'ebitda', etiqueta: 'EBITDA' },
                 ]} />}
         </CardContent>
@@ -194,7 +194,7 @@ export function Ebitda() {
                       <TableHead className="text-right">Ventas</TableHead>
                       <TableHead className="text-right">Facturado BILLIA</TableHead>
                       <TableHead className="text-right">CMV</TableHead>
-                      <TableHead className="text-right">Margen</TableHead>
+                      <TableHead className="text-right">Margen sin IGV</TableHead>
                       <TableHead className="text-right">MB %</TableHead>
                       <TableHead className="text-right">Fijos</TableHead>
                       <TableHead className="text-right">Variables</TableHead>
