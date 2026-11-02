@@ -93,6 +93,43 @@
       .regreso .cuando { font-size: 19px; font-weight: 700; }
       .regreso[hidden] { display: none; }
 
+      /* Cuenta regresiva: el tiempo que falta, en bloques legibles */
+      .cuenta {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        margin: 0 auto 28px;
+      }
+      .cuenta[hidden] { display: none; }
+      .cuenta .u {
+        min-width: 70px;
+        padding: 11px 9px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 255, 255, 0.13);
+      }
+      .cuenta .n {
+        display: block;
+        font-size: 27px;
+        font-weight: 700;
+        line-height: 1.1;
+        font-variant-numeric: tabular-nums;
+      }
+      .cuenta .e {
+        display: block;
+        margin-top: 4px;
+        font-size: 10.5px;
+        letter-spacing: 1.2px;
+        text-transform: uppercase;
+        color: #7d97b3;
+      }
+      .vencido {
+        margin: 0 auto 28px;
+        font-size: 15px;
+        color: #a9c0d8;
+      }
+      .vencido[hidden] { display: none; }
+
       .pie {
         font-size: 13px;
         color: #7d97b3;
@@ -107,6 +144,10 @@
         p.frase { font-size: 15px; }
         .regreso { padding: 12px 18px; }
         .regreso .cuando { font-size: 17px; }
+        .cuenta { gap: 7px; }
+        .cuenta .u { min-width: 0; flex: 1; padding: 10px 4px; }
+        .cuenta .n { font-size: 22px; }
+        .cuenta .e { font-size: 9.5px; letter-spacing: 0.8px; }
       }
     </style>
   </head>
@@ -124,6 +165,12 @@
         <span class="cuando" id="cuando"></span>
       </div>
 
+      <div class="cuenta" id="cuenta" hidden></div>
+      <p class="vencido" id="vencido" hidden>
+        El servicio ya debería estar disponible. Esta página entra sola en
+        cuanto vuelva.
+      </p>
+
       <div class="barra"><span></span></div>
 
       <div class="pie">
@@ -133,14 +180,53 @@
     </div>
 
     <script>
-      // El mensaje lo escribe el administrador desde el sistema: la primera
-      // línea es la frase y, si hay una segunda, es la fecha de regreso.
+      // El mensaje lo escribe el administrador desde el sistema, separado por
+      // barras: frase | fecha de regreso | instante exacto para la cuenta.
+      var objetivo = null;
+      var reloj = null;
+
+      function dos(n) { return n < 10 ? "0" + n : String(n); }
+
+      function pintarCuenta() {
+        var caja = document.getElementById("cuenta");
+        var fin = document.getElementById("vencido");
+        if (!objetivo) {
+          caja.hidden = true;
+          fin.hidden = true;
+          return;
+        }
+        var resta = Math.floor((objetivo - Date.now()) / 1000);
+        if (resta <= 0) {
+          // Se cumplió la hora prometida y el sistema sigue cerrado
+          caja.hidden = true;
+          fin.hidden = false;
+          return;
+        }
+        var d = Math.floor(resta / 86400);
+        var piezas = [];
+        if (d > 0) piezas.push([d, d === 1 ? "día" : "días"]);
+        piezas.push(
+          [dos(Math.floor((resta % 86400) / 3600)), "horas"],
+          [dos(Math.floor((resta % 3600) / 60)), "min"],
+          [dos(resta % 60), "seg"]
+        );
+        caja.innerHTML = piezas
+          .map(function (p) {
+            return '<span class="u"><span class="n">' + p[0] +
+              '</span><span class="e">' + p[1] + "</span></span>";
+          })
+          .join("");
+        caja.hidden = false;
+        fin.hidden = true;
+      }
+
       function pintar(d) {
         if (!d) return;
         if (d.activo === false) return location.replace("/");
         var partes = String(d.mensaje || "").split("|");
         var frase = (partes[0] || "").trim();
         var cuando = (partes[1] || "").trim();
+        var instante = (partes[2] || "").trim();
         if (frase) document.getElementById("frase").textContent = frase;
         var caja = document.getElementById("regreso");
         if (cuando) {
@@ -151,7 +237,12 @@
             });
           caja.hidden = false;
         } else caja.hidden = true;
+        var t = instante ? Date.parse(instante) : NaN;
+        objetivo = isNaN(t) ? null : t;
+        pintarCuenta();
+        if (objetivo && !reloj) reloj = setInterval(pintarCuenta, 1000);
       }
+
       function consultar() {
         fetch("/api/mantenimiento", { cache: "no-store" })
           .then(function (r) { return r.json(); })
